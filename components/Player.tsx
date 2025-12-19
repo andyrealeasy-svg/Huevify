@@ -1,7 +1,7 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Heart, Plus } from './Icons';
-import { PlayMode } from '../types';
+import { useStore } from '../context/StoreContext.tsx';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Heart, Plus } from './Icons.tsx';
+import { PlayMode } from '../types.ts';
 
 const formatTime = (seconds: number) => {
   if (!seconds) return "0:00";
@@ -27,10 +27,8 @@ export const Player = () => {
   }
 
   return (
-    // On mobile: bottom-16 (above nav), height-16. On desktop: bottom-0, height-24.
     <div className="fixed bottom-16 md:bottom-0 left-0 w-full h-16 md:h-24 bg-surface border-t border-surface-highlight px-4 flex items-center justify-between z-50 transition-all">
       
-      {/* Track Info - Clickable on mobile to open full player */}
       <div 
         className="flex items-center w-full md:w-1/4 md:min-w-[180px] overflow-hidden cursor-pointer md:cursor-default"
         onClick={() => {
@@ -63,10 +61,8 @@ export const Player = () => {
         </button>
       </div>
 
-      {/* Controls (Desktop Centered) */}
       <div className="flex flex-col items-center w-auto md:w-2/4 max-w-2xl md:static absolute right-4 md:right-auto">
         <div className="flex items-center gap-4 md:gap-6 mb-0 md:mb-2">
-           {/* Hide extra controls on mobile */}
           <button 
              onClick={toggleShuffle}
              className={`hidden md:block transition ${isShuffle ? 'text-primary' : 'text-secondary hover:text-white'}`}
@@ -97,7 +93,6 @@ export const Player = () => {
           </button>
         </div>
 
-        {/* Progress Bar (Hidden on Mobile) */}
         <div className="hidden md:flex items-center w-full gap-2 text-xs text-secondary">
           <span>{formatTime(progress)}</span>
           <div className="flex-1 h-1 bg-surface-highlight rounded-full relative group">
@@ -118,7 +113,6 @@ export const Player = () => {
         </div>
       </div>
 
-      {/* Volume (Hidden on Mobile) */}
       <div className="hidden md:flex items-center justify-end w-1/4 min-w-[150px] gap-2">
         <Volume2 size={20} className="text-secondary" />
         <div className="w-24 h-1 bg-surface-highlight rounded-full relative group">
@@ -138,7 +132,6 @@ export const Player = () => {
         </div>
       </div>
 
-      {/* Mobile progress bar (Simple overlay on top of player) */}
       <div className="absolute top-0 left-0 w-full h-[2px] bg-transparent md:hidden pointer-events-none">
         <div className="h-full bg-primary" style={{ width: `${(progress / (duration || 1)) * 100}%` }} />
       </div>

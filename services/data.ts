@@ -1,4 +1,4 @@
-import { Track, Album, Playlist } from '../types';
+import { Track, Album, Playlist } from '../types.ts';
 
 // Helper to generate consistent pseudo-random numbers
 const seededRandom = (seed: number) => {

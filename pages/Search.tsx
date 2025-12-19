@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useStore } from '../context/StoreContext';
-import { Search as SearchIcon, Play, Heart } from '../components/Icons';
+import { useStore } from '../context/StoreContext.tsx';
+import { Search as SearchIcon, Play, Heart } from '../components/Icons.tsx';
 
 export const Search = () => {
   const { tracks, playTrack, isLiked, toggleLike } = useStore();

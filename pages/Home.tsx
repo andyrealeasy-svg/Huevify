@@ -1,6 +1,6 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext';
-import { Play, ListMusic } from '../components/Icons';
+import { useStore } from '../context/StoreContext.tsx';
+import { Play, ListMusic } from '../components/Icons.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
