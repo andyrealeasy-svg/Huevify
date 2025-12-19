@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode } from '../types';
-import { generateInitialData, StorageService } from '../services/data';
+import { Track, Playlist, Album, ViewState, PlayMode } from '../types.ts';
+import { generateInitialData, StorageService } from '../services/data.ts';
 
 interface ArtistStats {
   monthlyPlays: number;
@@ -26,7 +26,7 @@ interface StoreContextType {
   // Modal States
   isCreatePlaylistOpen: boolean;
   setCreatePlaylistOpen: (isOpen: boolean) => void;
-  playlistIdToEdit: string | null; // If set, modal is in "Edit" mode
+  playlistIdToEdit: string | null; 
   setPlaylistIdToEdit: (id: string | null) => void;
   
   isMobilePlayerOpen: boolean;
@@ -61,7 +61,7 @@ interface StoreContextType {
   
   createPlaylist: (name: string, description?: string, cover?: string) => void;
   editPlaylist: (id: string, name: string, description?: string, cover?: string) => void;
-  deletePlaylist: (id: string) => void; // Deprecated in favor of openDeleteModal, kept for compatibility if needed or aliased
+  deletePlaylist: (id: string) => void; 
   addToPlaylist: (playlistId: string, trackId: string) => void;
   removeFromPlaylist: (playlistId: string, trackId: string) => void;
   
@@ -225,7 +225,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // --- Artist Stats Calculation (Deterministic) ---
+  // --- Artist Stats Calculation ---
   const getArtistStats = (artistName: string): ArtistStats => {
     const artistPlayMap: Record<string, number> = {};
     tracks.forEach(t => {
@@ -433,7 +433,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
-  // NEW: Open Modal logic
   const openDeleteModal = (id: string) => {
       setPlaylistToDelete(id);
       setIsDeleteModalOpen(true);
@@ -448,12 +447,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!playlistToDelete) return;
     const id = playlistToDelete;
 
-    // 1. Navigate away immediately
     if (view.type === 'PLAYLIST' && (view as any).id === id) {
         setViewInternal({ type: 'LIBRARY' });
     }
 
-    // 2. Update state
     setPlaylists(currentPlaylists => {
         const updated = currentPlaylists.filter(p => p.id !== id);
         StorageService.save('huevify_playlists', updated);
@@ -463,7 +460,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     closeDeleteModal();
   };
 
-  // Alias for backward compatibility if needed, but we'll use openDeleteModal
   const deletePlaylist = (id: string) => {
       openDeleteModal(id);
   };
