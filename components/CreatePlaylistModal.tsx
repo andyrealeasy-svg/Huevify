@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore } from '../context/StoreContext.tsx';
-import { X, Image } from './Icons.tsx';
+import { useStore } from '../context/StoreContext';
+import { X, Image } from './Icons';
 
 export const CreatePlaylistModal = () => {
   const { 
@@ -23,6 +23,7 @@ export const CreatePlaylistModal = () => {
             setCover(pl.customCover || null);
         }
       } else {
+        // Reset for Create mode
         setName("");
         setDescription("");
         setCover(null);
@@ -68,6 +69,7 @@ export const CreatePlaylistModal = () => {
         <h2 className="text-2xl font-bold mb-6 text-center">{playlistIdToEdit ? 'Edit Playlist' : 'Create Playlist'}</h2>
 
         <div className="flex flex-col gap-6">
+          {/* Cover Upload Area */}
           <div className="flex justify-center">
             <div 
               onClick={() => fileInputRef.current?.click()}
@@ -82,6 +84,7 @@ export const CreatePlaylistModal = () => {
                 </>
               )}
               
+              {/* Hover overlay */}
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                  <span className="text-white font-bold">Edit</span>
               </div>

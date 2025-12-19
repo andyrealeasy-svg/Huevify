@@ -1,6 +1,6 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
-import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2 } from '../components/Icons.tsx';
+import { useStore } from '../context/StoreContext';
+import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2 } from '../components/Icons';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -30,6 +30,7 @@ export const Library = () => {
       setCreatePlaylistOpen(true);
   };
 
+  // --- CHARTS VIEW ---
   if (view.type === 'CHARTS') {
       const chartTracks = [...tracks].sort((a, b) => b.plays - a.plays).slice(0, 25);
       return (
@@ -67,6 +68,7 @@ export const Library = () => {
       );
   }
 
+  // --- ARTIST VIEW ---
   if (view.type === 'ARTIST') {
       const artistName = (view as any).id;
       const artistTracks = tracks.filter(t => t.artist === artistName);
@@ -105,6 +107,7 @@ export const Library = () => {
                         <Play size={28} fill="black" className="ml-1 text-black" />
                     </button>
                     
+                    {/* Follow Button */}
                     <button 
                         onClick={() => toggleFollowArtist(artistName)}
                         className={`px-6 py-1.5 font-bold text-sm rounded-full uppercase tracking-widest border transition ${isFollowing ? 'border-white text-white hover:bg-white/10' : 'border-secondary text-white hover:border-white'}`}
@@ -168,6 +171,7 @@ export const Library = () => {
       )
   }
 
+  // --- Render Album or Playlist Detail ---
   if (view.type === 'PLAYLIST' || view.type === 'ALBUM') {
     let title = "", subtitle = "", cover = "", description = "", items: any[] = [];
     let year: number | undefined = undefined;
@@ -227,7 +231,9 @@ export const Library = () => {
 
     return (
       <div className="h-full overflow-y-auto pb-64 relative w-full page-enter">
+        {/* Header */}
         <div className="relative p-6 md:p-8 bg-gradient-to-b from-slate-700 to-background animate-appear">
+          {/* Back Button */}
           <div className="absolute top-4 left-4 md:top-6 md:left-6 z-20">
             <button 
               onClick={goBack} 
@@ -238,6 +244,7 @@ export const Library = () => {
           </div>
 
           <div className="flex flex-col items-center text-center md:flex-row md:items-end md:text-left gap-6 mt-8 md:mt-8">
+            {/* Cover Art Logic */}
             <div className="w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden rounded-md animate-appear">
                 {isLikedSongs ? (
                     <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
@@ -262,6 +269,7 @@ export const Library = () => {
               {description && <p className="text-secondary/80 text-sm md:text-base font-medium">{description}</p>}
               <p className="text-white font-semibold text-sm md:text-base mt-1">{subtitle}</p>
               
+              {/* Mobile Actions Row - Hidden on Desktop */}
               {isPlaylist && !isSystem && (
                   <div className="flex gap-4 justify-center md:justify-start mt-2 md:hidden">
                       <button onClick={() => handleEdit(id)} className="text-xs border border-secondary/50 rounded-full px-3 py-1 text-secondary hover:text-white hover:border-white">
@@ -276,6 +284,7 @@ export const Library = () => {
           </div>
         </div>
 
+        {/* Action Bar - Increased z-index to 30 */}
         <div className="px-6 md:px-8 py-4 md:py-6 bg-background/50 backdrop-blur-sm sticky top-0 z-30 flex items-center gap-6 animate-appear">
           <button 
              onClick={() => items.length > 0 && playTrack(items[0])}
@@ -284,12 +293,14 @@ export const Library = () => {
             <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
           </button>
           
+          {/* Like Button for Album */}
           {!isPlaylist && (
              <button onClick={() => toggleAlbumLike(id)} className="hover:scale-105 transition">
                 <Heart size={32} fill={isAlbumLiked(id) ? '#1ed760' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
              </button>
           )}
 
+          {/* Desktop Edit Button for Playlist */}
           {isPlaylist && !isSystem && (
               <div className="hidden md:flex gap-4 ml-auto">
                  <button onClick={() => handleEdit(id)} className="text-secondary hover:text-white hover:scale-105"><Edit size={24}/></button>
@@ -298,7 +309,9 @@ export const Library = () => {
           )}
         </div>
 
+        {/* List */}
         <div className="px-4 md:px-8 animate-slide-up">
+           {/* PC Header */}
            <div className="hidden md:grid grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-4 py-2 border-b border-surface-highlight text-secondary text-sm mb-4">
              <span>#</span>
              <span>Title</span>
@@ -310,21 +323,26 @@ export const Library = () => {
            {items.map((track, idx) => (
              <div key={track.id} className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 rounded hover:bg-surface-highlight group items-center">
                
+               {/* Index / Play Icon */}
                <div className="w-4 flex justify-center">
                    <span className="text-secondary group-hover:hidden text-sm">{idx + 1}</span>
                    <button onClick={() => playTrack(track)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
                </div>
                
+               {/* Track Info */}
                <div className="flex items-center gap-3 overflow-hidden">
-                 <img src={track.cover} className="w-10 h-10 md:hidden rounded" alt="" />
+                 <img src={track.cover} className="w-10 h-10 md:hidden rounded" alt="" /> {/* Show cover on mobile only in list */}
                  <div className="flex flex-col overflow-hidden">
+                   {/* Mobile: Title + (feat. Artist) */}
                    <span className="text-white font-medium truncate">
                       {track.title} 
                       <span className="md:hidden text-secondary font-normal"> (feat. {track.artist})</span>
                    </span>
+                   {/* Mobile: Plays • Artist */}
                    <div className="md:hidden text-xs text-secondary truncate mt-0.5">
                       {formatPlays(track.plays)} • {track.artist}
                    </div>
+                   {/* PC: Artist only - Clickable */}
                    <span 
                         onClick={(e) => { e.stopPropagation(); goToArtist(track.artist); }} 
                         className="hidden md:block text-secondary text-xs group-hover:text-white hover:underline cursor-pointer"
@@ -334,15 +352,19 @@ export const Library = () => {
                  </div>
                </div>
 
+               {/* PC: Plays */}
                <span className="text-secondary text-sm hidden md:block truncate">{formatPlays(track.plays)}</span>
 
+               {/* PC: Duration */}
                <span className="text-secondary text-sm hidden md:block">{formatDuration(track.duration)}</span>
 
+               {/* Actions */}
                <div className="flex items-center gap-3 justify-end">
                  <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
                     <Heart size={16} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
                  </button>
                  
+                 {/* Add to Playlist Button */}
                  <button onClick={(e) => { e.stopPropagation(); openAddToPlaylist(track.id); }} className="text-transparent group-hover:text-secondary hover:text-white" title="Add to Playlist">
                     <Plus size={16} />
                  </button>
@@ -356,6 +378,7 @@ export const Library = () => {
              </div>
            ))}
 
+           {/* Release Footer */}
            {items.length > 0 && (
              <div className="mt-8 pt-8 border-t border-surface-highlight text-secondary text-sm font-medium pb-8 flex flex-col gap-1">
                  {year && <p>Released {year}</p>}
@@ -369,11 +392,13 @@ export const Library = () => {
     );
   }
 
+  // --- Default Library View (List of playlists/albums) ---
   return (
     <div className="p-4 md:p-8 pb-32 h-full overflow-y-auto bg-background page-enter">
       <h2 className="text-2xl font-bold mb-6 animate-appear">Your Library</h2>
       
       <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 animate-slide-up">
+        {/* Create New Playlist Card */}
         <div 
           onClick={handleCreate}
           className="p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer transition group flex flex-col justify-center items-center text-center min-h-[150px] md:min-h-[200px] hover-scale"
@@ -384,6 +409,7 @@ export const Library = () => {
            <h3 className="font-bold text-white text-sm md:text-base">Create Playlist</h3>
         </div>
 
+        {/* Playlists */}
         {playlists.map(pl => {
            let cover = pl.customCover;
            if (!cover && pl.tracks.length > 0) {
@@ -411,7 +437,9 @@ export const Library = () => {
            );
         })}
         
+        {/* Followed Artists */}
         {followedArtists.map(artist => {
+            // Find a cover image for the artist from tracks
             const cover = tracks.find(t => t.artist === artist)?.cover || "";
             return (
                 <div 
@@ -434,6 +462,7 @@ export const Library = () => {
             );
         })}
         
+        {/* Liked Albums */}
         {albums.filter(a => isAlbumLiked(a.id)).map(album => (
            <div 
             key={album.id} 

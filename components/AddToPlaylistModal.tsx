@@ -1,6 +1,6 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
-import { X, ListMusic, Plus } from './Icons.tsx';
+import { useStore } from '../context/StoreContext';
+import { X, ListMusic, Plus } from './Icons';
 
 export const AddToPlaylistModal = () => {
   const { 

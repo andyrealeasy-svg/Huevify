@@ -1,7 +1,7 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
-import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus } from './Icons.tsx';
-import { ViewState } from '../types.ts';
+import { useStore } from '../context/StoreContext';
+import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus } from './Icons';
+import { ViewState } from '../types';
 
 export const Sidebar = () => {
   const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks } = useStore();
@@ -16,12 +16,13 @@ export const Sidebar = () => {
     `flex items-center gap-4 px-4 py-2 cursor-pointer transition font-bold text-sm ${active ? 'text-white' : 'text-secondary hover:text-white'}`;
 
   const handleCreate = () => {
-    setPlaylistIdToEdit(null); 
+    setPlaylistIdToEdit(null); // Ensure we are in create mode
     setCreatePlaylistOpen(true);
   };
 
   return (
     <div className="w-64 bg-black h-full flex flex-col pt-6 pb-24 hidden md:flex">
+      {/* Logo Area */}
       <div className="px-6 mb-6">
         <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2">
           <span className="w-8 h-8 bg-huevify rounded-full flex items-center justify-center text-lg">H</span>
@@ -29,6 +30,7 @@ export const Sidebar = () => {
         </h1>
       </div>
 
+      {/* Main Nav */}
       <div className="flex flex-col gap-2">
         <div onClick={() => setView({ type: 'HOME' })} className={navClass(isActive('HOME'))}>
           <Home size={24} />
@@ -46,8 +48,10 @@ export const Sidebar = () => {
 
       <div className="mt-6 pt-6 border-t border-surface-highlight mx-4"></div>
 
+      {/* Actions */}
       <div className="flex flex-col gap-3 px-4 mt-2">
         
+        {/* Create Playlist - Styled to match Liked Songs */}
         <div 
             onClick={handleCreate} 
             className="flex items-center gap-3 cursor-pointer group text-secondary hover:text-white transition"
@@ -58,6 +62,7 @@ export const Sidebar = () => {
             <span className="font-bold text-sm">Create Playlist</span>
         </div>
 
+        {/* Liked Songs */}
         <div 
             onClick={() => setView({ type: 'PLAYLIST', id: 'liked' })} 
             className={`flex items-center gap-3 cursor-pointer group transition ${isActive('PLAYLIST', 'liked') ? 'text-white' : 'text-secondary hover:text-white'}`}
