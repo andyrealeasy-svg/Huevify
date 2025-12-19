@@ -1,0 +1,5 @@
+{
+  "name": "Huevify",
+  "description": "A fully functional streaming service prototype with library management, playback logic, and analytics.",
+  "requestFramePermissions": []
+}
