@@ -4,9 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Huevify Web Player</title>
-    <!-- Add Babel for in-browser transpilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -18,7 +15,7 @@
               surface: '#181818',
               'surface-highlight': '#282828',
               secondary: '#b3b3b3',
-              huevify: '#1e3a8a'
+              huevify: '#1e3a8a' // Dark blue as requested
             },
             animation: {
               'appear': 'appear 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
@@ -27,11 +24,11 @@
             keyframes: {
               appear: {
                 '0%': { opacity: '0', transform: 'scale(0.98)' },
-                '100%': { opacity: '1', transform: 'none' },
+                '100%': { opacity: '1', transform: 'none' }, /* Crucial: removes transform to prevent stacking context issues */
               },
               slideUp: {
                 '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'none' },
+                '100%': { opacity: '1', transform: 'none' }, /* Crucial: removes transform to prevent stacking context issues */
               }
             }
           }
@@ -39,6 +36,7 @@
       }
     </script>
     <style>
+      /* Custom Scrollbar for Spotify-like feel */
       ::-webkit-scrollbar {
         width: 12px;
       }
@@ -75,47 +73,52 @@
       .group:hover .range-slider::-webkit-slider-thumb {
         opacity: 1;
       }
+
+      /* Global Animations */
       body {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
+
+      /* Interactive Elements Transition */
       button, a, .cursor-pointer {
         transition-property: transform, background-color, color, opacity, border-color, box-shadow;
         transition-duration: 0.2s;
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
       }
+      
       button:active {
         transform: scale(0.96);
       }
+
       .hover-scale {
-        position: relative;
+        position: relative; /* Ensure stable positioning context */
         z-index: 1;
         transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        /* will-change: transform; removed to prevent blurry text in some browsers */
       }
+
       .hover-scale:hover {
         transform: scale(1.02);
-        z-index: 20;
+        z-index: 20; /* Ensure it floats above siblings */
       }
+      
       .page-enter {
         animation: appear 0.4s ease-out forwards;
       }
     </style>
-    <!-- Import Map: Tells browser where to find React and Icons -->
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.263.1",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
   }
 }
 </script>
 </head>
   <body class="bg-background text-white h-screen overflow-hidden selection:bg-primary selection:text-black font-sans">
     <div id="root"></div>
-    <!-- Entry Point: Note the type="text/babel" and extension -->
-    <script type="text/babel" data-presets="typescript,react" data-type="module" src="./index.tsx"></script>
   </body>
 </html>

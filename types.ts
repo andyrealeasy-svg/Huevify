@@ -29,6 +29,14 @@ export interface Album {
   recordLabel?: string;
 }
 
+export interface User {
+  id: string;
+  username: string;
+  password: string; // Stored locally for this prototype
+  displayName: string;
+  avatar?: string; // Base64
+}
+
 export type ViewState = 
   | { type: 'HOME' }
   | { type: 'SEARCH' }

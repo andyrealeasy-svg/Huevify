@@ -1,10 +1,10 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
+import { useStore } from '../context/StoreContext';
 import { 
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, 
   Heart, Plus, ListMusic, Volume2
-} from './Icons.tsx';
-import { PlayMode } from '../types.ts';
+} from './Icons';
+import { PlayMode } from '../types';
 
 const formatTime = (seconds: number) => {
     if (!seconds) return "0:00";
@@ -26,6 +26,7 @@ export const FullScreenPlayer = () => {
   return (
     <div className="fixed inset-0 bg-gradient-to-b from-indigo-900 via-background to-black z-[60] flex flex-col p-6 animate-in slide-in-from-bottom duration-300 md:hidden">
       
+      {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <button onClick={() => setMobilePlayerOpen(false)} className="text-white">
           <ChevronDown size={32} />
@@ -36,12 +37,14 @@ export const FullScreenPlayer = () => {
         </button>
       </div>
 
+      {/* Cover Art */}
       <div className="flex-1 flex items-center justify-center mb-8">
         <div className="w-full aspect-square shadow-2xl rounded-lg overflow-hidden">
           <img src={currentTrack.cover} alt={currentTrack.title} className="w-full h-full object-cover" />
         </div>
       </div>
 
+      {/* Track Info */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex flex-col overflow-hidden mr-4">
           <h2 className="text-2xl font-bold text-white truncate marquee">{currentTrack.title}</h2>
@@ -60,6 +63,7 @@ export const FullScreenPlayer = () => {
         </button>
       </div>
 
+      {/* Progress */}
       <div className="mb-6">
         <div className="w-full h-1 bg-surface-highlight rounded-full mb-2 relative group">
            <input
@@ -85,6 +89,7 @@ export const FullScreenPlayer = () => {
         </div>
       </div>
 
+      {/* Controls */}
       <div className="flex justify-between items-center mb-8">
         <button 
             onClick={toggleShuffle}
@@ -118,6 +123,7 @@ export const FullScreenPlayer = () => {
         </button>
       </div>
 
+      {/* Mobile Volume Control */}
       <div className="flex items-center gap-3">
          <Volume2 size={20} className="text-secondary" />
          <div className="flex-1 h-1 bg-surface-highlight rounded-full relative group">

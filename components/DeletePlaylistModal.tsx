@@ -1,5 +1,5 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
+import { useStore } from '../context/StoreContext';
 
 export const DeletePlaylistModal = () => {
   const { 

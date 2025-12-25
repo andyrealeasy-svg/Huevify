@@ -1,10 +1,10 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus } from './Icons.tsx';
+import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus, User as UserIcon } from './Icons.tsx';
 import { ViewState } from '../types.ts';
 
 export const Sidebar = () => {
-  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks } = useStore();
+  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen } = useStore();
 
   const isActive = (type: ViewState['type'], id?: string) => {
     if (view.type !== type) return false;
@@ -22,12 +22,32 @@ export const Sidebar = () => {
 
   return (
     <div className="w-64 bg-black h-full flex flex-col pt-6 pb-24 hidden md:flex">
-      <div className="px-6 mb-6">
+      <div className="px-6 mb-2">
         <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2">
           <span className="w-8 h-8 bg-huevify rounded-full flex items-center justify-center text-lg">H</span>
           Huevify
         </h1>
       </div>
+
+      {/* User Profile Desktop */}
+      {currentUser && (
+        <div 
+            onClick={() => setProfileModalOpen(true)}
+            className="mx-4 mb-4 mt-2 p-2 rounded hover:bg-surface-highlight cursor-pointer flex items-center gap-3 transition group"
+        >
+            <div className="w-8 h-8 rounded-full bg-zinc-700 overflow-hidden flex items-center justify-center border border-transparent group-hover:border-white transition-colors">
+                {currentUser.avatar ? (
+                    <img src={currentUser.avatar} className="w-full h-full object-cover" alt="Avatar" />
+                ) : (
+                    <UserIcon size={16} className="text-secondary" />
+                )}
+            </div>
+            <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-bold truncate text-white">{currentUser.displayName}</span>
+                <span className="text-[10px] font-bold text-secondary uppercase">View Profile</span>
+            </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <div onClick={() => setView({ type: 'HOME' })} className={navClass(isActive('HOME'))}>

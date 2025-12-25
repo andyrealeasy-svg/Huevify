@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode } from '../types.ts';
+import { Track, Playlist, Album, ViewState, PlayMode, User } from '../types.ts';
 import { generateInitialData, StorageService } from '../services/data.ts';
 
 interface ArtistStats {
@@ -8,6 +8,12 @@ interface ArtistStats {
 }
 
 interface StoreContextType {
+  // Auth
+  currentUser: User | null;
+  login: (username: string, pass: string) => boolean;
+  register: (user: Omit<User, 'id'>) => boolean;
+  logout: () => void;
+  
   tracks: Track[];
   albums: Album[];
   playlists: Playlist[];
@@ -43,6 +49,9 @@ interface StoreContextType {
   closeDeleteModal: () => void;
   confirmDeletePlaylist: () => void;
 
+  isProfileModalOpen: boolean;
+  setProfileModalOpen: (isOpen: boolean) => void;
+
   // Actions
   setView: (v: ViewState) => void;
   goToArtist: (artistName: string) => void;
@@ -74,6 +83,9 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // --- Auth State ---
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   // --- Data State ---
   const [tracks, setTracks] = useState<Track[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -103,6 +115,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isMobilePlayerOpen, setMobilePlayerOpen] = useState(false);
   const [isAddToPlaylistOpen, setAddToPlaylistOpen] = useState(false);
   const [trackIdToAdd, setTrackIdToAdd] = useState<string | null>(null);
+  const [isProfileModalOpen, setProfileModalOpen] = useState(false);
   
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null);
@@ -114,6 +127,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Initialization ---
   useEffect(() => {
+    // 1. Check Session
+    const sessionUser = StorageService.load<User | null>('huevify_current_user', null);
+    if (sessionUser) {
+        setCurrentUser(sessionUser);
+    }
+
+    // 2. Load Content
     const { tracks: initialTracks, albums: initialAlbums } = generateInitialData();
     
     // Load persisted play counts
@@ -143,6 +163,51 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Setup Audio
     audioRef.current.volume = 0.5;
   }, []);
+
+  // --- Auth Methods ---
+
+  const login = (username: string, pass: string): boolean => {
+    const users = StorageService.load<User[]>('huevify_users', []);
+    const user = users.find(u => u.username === username && u.password === pass);
+    if (user) {
+        setCurrentUser(user);
+        StorageService.save('huevify_current_user', user);
+        return true;
+    }
+    return false;
+  };
+
+  const register = (newUser: Omit<User, 'id'>): boolean => {
+      const users = StorageService.load<User[]>('huevify_users', []);
+      if (users.some(u => u.username === newUser.username)) {
+          return false; // User exists
+      }
+      
+      const user: User = {
+          ...newUser,
+          id: `user_${Date.now()}`
+      };
+
+      const updatedUsers = [...users, user];
+      StorageService.save('huevify_users', updatedUsers);
+      
+      // Auto login
+      setCurrentUser(user);
+      StorageService.save('huevify_current_user', user);
+      return true;
+  };
+
+  const logout = () => {
+      setCurrentUser(null);
+      StorageService.save('huevify_current_user', null);
+      setProfileModalOpen(false);
+      
+      // Stop audio
+      setIsPlaying(false);
+      audioRef.current.pause();
+      setCurrentTrack(null);
+      setViewInternal({ type: 'HOME' });
+  };
 
   // --- Recommendation Engine ---
   useEffect(() => {
@@ -520,11 +585,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   return (
     <StoreContext.Provider value={{
+      currentUser, login, register, logout,
       tracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, isPlaying, playMode, isShuffle, volume, progress, duration, view,
       isCreatePlaylistOpen, setCreatePlaylistOpen, playlistIdToEdit, setPlaylistIdToEdit,
       isMobilePlayerOpen, setMobilePlayerOpen,
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
       isDeleteModalOpen, playlistToDelete, openDeleteModal, closeDeleteModal, confirmDeletePlaylist,
+      isProfileModalOpen, setProfileModalOpen,
       setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, toggleLike, isLiked,
       toggleAlbumLike, isAlbumLiked

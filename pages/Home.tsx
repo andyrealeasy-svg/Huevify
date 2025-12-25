@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, ListMusic } from '../components/Icons.tsx';
+import { Play, ListMusic, User as UserIcon } from '../components/Icons.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -9,14 +9,27 @@ const formatDuration = (seconds: number) => {
 };
 
 export const Home = () => {
-  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed } = useStore();
+  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen } = useStore();
 
   const allCharts = [...tracks].sort((a, b) => b.plays - a.plays).slice(0, 25);
   const previewCharts = allCharts.slice(0, 5);
 
   return (
     <div className="p-4 md:p-8 pb-64 w-full h-full overflow-y-auto page-enter">
-      <h2 className="text-2xl md:text-3xl font-bold mb-6 animate-appear">Good evening</h2>
+      {/* Mobile Header with Avatar */}
+      <div className="flex items-center gap-3 mb-6 animate-appear">
+          <div 
+             onClick={() => setProfileModalOpen(true)}
+             className="w-9 h-9 md:hidden rounded-full bg-zinc-700 overflow-hidden flex items-center justify-center cursor-pointer flex-shrink-0"
+          >
+              {currentUser?.avatar ? (
+                  <img src={currentUser.avatar} className="w-full h-full object-cover" alt="Me" />
+              ) : (
+                  <UserIcon size={18} className="text-secondary" />
+              )}
+          </div>
+          <h2 className="text-2xl md:text-3xl font-bold">Good evening</h2>
+      </div>
 
       <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 animate-appear">
         

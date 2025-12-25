@@ -1,4 +1,4 @@
-import { Track, Album, Playlist } from '../types.ts';
+import { Track, Album, Playlist } from '../types';
 
 // Helper to generate consistent pseudo-random numbers
 const seededRandom = (seed: number) => {
@@ -28,6 +28,7 @@ export const generateInitialData = () => {
   // Create 20 mock tracks
   for (let i = 1; i <= 20; i++) {
     const artist = artists[i % artists.length];
+    // Assign genre deterministically based on artist/index
     const genre = GENRES[i % GENRES.length];
     
     tracks.push({

@@ -1,7 +1,7 @@
 import React from 'react';
-import { useStore } from '../context/StoreContext.tsx';
-import { Home, Search, Library } from './Icons.tsx';
-import { ViewState } from '../types.ts';
+import { useStore } from '../context/StoreContext';
+import { Home, Search, Library } from './Icons';
+import { ViewState } from '../types';
 
 export const MobileNav = () => {
   const { setView, view } = useStore();
