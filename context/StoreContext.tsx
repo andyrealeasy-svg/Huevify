@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification } from '../types.ts';
-import { generateInitialData, StorageService } from '../services/data.ts';
+import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification } from '../types';
+import { generateInitialData, StorageService } from '../services/data';
 
 interface ArtistStats {
   monthlyPlays: number;
@@ -755,7 +755,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const lastUpdateDate = lastUpdateStr ? new Date(lastUpdateStr) : new Date(0);
 
         if (lastUpdateDate.getTime() < threshold.getTime()) {
-            const currentPlaysMap = tracks.reduce((acc, t) => ({...acc, [t.id]: t.plays}), {} as Record<string, number>);
+            const currentPlaysMap = tracks.reduce((acc, t) => ({...acc, [t.id]: t.plays}), {});
             
             const chartData: DailyChartTrack[] = tracks.map(t => {
                 const prevPlays = playSnapshot[t.id] || 0;

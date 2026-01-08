@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Huevify Web Player</title>
+    <!-- We keep Tailwind CDN for simplicity to avoid needing a CSS build step for styles -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -15,7 +16,7 @@
               surface: '#181818',
               'surface-highlight': '#282828',
               secondary: '#b3b3b3',
-              huevify: '#1e3a8a' // Dark blue as requested
+              huevify: '#1e3a8a'
             },
             animation: {
               'appear': 'appear 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
@@ -94,13 +95,11 @@
         opacity: 1;
       }
 
-      /* Global Animations */
       body {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
 
-      /* Interactive Elements Transition */
       button, a, .cursor-pointer {
         transition-property: transform, background-color, color, opacity, border-color, box-shadow;
         transition-duration: 0.2s;
@@ -112,21 +111,20 @@
       }
 
       .hover-scale {
-        position: relative; /* Ensure stable positioning context */
+        position: relative;
         z-index: 1;
         transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
 
       .hover-scale:hover {
         transform: scale(1.02);
-        z-index: 20; /* Ensure it floats above siblings */
+        z-index: 20;
       }
       
       .page-enter {
         animation: appear 0.4s ease-out forwards;
       }
       
-      /* Ensure animation classes work */
       .animate-in {
         animation-duration: 0.3s;
         animation-fill-mode: forwards;
@@ -135,15 +133,18 @@
   <script type="importmap">
 {
   "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
 </head>
   <body class="bg-background text-white h-screen overflow-hidden selection:bg-primary selection:text-black font-sans">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

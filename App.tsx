@@ -1,19 +1,19 @@
 import React from 'react';
-import { StoreProvider, useStore } from './context/StoreContext.tsx';
-import { Sidebar } from './components/Sidebar.tsx';
-import { Player } from './components/Player.tsx';
-import { MobileNav } from './components/MobileNav.tsx';
-import { FullScreenPlayer } from './components/FullScreenPlayer.tsx';
-import { CreatePlaylistModal } from './components/CreatePlaylistModal.tsx';
-import { AddToPlaylistModal } from './components/AddToPlaylistModal.tsx';
-import { DeletePlaylistModal } from './components/DeletePlaylistModal.tsx';
-import { ProfileModal } from './components/ProfileModal.tsx';
-import { ArtistHub } from './components/ArtistHub.tsx';
-import { Auth } from './components/Auth.tsx';
-import { Home } from './pages/Home.tsx';
-import { Search } from './pages/Search.tsx';
-import { Library } from './pages/Library.tsx';
-import { XCircle, CheckCircle, ShieldAlert } from './components/Icons.tsx';
+import { StoreProvider, useStore } from './context/StoreContext';
+import { Sidebar } from './components/Sidebar';
+import { Player } from './components/Player';
+import { MobileNav } from './components/MobileNav';
+import { FullScreenPlayer } from './components/FullScreenPlayer';
+import { CreatePlaylistModal } from './components/CreatePlaylistModal';
+import { AddToPlaylistModal } from './components/AddToPlaylistModal';
+import { DeletePlaylistModal } from './components/DeletePlaylistModal';
+import { ProfileModal } from './components/ProfileModal';
+import { ArtistHub } from './components/ArtistHub';
+import { Auth } from './components/Auth';
+import { Home } from './pages/Home';
+import { Search } from './pages/Search';
+import { Library } from './pages/Library';
+import { XCircle, CheckCircle, ShieldAlert } from './components/Icons';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
