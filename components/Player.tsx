@@ -15,7 +15,7 @@ export const Player = () => {
     currentTrack, isPlaying, togglePlay, nextTrack, prevTrack, 
     progress, duration, seek, volume, setVolume, playMode, toggleRepeat,
     isLiked, toggleLike, setMobilePlayerOpen, isShuffle, toggleShuffle,
-    openAddToPlaylist, goToArtist
+    openAddToPlaylist, goToArtist, getTrackCover
   } = useStore();
 
   if (!currentTrack) {
@@ -25,6 +25,9 @@ export const Player = () => {
       </div>
     );
   }
+
+  const allArtists = Array.from(new Set([currentTrack.artist, ...(currentTrack.mainArtists || [])]));
+  const cover = getTrackCover(currentTrack);
 
   return (
     // On mobile: bottom-16 (above nav), height-16. On desktop: bottom-0, height-24.
@@ -39,15 +42,22 @@ export const Player = () => {
             }
         }}
       >
-        <img src={currentTrack.cover} alt="Cover" className="h-10 w-10 md:h-14 md:w-14 rounded shadow mr-3 md:mr-4 flex-shrink-0" />
+        <img src={cover} alt="Cover" className="h-10 w-10 md:h-14 md:w-14 rounded shadow mr-3 md:mr-4 flex-shrink-0" />
         <div className="flex flex-col overflow-hidden mr-2 md:mr-4 flex-1">
           <span className="text-sm font-semibold text-white truncate hover:underline cursor-pointer">{currentTrack.title}</span>
-          <span 
-            onClick={(e) => { e.stopPropagation(); goToArtist(currentTrack.artist); }} 
-            className="text-xs text-secondary truncate hover:text-white hover:underline cursor-pointer"
-          >
-            {currentTrack.artist}
-          </span>
+          <div className="text-xs text-secondary truncate">
+              {allArtists.map((a, i) => (
+                  <span key={a}>
+                      {i > 0 && ", "}
+                      <span 
+                        onClick={(e) => { e.stopPropagation(); goToArtist(a); }} 
+                        className="hover:text-white hover:underline cursor-pointer"
+                      >
+                          {a}
+                      </span>
+                  </span>
+              ))}
+          </div>
         </div>
         <button 
           onClick={(e) => { e.stopPropagation(); toggleLike(currentTrack.id); }} 

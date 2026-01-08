@@ -18,13 +18,18 @@ export const FullScreenPlayer = () => {
     isMobilePlayerOpen, setMobilePlayerOpen, currentTrack, isPlaying, 
     togglePlay, nextTrack, prevTrack, progress, duration, seek,
     playMode, toggleRepeat, isLiked, toggleLike, openAddToPlaylist,
-    isShuffle, toggleShuffle, volume, setVolume, goToArtist
+    isShuffle, toggleShuffle, volume, setVolume, goToArtist, getTrackCover
   } = useStore();
 
-  if (!isMobilePlayerOpen || !currentTrack) return null;
+  if (!currentTrack) return null;
+
+  const allArtists = Array.from(new Set([currentTrack.artist, ...(currentTrack.mainArtists || [])]));
+  const cover = getTrackCover(currentTrack);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-b from-indigo-900 via-background to-black z-[60] flex flex-col p-6 animate-in slide-in-from-bottom duration-300 md:hidden">
+    <div 
+        className={`fixed inset-0 bg-gradient-to-b from-indigo-900 via-background to-black z-[60] flex flex-col p-6 transition-transform duration-300 ease-in-out md:hidden ${isMobilePlayerOpen ? 'translate-y-0' : 'translate-y-[100%]'}`}
+    >
       
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
@@ -40,7 +45,7 @@ export const FullScreenPlayer = () => {
       {/* Cover Art */}
       <div className="flex-1 flex items-center justify-center mb-8">
         <div className="w-full aspect-square shadow-2xl rounded-lg overflow-hidden">
-          <img src={currentTrack.cover} alt={currentTrack.title} className="w-full h-full object-cover" />
+          <img src={cover} alt={currentTrack.title} className="w-full h-full object-cover" />
         </div>
       </div>
 
@@ -48,12 +53,19 @@ export const FullScreenPlayer = () => {
       <div className="flex justify-between items-center mb-6">
         <div className="flex flex-col overflow-hidden mr-4">
           <h2 className="text-2xl font-bold text-white truncate marquee">{currentTrack.title}</h2>
-          <p 
-            onClick={() => goToArtist(currentTrack.artist)} 
-            className="text-lg text-secondary truncate underline decoration-transparent hover:decoration-secondary cursor-pointer transition"
-          >
-            {currentTrack.artist}
-          </p>
+          <div className="text-lg text-secondary truncate">
+              {allArtists.map((a, i) => (
+                  <span key={a}>
+                      {i > 0 && ", "}
+                      <span 
+                        onClick={() => { setMobilePlayerOpen(false); goToArtist(a); }} 
+                        className="underline decoration-transparent hover:decoration-secondary cursor-pointer transition"
+                      >
+                          {a}
+                      </span>
+                  </span>
+              ))}
+          </div>
         </div>
         <button 
             onClick={() => toggleLike(currentTrack.id)}

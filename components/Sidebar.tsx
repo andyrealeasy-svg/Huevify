@@ -4,7 +4,7 @@ import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus, User
 import { ViewState } from '../types.ts';
 
 export const Sidebar = () => {
-  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen } = useStore();
+  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen, likedPlaylistId } = useStore();
 
   const isActive = (type: ViewState['type'], id?: string) => {
     if (view.type !== type) return false;
@@ -19,6 +19,13 @@ export const Sidebar = () => {
     setPlaylistIdToEdit(null); 
     setCreatePlaylistOpen(true);
   };
+
+  // Filter playlists: System playlists OR Owned by me OR Saved by me
+  const visiblePlaylists = playlists.filter(pl => 
+      pl.isSystem || 
+      (currentUser && pl.ownerId === currentUser.id) ||
+      (currentUser && pl.savedBy?.includes(currentUser.id))
+  );
 
   return (
     <div className="w-64 bg-black h-full flex flex-col pt-6 pb-24 hidden md:flex">
@@ -79,8 +86,8 @@ export const Sidebar = () => {
         </div>
 
         <div 
-            onClick={() => setView({ type: 'PLAYLIST', id: 'liked' })} 
-            className={`flex items-center gap-3 cursor-pointer group transition ${isActive('PLAYLIST', 'liked') ? 'text-white' : 'text-secondary hover:text-white'}`}
+            onClick={() => setView({ type: 'PLAYLIST', id: likedPlaylistId })} 
+            className={`flex items-center gap-3 cursor-pointer group transition ${isActive('PLAYLIST', likedPlaylistId) ? 'text-white' : 'text-secondary hover:text-white'}`}
         >
           <div className="w-12 h-12 bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center rounded-sm shrink-0">
             <Heart size={20} fill="white" className="text-white" />
@@ -91,7 +98,7 @@ export const Sidebar = () => {
 
       <div className="mt-4 px-4 border-t border-surface-highlight pt-4 flex-1 overflow-y-auto">
         <ul className="flex flex-col gap-3">
-          {playlists.filter(p => !p.isSystem).map(pl => {
+          {visiblePlaylists.filter(p => !p.isSystem).map(pl => {
               let cover = pl.customCover;
               if (!cover && pl.tracks.length > 0) {
                   cover = tracks.find(t => t.id === pl.tracks[0])?.cover;
@@ -103,18 +110,22 @@ export const Sidebar = () => {
                     onClick={() => setView({ type: 'PLAYLIST', id: pl.id })}
                     className={`flex items-center gap-3 cursor-pointer group transition ${isActive('PLAYLIST', pl.id) ? 'bg-surface-highlight rounded' : ''}`}
                 >
-                    <div className="w-10 h-10 bg-surface-highlight rounded-sm overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="w-10 h-10 bg-surface-highlight rounded-sm overflow-hidden shrink-0 flex items-center justify-center relative">
                         {cover ? (
                             <img src={cover} alt={pl.name} className="w-full h-full object-cover" />
                         ) : (
                             <ListMusic size={16} className="text-secondary" />
+                        )}
+                        {/* Dot indicator for shared playlists that are NOT mine */}
+                        {pl.ownerId !== currentUser?.id && (
+                            <div className="absolute top-0 right-0 w-2 h-2 bg-primary rounded-full border border-black"></div>
                         )}
                     </div>
                     <div className="flex flex-col overflow-hidden">
                         <span className={`truncate text-sm font-medium ${isActive('PLAYLIST', pl.id) ? 'text-primary' : 'text-secondary group-hover:text-white'}`}>
                             {pl.name}
                         </span>
-                        <span className="text-xs text-secondary truncate">Playlist</span>
+                        <span className="text-xs text-secondary truncate">{pl.ownerId === currentUser?.id ? 'Playlist' : `By ${pl.creatorName}`}</span>
                     </div>
                 </li>
               );

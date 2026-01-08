@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore } from '../context/StoreContext';
-import { X, Image } from './Icons';
+import { useStore } from '../context/StoreContext.tsx';
+import { X, Image } from './Icons.tsx';
 
 export const CreatePlaylistModal = () => {
   const { 
@@ -11,6 +11,7 @@ export const CreatePlaylistModal = () => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [cover, setCover] = useState<string | null>(null);
+  const [isPublic, setIsPublic] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -21,12 +22,14 @@ export const CreatePlaylistModal = () => {
             setName(pl.name);
             setDescription(pl.description || "");
             setCover(pl.customCover || null);
+            setIsPublic(!!pl.isPublic);
         }
       } else {
         // Reset for Create mode
         setName("");
         setDescription("");
         setCover(null);
+        setIsPublic(false);
       }
     }
   }, [isCreatePlaylistOpen, playlistIdToEdit, playlists]);
@@ -48,9 +51,9 @@ export const CreatePlaylistModal = () => {
     if (!name.trim()) return alert("Name is required");
     
     if (playlistIdToEdit) {
-        editPlaylist(playlistIdToEdit, name, description, cover || undefined);
+        editPlaylist(playlistIdToEdit, name, description, cover || undefined, isPublic);
     } else {
-        createPlaylist(name, description, cover || undefined);
+        createPlaylist(name, description, cover || undefined, isPublic);
     }
     
     setCreatePlaylistOpen(false);
@@ -112,6 +115,20 @@ export const CreatePlaylistModal = () => {
               onChange={(e) => setDescription(e.target.value)}
               className="bg-surface-highlight text-white p-3 rounded focus:outline-none focus:ring-1 focus:ring-white resize-none h-24 text-sm"
             />
+          </div>
+
+          <div className="flex items-center gap-3 bg-surface-highlight p-3 rounded">
+              <input 
+                type="checkbox" 
+                id="public-check"
+                checked={isPublic}
+                onChange={e => setIsPublic(e.target.checked)}
+                className="w-5 h-5 accent-primary cursor-pointer"
+              />
+              <div className="flex flex-col">
+                  <label htmlFor="public-check" className="font-bold text-sm cursor-pointer select-none">Public Playlist</label>
+                  <span className="text-xs text-secondary">Anyone can search for and add this playlist.</span>
+              </div>
           </div>
 
           <div className="flex justify-end">

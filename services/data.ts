@@ -25,37 +25,50 @@ export const generateInitialData = () => {
 
   const artists = ["The Algorithms", "Binary Beats", "Null Pointer", "Stack Overflow"];
   
+  // Create albums first so we can assign covers
+  for (let i = 1; i <= 4; i++) {
+    // Generate 3-4 covers per album
+    const albumCovers = [
+        `https://picsum.photos/300/300?random=${i * 10 + 1}`,
+        `https://picsum.photos/300/300?random=${i * 10 + 2}`,
+        `https://picsum.photos/300/300?random=${i * 10 + 3}`,
+    ];
+
+    albums.push({
+      id: `a${i}`,
+      title: `Album ${i}`,
+      artist: artists[i % artists.length],
+      covers: albumCovers,
+      trackIds: [], // Will fill later
+      year: 2020 + i,
+      recordLabel: LABELS[i % LABELS.length]
+    });
+  }
+
   // Create 20 mock tracks
   for (let i = 1; i <= 20; i++) {
     const artist = artists[i % artists.length];
-    // Assign genre deterministically based on artist/index
+    const albumIndex = (i % 4);
     const genre = GENRES[i % GENRES.length];
     
+    // Track cover defaults to the first cover of the album
+    const defaultCover = albums[albumIndex].covers[0];
+
+    const trackId = `t${i}`;
+    
     tracks.push({
-      id: `t${i}`,
+      id: trackId,
       title: `Track Number ${i}`,
       artist: artist,
-      album: `Album ${(i % 4) + 1}`,
-      cover: COVERS[i % 5],
+      album: albums[albumIndex].title,
+      cover: defaultCover, 
       duration: 180 + Math.floor(seededRandom(i) * 120), // 3 to 5 mins
       url: SAMPLE_MP3,
       plays: Math.floor(seededRandom(i * 100) * 500000),
       genre: genre
     });
-  }
 
-  // Create albums grouping tracks
-  for (let i = 1; i <= 4; i++) {
-    const albumTracks = tracks.filter(t => t.album === `Album ${i}`).map(t => t.id);
-    albums.push({
-      id: `a${i}`,
-      title: `Album ${i}`,
-      artist: artists[i % artists.length],
-      cover: COVERS[i],
-      trackIds: albumTracks,
-      year: 2020 + i,
-      recordLabel: LABELS[i % LABELS.length]
-    });
+    albums[albumIndex].trackIds.push(trackId);
   }
 
   return { tracks, albums };
