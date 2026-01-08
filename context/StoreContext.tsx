@@ -234,36 +234,43 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Broadcast Channel for Cross-Tab Syncing ---
   useEffect(() => {
-      broadcastChannelRef.current = new BroadcastChannel('huevify_sync');
-      
-      broadcastChannelRef.current.onmessage = (event) => {
-          const { type } = event.data;
-          // When another tab updates data, reload from local storage
-          if (type === 'PLAYLISTS_UPDATE') {
-              setPlaylists(StorageService.load<Playlist[]>('huevify_playlists', []));
-          }
-          if (type === 'TRACKS_UPDATE') {
-              const { tracks: initialTracks } = generateInitialData();
-              const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
-              const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
-              // Re-run refresh library logic efficiently
-              refreshLibrary(requests, storedPlays);
-          }
-          if (type === 'ARTIST_DATA_UPDATE') {
-              setArtistAccounts(StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []));
-              setReleaseRequests(StorageService.load<ReleaseRequest[]>('huevify_release_requests', []));
-              setProfileEditRequests(StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []));
+      try {
+          if (typeof BroadcastChannel !== 'undefined') {
+              broadcastChannelRef.current = new BroadcastChannel('huevify_sync');
               
-              // Also refresh library as releases might have changed status
-              const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
-              const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
-              refreshLibrary(requests, storedPlays);
+              broadcastChannelRef.current.onmessage = (event) => {
+                  try {
+                      const { type } = event.data;
+                      // When another tab updates data, reload from local storage
+                      if (type === 'PLAYLISTS_UPDATE') {
+                          setPlaylists(StorageService.load<Playlist[]>('huevify_playlists', []));
+                      }
+                      if (type === 'TRACKS_UPDATE') {
+                          const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+                          const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+                          refreshLibrary(requests, storedPlays);
+                      }
+                      if (type === 'ARTIST_DATA_UPDATE') {
+                          setArtistAccounts(StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []));
+                          setReleaseRequests(StorageService.load<ReleaseRequest[]>('huevify_release_requests', []));
+                          setProfileEditRequests(StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []));
+                          
+                          const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+                          const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+                          refreshLibrary(requests, storedPlays);
+                      }
+                      if (type === 'SETTINGS_UPDATE' && currentUser) {
+                          const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
+                          if (userSettings) setAppSettingsState(prev => ({ ...prev, ...userSettings }));
+                      }
+                  } catch (err) {
+                      console.error("Sync error:", err);
+                  }
+              };
           }
-          if (type === 'SETTINGS_UPDATE' && currentUser) {
-              const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
-              if (userSettings) setAppSettingsState(prev => ({ ...prev, ...userSettings }));
-          }
-      };
+      } catch (e) {
+          console.warn("BroadcastChannel not supported in this browser.", e);
+      }
 
       return () => {
           broadcastChannelRef.current?.close();
@@ -271,7 +278,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentUser]);
 
   const notifySync = (type: 'PLAYLISTS_UPDATE' | 'TRACKS_UPDATE' | 'ARTIST_DATA_UPDATE' | 'SETTINGS_UPDATE') => {
-      broadcastChannelRef.current?.postMessage({ type });
+      try {
+          broadcastChannelRef.current?.postMessage({ type });
+      } catch (e) {
+          console.error("Failed to notify sync", e);
+      }
   };
 
   // --- Automated Play Count System ---
@@ -309,122 +320,136 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Logic to Refresh Library (Merge Static + Dynamic Data) ---
   const refreshLibrary = (requests: ReleaseRequest[], storedPlays?: Record<string, number>) => {
-      const { tracks: initialTracks, albums: initialAlbums } = generateInitialData();
-      const plays = storedPlays || StorageService.load<Record<string, number>>('huevify_plays', {});
-      
-      let mergedTracks = [...initialTracks];
-      let mergedAlbums = [...initialAlbums];
-      const artistSet = new Set(initialAlbums.map(a => a.artist));
-
-      requests.forEach(req => {
-          const isLive = req.status === 'LIVE';
-          const isApprovedAndDue = req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= Date.now();
+      try {
+          const { tracks: initialTracks, albums: initialAlbums } = generateInitialData();
+          const plays = storedPlays || StorageService.load<Record<string, number>>('huevify_plays', {});
           
-          if (isLive || isApprovedAndDue) {
-              artistSet.add(req.artistName);
-              if (req.additionalMainArtists) {
-                  req.additionalMainArtists.forEach(a => artistSet.add(a));
-              }
+          let mergedTracks = [...initialTracks];
+          let mergedAlbums = [...initialAlbums];
+          const artistSet = new Set(initialAlbums.map(a => a.artist));
+
+          requests.forEach(req => {
+              // Safety check for malformed requests
+              if (!req || !req.tracks) return;
+
+              const isLive = req.status === 'LIVE';
+              const isApprovedAndDue = req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= Date.now();
               
-              const albumId = `dist_alb_${req.id}`;
-              // Prevent duplicates if function called multiple times
-              if (!mergedAlbums.find(a => a.id === albumId)) {
-                  const newAlbum: Album = {
-                      id: albumId,
-                      title: req.title,
-                      artist: req.artistName,
-                      covers: req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
-                      trackIds: [],
-                      year: new Date(req.releaseDate).getFullYear(),
-                      releaseDate: req.releaseDate, 
-                      recordLabel: req.label,
-                      type: req.type,
-                      mainArtists: req.additionalMainArtists || [] 
-                  };
+              if (isLive || isApprovedAndDue) {
+                  artistSet.add(req.artistName);
+                  if (req.additionalMainArtists) {
+                      req.additionalMainArtists.forEach(a => artistSet.add(a));
+                  }
+                  
+                  const albumId = `dist_alb_${req.id}`;
+                  // Prevent duplicates if function called multiple times
+                  if (!mergedAlbums.find(a => a.id === albumId)) {
+                      const newAlbum: Album = {
+                          id: albumId,
+                          title: req.title,
+                          artist: req.artistName,
+                          covers: req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
+                          trackIds: [],
+                          year: new Date(req.releaseDate).getFullYear(),
+                          releaseDate: req.releaseDate, 
+                          recordLabel: req.label,
+                          type: req.type,
+                          mainArtists: req.additionalMainArtists || [] 
+                      };
 
-                  req.tracks.forEach((t, idx) => {
-                      let trackId: string;
-                      let existingTrack: Track | undefined;
+                      req.tracks.forEach((t, idx) => {
+                          let trackId: string;
+                          let existingTrack: Track | undefined;
 
-                      if (t.existingHueq) {
-                           existingTrack = mergedTracks.find(mt => mt.hueq === t.existingHueq);
-                      }
-
-                      if (existingTrack) {
-                          trackId = existingTrack.id;
-                          const trackIndex = mergedTracks.findIndex(tr => tr.id === trackId);
-                          if (trackIndex !== -1) {
-                              mergedTracks[trackIndex] = {
-                                  ...mergedTracks[trackIndex],
-                                  genre: t.genre || req.genre || mergedTracks[trackIndex].genre,
-                                  explicit: t.explicit,
-                              };
+                          if (t.existingHueq) {
+                               existingTrack = mergedTracks.find(mt => mt.hueq === t.existingHueq);
                           }
-                      } else {
-                          trackId = `dist_trk_${req.id}_${idx}`;
-                          const releaseLevelArtists = req.additionalMainArtists || [];
-                          const trackLevelArtists = t.mainArtists || [];
-                          const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
 
-                          mergedTracks.push({
-                              id: trackId,
-                              title: t.title,
-                              artist: req.artistName,
-                              album: req.title,
-                              cover: req.covers[0], 
-                              duration: t.duration, 
-                              url: t.fileUrl, 
-                              plays: 0,
-                              genre: t.genre || req.genre,
-                              explicit: t.explicit,
-                              feat: t.feat,
-                              hueq: t.generatedHueq || t.existingHueq,
-                              mainArtists: combinedMainArtists
-                          });
-                      }
+                          if (existingTrack) {
+                              trackId = existingTrack.id;
+                              const trackIndex = mergedTracks.findIndex(tr => tr.id === trackId);
+                              if (trackIndex !== -1) {
+                                  mergedTracks[trackIndex] = {
+                                      ...mergedTracks[trackIndex],
+                                      genre: t.genre || req.genre || mergedTracks[trackIndex].genre,
+                                      explicit: t.explicit,
+                                  };
+                              }
+                          } else {
+                              trackId = `dist_trk_${req.id}_${idx}`;
+                              const releaseLevelArtists = req.additionalMainArtists || [];
+                              const trackLevelArtists = t.mainArtists || [];
+                              const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
 
-                      newAlbum.trackIds.push(trackId);
-                  });
-                  mergedAlbums.push(newAlbum);
+                              mergedTracks.push({
+                                  id: trackId,
+                                  title: t.title,
+                                  artist: req.artistName,
+                                  album: req.title,
+                                  cover: req.covers[0], 
+                                  duration: t.duration, 
+                                  url: t.fileUrl, 
+                                  plays: 0,
+                                  genre: t.genre || req.genre,
+                                  explicit: t.explicit,
+                                  feat: t.feat,
+                                  hueq: t.generatedHueq || t.existingHueq,
+                                  mainArtists: combinedMainArtists
+                              });
+                          }
+
+                          newAlbum.trackIds.push(trackId);
+                      });
+                      mergedAlbums.push(newAlbum);
+                  }
               }
-          }
-      });
+          });
 
-      const tracksWithPlays = mergedTracks.map(t => ({
-          ...t,
-          plays: plays[t.id] !== undefined ? plays[t.id] : t.plays
-      }));
+          const tracksWithPlays = mergedTracks.map(t => ({
+              ...t,
+              plays: plays[t.id] !== undefined ? plays[t.id] : t.plays
+          }));
 
-      setTracks(tracksWithPlays);
-      setAlbums(mergedAlbums);
-      setExistingArtists(Array.from(artistSet));
+          setTracks(tracksWithPlays);
+          setAlbums(mergedAlbums);
+          setExistingArtists(Array.from(artistSet));
+      } catch (e) {
+          console.error("Failed to refresh library", e);
+          // Fallback to initial data if everything fails
+          const { tracks: fallbackTracks } = generateInitialData();
+          setTracks(fallbackTracks);
+      }
   };
 
   // --- Initialization & User Switching ---
   useEffect(() => {
-    // 1. Load User
-    const sessionUser = StorageService.load<User | null>('huevify_current_user', null);
-    if (sessionUser) setCurrentUser(sessionUser);
-    
-    // 2. Load Global Data
-    const savedArtistAccounts = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []);
-    setArtistAccounts(savedArtistAccounts);
-    
-    const savedReleaseRequests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
-    setReleaseRequests(savedReleaseRequests);
-    
-    const savedProfileRequests = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []);
-    setProfileEditRequests(savedProfileRequests);
+    try {
+        // 1. Load User
+        const sessionUser = StorageService.load<User | null>('huevify_current_user', null);
+        if (sessionUser) setCurrentUser(sessionUser);
+        
+        // 2. Load Global Data
+        const savedArtistAccounts = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []);
+        setArtistAccounts(savedArtistAccounts);
+        
+        const savedReleaseRequests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+        setReleaseRequests(savedReleaseRequests);
+        
+        const savedProfileRequests = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []);
+        setProfileEditRequests(savedProfileRequests);
 
-    const mod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
-    setHasModerator(!!mod);
+        const mod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
+        setHasModerator(!!mod);
 
-    // Initial Lib Refresh
-    refreshLibrary(savedReleaseRequests);
+        // Initial Lib Refresh
+        refreshLibrary(savedReleaseRequests);
 
-    audioRef.current.volume = 0.5;
+        audioRef.current.volume = 0.5;
+    } catch (e) {
+        console.error("Initialization failed", e);
+    }
     
-    // Artificial delay to prevent "Logged out" flash
+    // Artificial delay to prevent "Logged out" flash, ensured to run
     setTimeout(() => {
         setIsInitialized(true);
     }, 500);
@@ -433,35 +458,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // --- Load User-Specific Data when currentUser changes ---
   useEffect(() => {
       if (currentUser) {
-          // Load Settings per user
-          const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
-          if (userSettings) {
-              setAppSettingsState({
-                  ...userSettings,
-                  albumCoverIndexes: userSettings.albumCoverIndexes || {}
-              });
-          } else {
-              // Default settings
-              setAppSettingsState({
-                accentColor: '#1ed760',
-                language: 'English',
-                allowExplicitContent: true,
-                autoPlay: true,
-                crossfade: 0,
-                albumCoverIndexes: {}
-              });
+          try {
+              // Load Settings per user
+              const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
+              if (userSettings) {
+                  setAppSettingsState({
+                      ...userSettings,
+                      albumCoverIndexes: userSettings.albumCoverIndexes || {}
+                  });
+              } else {
+                  // Default settings
+                  setAppSettingsState({
+                    accentColor: '#1ed760',
+                    language: 'English',
+                    allowExplicitContent: true,
+                    autoPlay: true,
+                    crossfade: 0,
+                    albumCoverIndexes: {}
+                  });
+              }
+
+              // Load Recent per user
+              const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []);
+              setRecentlyPlayed(userRecent);
+
+              // Load Followed/Liked per user (Already separated by key)
+              const storedLikedAlbums = StorageService.load<string[]>(`huevify_liked_albums_${currentUser.id}`, []);
+              setLikedAlbumIds(storedLikedAlbums);
+              
+              const storedFollowedArtists = StorageService.load<string[]>(`huevify_followed_artists_${currentUser.id}`, []);
+              setFollowedArtists(storedFollowedArtists);
+          } catch(e) {
+              console.error("Failed to load user specific data", e);
           }
-
-          // Load Recent per user
-          const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []);
-          setRecentlyPlayed(userRecent);
-
-          // Load Followed/Liked per user (Already separated by key)
-          const storedLikedAlbums = StorageService.load<string[]>(`huevify_liked_albums_${currentUser.id}`, []);
-          setLikedAlbumIds(storedLikedAlbums);
-          
-          const storedFollowedArtists = StorageService.load<string[]>(`huevify_followed_artists_${currentUser.id}`, []);
-          setFollowedArtists(storedFollowedArtists);
 
       } else {
           // Reset if no user
@@ -474,21 +503,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // --- Release Scheduler Check ---
   useEffect(() => {
       const checkReleases = () => {
-          const now = new Date();
-          let changed = false;
-          const updatedRequests = releaseRequests.map(req => {
-              if (req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= now.getTime()) {
-                  changed = true;
-                  return { ...req, status: 'LIVE' as const };
-              }
-              return req;
-          });
+          try {
+              const now = new Date();
+              let changed = false;
+              const updatedRequests = releaseRequests.map(req => {
+                  if (req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= now.getTime()) {
+                      changed = true;
+                      return { ...req, status: 'LIVE' as const };
+                  }
+                  return req;
+              });
 
-          if (changed) {
-              setReleaseRequests(updatedRequests);
-              StorageService.save('huevify_release_requests', updatedRequests);
-              notifySync('ARTIST_DATA_UPDATE');
-              refreshLibrary(updatedRequests);
+              if (changed) {
+                  setReleaseRequests(updatedRequests);
+                  StorageService.save('huevify_release_requests', updatedRequests);
+                  notifySync('ARTIST_DATA_UPDATE');
+                  refreshLibrary(updatedRequests);
+              }
+          } catch (e) {
+              console.error("Scheduler check failed", e);
           }
       };
 

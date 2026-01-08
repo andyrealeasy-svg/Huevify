@@ -15,6 +15,43 @@ import { Search } from './pages/Search.tsx';
 import { Library } from './pages/Library.tsx';
 import { XCircle, CheckCircle, ShieldAlert } from './components/Icons.tsx';
 
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen w-full bg-black text-white p-4 text-center">
+          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mb-4">
+             <span className="text-2xl font-bold">!</span>
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Something went wrong.</h1>
+          <p className="text-secondary mb-6">Please try reloading the page.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-6 py-2 bg-white text-black font-bold rounded-full hover:scale-105 transition"
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const NotificationOverlay = () => {
     const { notifications, dismissNotification } = useStore();
 
@@ -99,8 +136,10 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <AppContent />
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <AppContent />
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }
