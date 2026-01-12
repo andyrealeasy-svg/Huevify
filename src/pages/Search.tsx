@@ -15,7 +15,7 @@ const formatPlays = (plays: number) => {
 };
 
 export const Search = () => {
-  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, t } = useStore();
+  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover } = useStore();
   const [query, setQuery] = useState("");
 
   const filteredTracks = tracks.filter(t => {
@@ -38,12 +38,12 @@ export const Search = () => {
   // Filter Artists
   const filteredArtists = existingArtists.filter(a => a.toLowerCase().includes(query.toLowerCase()));
 
-  // Restricted Genres with translation keys
+  // Restricted Genres (Removed Indie, Rock, Jazz)
   const genres = [
-    { id: 'Pop', key: 'genre_Pop', color: 'bg-pink-600' },
-    { id: 'Rap/Hip-Hop', key: 'genre_RapHipHop', color: 'bg-orange-600' },
-    { id: 'R&B', key: 'genre_RnB', color: 'bg-purple-600' },
-    { id: 'Electronic/Dance', key: 'genre_ElectronicDance', color: 'bg-teal-600' }
+    { name: 'Pop', color: 'bg-pink-600' },
+    { name: 'Rap/Hip-Hop', color: 'bg-orange-600' },
+    { name: 'R&B', color: 'bg-purple-600' },
+    { name: 'Electronic/Dance', color: 'bg-teal-600' }
   ];
 
   const getArtistImage = (name: string) => {
@@ -63,13 +63,9 @@ export const Search = () => {
 
   // --- GENRE VIEW ---
   if (view.type === 'GENRE') {
-      const genreId = view.id;
-      // Get display name from ID
-      const genreObj = genres.find(g => g.id === genreId);
-      const genreDisplayName = genreObj ? t(genreObj.key) : genreId;
-
+      const genreName = view.id;
       const genreTracks = tracks.filter(t => {
-          const match = t.genre === genreId || (t.genre && t.genre.includes(genreId));
+          const match = t.genre === genreName || (t.genre && t.genre.includes(genreName));
           if (!appSettings.allowExplicitContent && t.explicit) return false;
           return match;
       });
@@ -78,10 +74,10 @@ export const Search = () => {
       const genreAlbums = albums.filter(a => {
           if (a.type === 'Single') return false; 
           const track = tracks.find(t => t.id === a.trackIds[0]);
-          return track && (track.genre === genreId || track.genre?.includes(genreId));
+          return track && (track.genre === genreName || track.genre?.includes(genreName));
       });
       
-      const genreColor = genres.find(g => g.id === genreId)?.color || 'bg-gray-600';
+      const genreColor = genres.find(g => g.name === genreName)?.color || 'bg-gray-600';
 
       return (
           <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
@@ -89,8 +85,8 @@ export const Search = () => {
                    <div className="absolute top-4 left-4 z-20">
                       <button onClick={goBack} className="w-8 h-8 bg-black/30 rounded-full flex items-center justify-center text-white"><ArrowLeft size={20}/></button>
                    </div>
-                   <h1 className="text-4xl md:text-6xl font-bold mt-8 mb-4">{genreDisplayName}</h1>
-                   <p className="text-white/80 font-bold">{t('discoverBest')} {genreDisplayName} {t('genreSuffix')}</p>
+                   <h1 className="text-4xl md:text-6xl font-bold mt-8 mb-4">{genreName}</h1>
+                   <p className="text-white/80 font-bold">Discover the best {genreName} tracks and releases.</p>
               </div>
 
               <div className="px-4 md:px-8 py-4 animate-slide-up">
@@ -98,7 +94,7 @@ export const Search = () => {
                   {/* Genre Albums */}
                   {genreAlbums.length > 0 && (
                       <div className="mb-8">
-                          <h2 className="text-2xl font-bold mb-4">{t('popularReleases')}</h2>
+                          <h2 className="text-2xl font-bold mb-4">Popular Releases</h2>
                           <div className="flex overflow-x-auto gap-4 pb-4 snap-x no-scrollbar">
                               {genreAlbums.map(album => (
                                   <div 
@@ -121,7 +117,7 @@ export const Search = () => {
                   )}
 
                   {/* Genre Tracks */}
-                  <h2 className="text-2xl font-bold mb-4">{t('allTracks')}</h2>
+                  <h2 className="text-2xl font-bold mb-4">All Tracks</h2>
                   <div className="flex flex-col gap-2">
                       {genreTracks.length === 0 && <div className="text-secondary">No tracks found in this genre.</div>}
                       {genreTracks.map((track, idx) => (
@@ -171,7 +167,7 @@ export const Search = () => {
         <SearchIcon className="absolute left-4 top-3.5 text-black" size={24} />
         <input 
           type="text" 
-          placeholder={t('searchPlaceholder')} 
+          placeholder="What do you want to listen to?" 
           className="w-full md:w-96 py-3 pl-12 pr-4 rounded-full text-black font-semibold focus:outline-none focus:ring-2 focus:ring-white"
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -185,7 +181,7 @@ export const Search = () => {
            {/* Artists Section */}
            {filteredArtists.length > 0 && (
                <div>
-                   <h2 className="text-xl font-bold mb-4">{t('artists')}</h2>
+                   <h2 className="text-xl font-bold mb-4">Artists</h2>
                    <div className="flex gap-4 overflow-x-auto pb-2">
                        {filteredArtists.map(artist => (
                            <div key={artist} onClick={() => goToArtist(artist)} className="flex flex-col items-center gap-2 cursor-pointer hover:bg-surface-highlight p-4 rounded-lg transition min-w-[140px]">
@@ -197,7 +193,7 @@ export const Search = () => {
                                    )}
                                </div>
                                <div className="font-bold text-center">{artist}</div>
-                               <div className="text-xs text-secondary bg-surface-highlight px-2 py-1 rounded-full">{t('artist')}</div>
+                               <div className="text-xs text-secondary bg-surface-highlight px-2 py-1 rounded-full">Artist</div>
                            </div>
                        ))}
                    </div>
@@ -207,7 +203,7 @@ export const Search = () => {
            {/* Songs Section */}
            {filteredTracks.length > 0 && (
              <div>
-                <h2 className="text-xl font-bold mb-4">{t('songs')}</h2>
+                <h2 className="text-xl font-bold mb-4">Songs</h2>
                 <div className="flex flex-col gap-2">
                  {filteredTracks.map(track => (
                    <div 
@@ -247,7 +243,7 @@ export const Search = () => {
            {/* Public Playlists Section */}
            {filteredPlaylists.length > 0 && (
                <div>
-                   <h2 className="text-xl font-bold mb-4">{t('publicPlaylists')}</h2>
+                   <h2 className="text-xl font-bold mb-4">Public Playlists</h2>
                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                        {filteredPlaylists.map(pl => {
                             let cover = pl.customCover;
@@ -273,7 +269,7 @@ export const Search = () => {
                                         </div>
                                     </div>
                                     <h3 className="font-bold truncate text-white">{pl.name}</h3>
-                                    <p className="text-sm text-secondary truncate">{t('by')} {pl.creatorName}</p>
+                                    <p className="text-sm text-secondary truncate">By {pl.creatorName}</p>
                                 </div>
                             );
                        })}
@@ -282,21 +278,21 @@ export const Search = () => {
            )}
 
            {filteredTracks.length === 0 && filteredPlaylists.length === 0 && filteredArtists.length === 0 && (
-                <div className="text-secondary text-lg text-center mt-10">{t('noResults')} "{query}"</div>
+                <div className="text-secondary text-lg text-center mt-10">No results found for "{query}"</div>
            )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 animate-appear">
            {/* Genres Tiles */}
            {genres.map(genre => {
-             const cover = getGenreImage(genre.id);
+             const cover = getGenreImage(genre.name);
              return (
              <div 
-               key={genre.id} 
-               onClick={() => setView({ type: 'GENRE', id: genre.id })}
+               key={genre.name} 
+               onClick={() => setView({ type: 'GENRE', id: genre.name })}
                className={`aspect-[2/1] ${genre.color} rounded-lg p-6 font-bold text-3xl md:text-4xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition shadow-lg group`}
              >
-                <span className="relative z-10">{t(genre.key)}</span>
+                <span className="relative z-10">{genre.name}</span>
                 {cover && (
                     <div className="absolute -bottom-4 -right-8 w-32 h-32 rotate-[25deg] rounded-lg group-hover:rotate-[30deg] group-hover:scale-110 transition shadow-2xl overflow-hidden">
                         <img src={cover} className="w-full h-full object-cover" />

@@ -18,7 +18,7 @@ export const Library = () => {
     removeFromPlaylist, goBack, setCreatePlaylistOpen, setPlaylistIdToEdit, setView, 
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
-    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover, t
+    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover
   } = useStore();
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
@@ -51,7 +51,7 @@ export const Library = () => {
 
       return (
           <div className="h-full overflow-y-auto pb-32 relative w-full page-enter px-4 md:px-8 py-8">
-              <h1 className="text-3xl font-bold mb-6">{t('library')}</h1>
+              <h1 className="text-3xl font-bold mb-6">Your Library</h1>
               
               <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
                   {myPlaylists.map(pl => {
@@ -61,7 +61,7 @@ export const Library = () => {
                           if (t) cover = getTrackCover(t);
                       }
                       // Hide system text for Liked Songs
-                      const subText = pl.id.startsWith('liked_') ? t('playlist') : (pl.isSystem ? t('system') : `${t('by')} ${pl.creatorName || t('you')}`);
+                      const subText = pl.id.startsWith('liked_') ? 'Playlist' : (pl.isSystem ? 'System' : `By ${pl.creatorName || 'You'}`);
 
                       return (
                           <div 
@@ -127,7 +127,7 @@ export const Library = () => {
                                   )}
                               </div>
                               <h3 className="font-bold truncate text-white text-center text-sm md:text-base">{artistName}</h3>
-                              <p className="text-xs md:text-sm text-secondary truncate text-center">{t('artist')}</p>
+                              <p className="text-xs md:text-sm text-secondary truncate text-center">Artist</p>
                           </div>
                       );
                   })}
@@ -145,11 +145,11 @@ export const Library = () => {
                     <button onClick={goBack} className="w-8 h-8 bg-black/50 rounded-full flex items-center justify-center text-white"><ArrowLeft size={20}/></button>
                  </div>
                  <h1 className="text-3xl md:text-5xl font-bold mt-8 mb-4">Huevify Daily Top 25</h1>
-                 <p className="text-white/70">{t('chartDesc')}</p>
+                 <p className="text-white/70">Most played tracks in the last 24h. Updates at 21:00 UTC+3.</p>
             </div>
             <div className="px-4 md:px-8 py-4 animate-slide-up">
                {dailyChart.length === 0 ? (
-                   <div className="text-secondary text-center py-10">{t('updating')}</div>
+                   <div className="text-secondary text-center py-10">Chart is calculating... check back later.</div>
                ) : (
                    dailyChart.map((track, idx) => {
                        const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
@@ -172,10 +172,10 @@ export const Library = () => {
                                             </span>
                                         ))}
                                     </div>
-                                    <span className="text-secondary text-xs md:hidden truncate mt-0.5">{formatPlays(track.dailyPlays)} {t('plays')}</span>
+                                    <span className="text-secondary text-xs md:hidden truncate mt-0.5">{formatPlays(track.dailyPlays)} plays</span>
                                  </div>
                             </div>
-                            <span className="text-secondary text-sm hidden md:block truncate">{formatPlays(track.dailyPlays)} {t('dailyPlays')}</span>
+                            <span className="text-secondary text-sm hidden md:block truncate">{formatPlays(track.dailyPlays)} daily plays</span>
                             <span className="text-secondary text-sm hidden md:block">{formatDuration(track.duration)}</span>
                             <div className="flex items-center gap-3 justify-end">
                                 <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
@@ -225,12 +225,12 @@ export const Library = () => {
                         {isVerified && (
                             <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
                                 <span className="w-3 h-3 bg-white rounded-full flex items-center justify-center"><i className="block w-1 h-1 bg-blue-600 rounded-full"></i></span>
-                                {t('verifiedArtist')}
+                                Verified Artist
                             </div>
                         )}
                     </div>
                     <h1 className="text-5xl md:text-8xl font-bold tracking-tight mb-4 drop-shadow-lg">{artistName}</h1>
-                    <p className="text-white font-medium text-lg drop-shadow-md">{formatPlays(monthlyPlays)} {t('monthlyPlays')}</p>
+                    <p className="text-white font-medium text-lg drop-shadow-md">{formatPlays(monthlyPlays)} monthly plays</p>
                 </div>
             </div>
 
@@ -245,7 +245,7 @@ export const Library = () => {
                         onClick={() => toggleFollowArtist(artistName)}
                         className={`px-6 py-1.5 font-bold text-sm rounded-full uppercase tracking-widest border transition ${isFollowing ? 'border-white text-white hover:bg-white/10' : 'border-secondary text-white hover:border-white'}`}
                     >
-                        {isFollowing ? t('following') : t('follow')}
+                        {isFollowing ? 'Following' : 'Follow'}
                     </button>
                 </div>
 
@@ -256,7 +256,7 @@ export const Library = () => {
                         {/* Artist Pick */}
                         {pick && (
                             <div className="mb-8">
-                                <h2 className="text-2xl font-bold mb-4">{t('artistPick')}</h2>
+                                <h2 className="text-2xl font-bold mb-4">Artist Pick</h2>
                                 <div 
                                     className="flex items-start gap-4 cursor-pointer hover:bg-surface-highlight p-4 rounded transition group bg-surface"
                                     onClick={() => pick.id && setView({ type: pick.type as any, id: pick.id })}
@@ -267,16 +267,16 @@ export const Library = () => {
                                             <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800">
                                                 <img src={artistAccount?.avatar || pick.image} className="w-full h-full object-cover"/>
                                             </div>
-                                            <span className="text-xs text-secondary font-bold">{t('postedBy')} {artistName}</span>
+                                            <span className="text-xs text-secondary font-bold">Posted By {artistName}</span>
                                         </div>
                                         <div className="font-bold group-hover:underline text-lg">{pick.subtitle}</div>
-                                        <div className="text-sm text-secondary">{t('latestRelease')}</div>
+                                        <div className="text-sm text-secondary">Latest Release</div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
+                        <h2 className="text-2xl font-bold mb-4">Popular</h2>
                         <div className="flex flex-col gap-1 mb-8">
                             {topTracks.map((track, idx) => (
                                 <div key={track.id} className="grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer" onClick={() => playTrack(track)}>
@@ -288,7 +288,7 @@ export const Library = () => {
                                                 {track.title}
                                                 {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
                                             </span>
-                                            <span className="md:hidden text-xs text-secondary truncate">{formatPlays(track.plays)} {t('plays')}</span>
+                                            <span className="md:hidden text-xs text-secondary truncate">{formatPlays(track.plays)} plays</span>
                                         </div>
                                     </div>
                                     <span className="text-secondary text-sm hidden md:block">{formatPlays(track.plays)}</span>
@@ -297,7 +297,7 @@ export const Library = () => {
                             ))}
                         </div>
 
-                        <h2 className="text-2xl font-bold mb-4">{t('discography')}</h2>
+                        <h2 className="text-2xl font-bold mb-4">Discography</h2>
                         <div className="flex overflow-x-auto gap-4 pb-4 md:grid md:grid-cols-4 lg:grid-cols-5">
                             {artistAlbums.map(album => (
                                 <div key={album.id} onClick={() => setView({type: 'ALBUM', id: album.id})} className="min-w-[140px] md:min-w-0 p-3 bg-surface hover:bg-surface-highlight rounded-md cursor-pointer hover:scale-[1.02] transition flex-col">
@@ -311,7 +311,7 @@ export const Library = () => {
 
                     {/* About Column */}
                     <div className="w-full md:w-1/3">
-                        <h2 className="text-2xl font-bold mb-4">{t('about')}</h2>
+                        <h2 className="text-2xl font-bold mb-4">About</h2>
                         <div className="bg-surface rounded-lg overflow-hidden relative group cursor-pointer min-h-[300px] hover:scale-[1.02] transition">
                             {/* Use avatar or fallback to first track cover */}
                             <img 
@@ -322,7 +322,7 @@ export const Library = () => {
                             <div className="absolute inset-0 p-6 flex flex-col justify-end z-10">
                                 <div className="mb-4">
                                     <div className="text-3xl font-bold text-white mb-2">#{globalRank}</div>
-                                    <div className="text-sm font-bold uppercase tracking-widest text-white">{t('inTheWorld')}</div>
+                                    <div className="text-sm font-bold uppercase tracking-widest text-white">in the world</div>
                                 </div>
                                 <p className="text-white font-medium line-clamp-4 text-sm md:text-base drop-shadow-md">
                                     {bio || `Listen to ${artistName} on Huevify. ${artistName} is verified artist.`}
@@ -359,36 +359,35 @@ export const Library = () => {
     
     if (isPlaylist) {
       if (isHistory) {
-         title = t('recentlyPlayed');
-         subtitle = `${recentlyPlayed.length} ${t('songs')}`;
+         title = "Recently Played";
+         subtitle = `${recentlyPlayed.length} tracks`;
          isSystem = true;
          items = recentlyPlayed;
          if (recentlyPlayed.length > 0) cover = getTrackCover(recentlyPlayed[0]);
-         releaseType = t('playlist');
+         releaseType = "Playlist";
       } else {
           const pl = playlists.find(p => p.id === id);
           if (!pl) {
              return (
                  <div className="flex flex-col items-center justify-center h-full pb-32">
-                     <h2 className="text-2xl font-bold mb-4">{t('notFound')}</h2>
-                     <button onClick={() => setView({type:'HOME'})} className="px-6 py-2 bg-white text-black rounded-full font-bold">{t('returnHome')}</button>
+                     <h2 className="text-2xl font-bold mb-4">Playlist not found</h2>
+                     <button onClick={() => setView({type:'HOME'})} className="px-6 py-2 bg-white text-black rounded-full font-bold">Return Home</button>
                  </div>
              );
           }
           title = pl.name;
-          subtitle = `${t('playlist')} • ${pl.tracks.length} ${t('songs')}`;
+          subtitle = `Playlist • ${pl.tracks.length} songs`;
           description = pl.description || "";
           isSystem = !!pl.isSystem;
           label = "Huevify User Playlist";
           playlistOwnerId = pl.ownerId;
           creatorName = pl.creatorName;
           creatorAvatar = pl.creatorAvatar;
-          releaseType = t('playlist');
+          releaseType = "Playlist";
           isPublic = !!pl.isPublic;
           isSavedPlaylist = pl.savedBy?.includes(currentUser?.id || "") || false;
           
           if (isLikedSongs) {
-              title = t('likedSongs');
           } else if (pl.customCover) {
               cover = pl.customCover;
           } else {
@@ -431,13 +430,13 @@ export const Library = () => {
                  <div className="w-24 h-24 bg-gradient-to-br from-indigo-700 to-blue-300 rounded-full flex items-center justify-center mb-6 shadow-xl">
                     <Heart size={48} fill="white" className="text-white" />
                  </div>
-                 <h2 className="text-2xl md:text-4xl font-bold mb-4">{t('emptyLiked')}</h2>
-                 <p className="text-secondary mb-8">{t('saveSongsMsg')}</p>
+                 <h2 className="text-2xl md:text-4xl font-bold mb-4">Songs you like will appear here</h2>
+                 <p className="text-secondary mb-8">Save songs by tapping the heart icon.</p>
                  <button 
                     onClick={() => setView({type:'HOME'})} 
                     className="px-8 py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition"
                  >
-                    {t('returnHome')}
+                    Return Home
                  </button>
             </div>
         );
@@ -478,7 +477,7 @@ export const Library = () => {
                         {/* Overlay for multiple covers */}
                         {hasMultipleCovers && (
                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                 <span className="text-xs font-bold border border-white px-2 py-1 rounded">{t('changeCover')}</span>
+                                 <span className="text-xs font-bold border border-white px-2 py-1 rounded">CHANGE COVER</span>
                              </div>
                         )}
                     </>
@@ -537,17 +536,17 @@ export const Library = () => {
 
           {isPlaylist && isOwner && !isSystem && (
               <>
-                <button onClick={(e) => handleEditPlaylist(id, e)} className="text-secondary hover:text-white transition hover:scale-105" title={t('editPlaylist')}>
+                <button onClick={(e) => handleEditPlaylist(id, e)} className="text-secondary hover:text-white transition hover:scale-105" title="Edit Playlist">
                     <Edit size={32} />
                 </button>
-                <button onClick={() => deletePlaylist(id)} className="text-secondary hover:text-red-500 transition hover:scale-105" title={t('deletePlaylist')}>
+                <button onClick={() => deletePlaylist(id)} className="text-secondary hover:text-red-500 transition hover:scale-105" title="Delete Playlist">
                     <Trash2 size={32} />
                 </button>
               </>
           )}
 
           {isPlaylist && !isOwner && !isSystem && isPublic && (
-              <button onClick={() => togglePlaylistSave(id)} className="hover:scale-105 transition" title={isSavedPlaylist ? t('removeFromLibrary') : t('addToLibrary')}>
+              <button onClick={() => togglePlaylistSave(id)} className="hover:scale-105 transition" title={isSavedPlaylist ? "Remove from Library" : "Add to Library"}>
                   {isSavedPlaylist ? (
                       <CheckCircle size={32} className="text-primary" />
                   ) : (
@@ -561,8 +560,8 @@ export const Library = () => {
         <div className="px-4 md:px-8 animate-slide-up">
            <div className="hidden md:grid grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-4 py-2 border-b border-surface-highlight text-secondary text-sm mb-4">
              <span>#</span>
-             <span>{t('trackTitle')}</span>
-             <span>{t('plays')}</span>
+             <span>Title</span>
+             <span>Plays</span>
              <span><ListMusic size={16} /></span>
              <span></span>
            </div>
@@ -589,7 +588,7 @@ export const Library = () => {
                  <div className="flex flex-col overflow-hidden">
                    <span className="text-white font-medium truncate flex items-center gap-2">
                       {track.title} 
-                      {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">{t('explicitShort')}</span>}
+                      {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
                       <span className="md:hidden text-secondary font-normal">
                           {showFeatOnMobile && track.feat ? ` (feat. ${track.feat})` : ''}
                       </span>
@@ -621,7 +620,7 @@ export const Library = () => {
                     <Heart size={16} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
                  </button>
                  
-                 <button onClick={(e) => { e.stopPropagation(); openAddToPlaylist(track.id); }} className="text-transparent group-hover:text-secondary hover:text-white" title={t('addToPlaylist')}>
+                 <button onClick={(e) => { e.stopPropagation(); openAddToPlaylist(track.id); }} className="text-transparent group-hover:text-secondary hover:text-white" title="Add to Playlist">
                     <Plus size={16} />
                  </button>
 
@@ -636,10 +635,10 @@ export const Library = () => {
 
            {items.length > 0 && (
              <div className="mt-8 pt-8 border-t border-surface-highlight text-secondary text-sm font-medium pb-8 flex flex-col gap-1">
-                 {fullReleaseDate && <p>{t('released')} {new Date(fullReleaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
-                 {!fullReleaseDate && year && <p>{t('released')} {year}</p>}
-                 <p>{items.length} {t('songs')}, {totalMinutes} {t('min')}</p>
-                 <p>{formatPlays(totalReleasePlays)} {t('plays')}</p>
+                 {fullReleaseDate && <p>Released {new Date(fullReleaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
+                 {!fullReleaseDate && year && <p>Released {year}</p>}
+                 <p>{items.length} songs, {totalMinutes} min</p>
+                 <p>{formatPlays(totalReleasePlays)} plays</p>
                  <p className="mt-4 text-[10px] uppercase tracking-widest font-bold">© {label}</p>
              </div>
            )}
@@ -650,7 +649,7 @@ export const Library = () => {
             <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
                 <div className="bg-surface w-full max-w-lg rounded-xl p-6 relative animate-zoom-in">
                     <button onClick={() => setCoverPickerOpen(false)} className="absolute top-4 right-4 text-white"><X size={24}/></button>
-                    <h2 className="text-xl font-bold mb-4">{t('chooseCover')}</h2>
+                    <h2 className="text-xl font-bold mb-4">Choose Album Cover</h2>
                     <p className="text-sm text-secondary mb-4">Select your preferred artwork for this release.</p>
                     
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
@@ -662,7 +661,7 @@ export const Library = () => {
                             >
                                 <img src={c} className="w-full aspect-square object-cover rounded shadow-lg group-hover:opacity-80 transition" />
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                    <span className="bg-primary text-black font-bold text-xs px-2 py-1 rounded">{t('select')}</span>
+                                    <span className="bg-primary text-black font-bold text-xs px-2 py-1 rounded">SELECT</span>
                                 </div>
                             </div>
                         ))}

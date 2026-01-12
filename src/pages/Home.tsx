@@ -9,7 +9,7 @@ const formatDuration = (seconds: number) => {
 };
 
 export const Home = () => {
-  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, t } = useStore();
+  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover } = useStore();
 
   const previewCharts = dailyChart.slice(0, 5);
   
@@ -21,10 +21,21 @@ export const Home = () => {
 
   const getGreeting = () => {
       const hour = new Date().getHours();
+      const lang = appSettings.language;
       
-      if (hour < 12) return t('greeting_morning');
-      if (hour < 18) return t('greeting_afternoon');
-      return t('greeting_evening');
+      let morning = "Good morning";
+      let afternoon = "Good afternoon";
+      let evening = "Good evening";
+
+      if (lang === 'Russian') {
+          morning = "Доброе утро";
+          afternoon = "Добрый день";
+          evening = "Добрый вечер";
+      }
+
+      if (hour < 12) return morning;
+      if (hour < 18) return afternoon;
+      return evening;
   };
 
   return (
@@ -54,7 +65,7 @@ export const Home = () => {
           <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center shrink-0">
             <span className="text-2xl font-bold">♥</span>
           </div>
-          <span className="font-bold ml-4">{t('likedSongs')}</span>
+          <span className="font-bold ml-4">Liked Songs</span>
           <div className="ml-auto mr-4 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
             <Play fill="black" className="text-black ml-1" />
           </div>
@@ -70,8 +81,8 @@ export const Home = () => {
                     <ListMusic size={32} className="text-secondary" />
                 </div>
                 <div className="flex flex-col ml-4 overflow-hidden">
-                    <span className="font-bold">{t('recentlyPlayed')}</span>
-                    <span className="text-xs text-secondary truncate">{recentlyPlayed.length} {t('tracksLower')}</span>
+                    <span className="font-bold">Recently Played</span>
+                    <span className="text-xs text-secondary truncate">{recentlyPlayed.length} tracks</span>
                 </div>
                 <div className="ml-auto mr-4 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
                     <Play fill="black" className="text-black ml-1" />
@@ -83,7 +94,7 @@ export const Home = () => {
       
       {recommendations.length > 0 && (
         <div className="mb-8 animate-appear">
-          <h3 className="text-xl md:text-2xl font-bold mb-4">{t('recForYou')}</h3>
+          <h3 className="text-xl md:text-2xl font-bold mb-4">Recommended for you</h3>
           <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-6 pb-4 md:pb-0 snap-x no-scrollbar">
              {recommendations.map(track => {
                const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
@@ -113,18 +124,18 @@ export const Home = () => {
       )}
 
       <div className="flex items-end justify-between mb-4 animate-appear">
-          <h3 className="text-xl md:text-2xl font-bold">{t('dailyTop')}</h3>
+          <h3 className="text-xl md:text-2xl font-bold">Huevify Daily Top 25</h3>
           <button 
             onClick={() => setView({ type: 'CHARTS' })}
             className="text-xs font-bold text-secondary hover:text-white uppercase tracking-wider mb-1"
           >
-            {t('showAll')}
+            Show All
           </button>
       </div>
       
       <div className="flex flex-col gap-2 mb-8 animate-slide-up">
         {previewCharts.length === 0 ? (
-            <div className="text-secondary text-sm">{t('updating')}</div>
+            <div className="text-secondary text-sm">Chart data updating...</div>
         ) : (
             previewCharts.map((track, idx) => {
                 const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
@@ -166,7 +177,7 @@ export const Home = () => {
         )}
       </div>
 
-      <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('latestReleases')}</h3>
+      <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">Latest Releases</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up mb-8">
         {latestReleases.map(album => (
           <div 
@@ -186,7 +197,7 @@ export const Home = () => {
         ))}
       </div>
 
-      <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('popularAlbums')}</h3>
+      <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">Popular Albums</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
         {albums.map(album => (
           <div 

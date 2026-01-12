@@ -23,7 +23,7 @@ export const ArtistHub = () => {
     approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
     submitRelease, updateReleaseRequest, getArtistStats, submitProfileEdit, hasModerator, existingArtists,
     deleteRelease, getTrackByHueq, tracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
-    changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t
+    changeArtistPassword, changeModeratorPassword, deleteLegacyTrack
   } = useStore();
 
   const [view, setView] = useState<HubView>('AUTH');
@@ -110,9 +110,9 @@ export const ArtistHub = () => {
               setView('ARTIST_DASH');
           }
           else setView('MOD_DASH');
-          showNotification(t('welcomeBack'), "success");
+          showNotification("Welcome back!", "success");
       } else {
-          setMessage(res.message || t('invalidCreds'));
+          setMessage(res.message || "Login failed");
       }
   };
 
@@ -121,7 +121,7 @@ export const ArtistHub = () => {
       
       if (role === 'MODERATOR') {
           if (hasModerator) {
-              setMessage(t('modExists'));
+              setMessage("Moderator registration is closed.");
               return;
           }
           const res = registerModerator({ username, password });
@@ -138,7 +138,7 @@ export const ArtistHub = () => {
       const finalArtistName = isCreatingNewArtist ? newArtistAlias : artistNameSelection;
 
       if (!finalArtistName) {
-          setMessage(t('fillAll'));
+          setMessage("Please select or enter an artist name.");
           return;
       }
 
@@ -150,7 +150,7 @@ export const ArtistHub = () => {
       });
       
       if (res.success) {
-          setMessage(t('regSent'));
+          setMessage("Registration sent for approval.");
           setAuthMode('LOGIN');
       } else {
           setMessage(res.message || "Error registering");
@@ -267,17 +267,17 @@ export const ArtistHub = () => {
   const handleNextStep = () => {
       if (distStep === 1) {
           if (!distTitle || !distType || !distGenre || distCovers.length === 0) {
-              showNotification(t('completeFields'), "error");
+              showNotification("Please complete all required fields (Title, Type, Genre, Covers)", "error");
               return;
           }
           if (currentModerator && !distArtistName) {
-              showNotification(t('artistNameReq'), "error");
+              showNotification("Artist Name is required for Moderator uploads.", "error");
               return;
           }
       }
       if (distStep === 2) {
           if (distTracks.length === 0) {
-              showNotification(t('addOneTrack'), "error");
+              showNotification("Please add at least one track.", "error");
               return;
           }
       }
@@ -286,7 +286,7 @@ export const ArtistHub = () => {
 
   const handleSubmitRelease = () => {
       if (!distDate || !distTime) {
-          showNotification(t('specifyDate'), "error");
+          showNotification("Please specify Release Date and Time.", "error");
           return;
       }
       
@@ -316,10 +316,10 @@ export const ArtistHub = () => {
               // If mod is editing, allow updating artist name/id
               artistName: overrideArtist?.artistName || releaseRequests.find(r => r.id === editingId)?.artistName || ""
           });
-          showNotification(t('releaseUpdated'), "success");
+          showNotification("Release updated successfully.", "success");
       } else {
           submitRelease(payload, overrideArtist);
-          showNotification(t('releaseSubmitted'), "success");
+          showNotification("Release submitted!", "success");
       }
       
       // Navigate back
@@ -375,7 +375,7 @@ export const ArtistHub = () => {
           changeArtistPassword(editNewPassword);
       }
       
-      showNotification(t('profileUpdateSent'), "success");
+      showNotification("Profile update sent for moderation approval.", "success");
       setView('ARTIST_DASH');
   };
 
@@ -428,14 +428,14 @@ export const ArtistHub = () => {
                       {role === 'ARTIST' ? <Mic2 size={32} className="text-primary" /> : <Shield size={32} className="text-primary" />}
                   </div>
               </div>
-              <h2 className="text-2xl font-bold text-center mb-6">{authMode === 'LOGIN' ? `${t('login')} ` : `${t('signup')} `} Huevify For {role === 'ARTIST' ? t('artists') : 'Moderators'}</h2>
+              <h2 className="text-2xl font-bold text-center mb-6">{authMode === 'LOGIN' ? 'Log in to' : 'Join'} Huevify For {role === 'ARTIST' ? 'Artists' : 'Moderators'}</h2>
               
               <div className="flex bg-surface-highlight p-1 rounded-full mb-6">
                   <button 
                       onClick={() => setRole('ARTIST')} 
                       className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'ARTIST' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
                   >
-                      {t('artist')}
+                      Artist
                   </button>
                   
                   {(!hasModerator || authMode === 'LOGIN') && (
@@ -461,7 +461,7 @@ export const ArtistHub = () => {
                                       onChange={(e) => setArtistNameSelection(e.target.value)}
                                       className="w-full bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none appearance-none transition-colors"
                                   >
-                                      <option value="">{t('select')} {t('artist')}...</option>
+                                      <option value="">Select Artist...</option>
                                       {existingArtists.map(a => <option key={a} value={a}>{a}</option>)}
                                   </select>
                                   <ChevronDown className="absolute right-3 top-3 text-secondary pointer-events-none" size={20}/>
@@ -488,23 +488,23 @@ export const ArtistHub = () => {
                   )}
 
                   <input 
-                      type="text" placeholder={t('username')} value={username} onChange={e => setUsername(e.target.value)}
+                      type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
                   />
                   <input 
-                      type="password" placeholder={t('password')} value={password} onChange={e => setPassword(e.target.value)}
+                      type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
                   />
                   
                   <button type="submit" className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition-transform mt-2 shadow-lg hover:shadow-primary/20">
-                      {authMode === 'LOGIN' ? t('login') : 'Submit Application'}
+                      {authMode === 'LOGIN' ? 'Log In' : 'Submit Application'}
                   </button>
               </form>
 
               <p className="text-center text-secondary text-sm mt-4">
                   {authMode === 'LOGIN' ? "Don't have an account?" : "Already have an account?"} 
                   <button onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
-                      {authMode === 'LOGIN' ? t('signup') : t('login')}
+                      {authMode === 'LOGIN' ? 'Sign up' : 'Log in'}
                   </button>
               </p>
           </div>
@@ -515,18 +515,18 @@ export const ArtistHub = () => {
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
                <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><Key className="text-primary"/> {t('artistCreds')}</h1>
+               <h1 className="text-3xl font-bold flex items-center gap-3"><Key className="text-primary"/> Artist Credentials</h1>
           </div>
           
           <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
               <table className="w-full text-left border-collapse">
                   <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
                       <tr>
-                          <th className="p-4 bg-surface-highlight">{t('artist')} Name</th>
-                          <th className="p-4 bg-surface-highlight">{t('username')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('password')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('status')}</th>
-                          <th className="p-4 bg-surface-highlight text-right">{t('delete')}</th>
+                          <th className="p-4 bg-surface-highlight">Artist Name</th>
+                          <th className="p-4 bg-surface-highlight">Username</th>
+                          <th className="p-4 bg-surface-highlight">Password</th>
+                          <th className="p-4 bg-surface-highlight">Status</th>
+                          <th className="p-4 bg-surface-highlight text-right">Delete</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -580,24 +580,24 @@ export const ArtistHub = () => {
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
                <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><Database className="text-primary"/> {t('manageReleases')}</h1>
+               <h1 className="text-3xl font-bold flex items-center gap-3"><Database className="text-primary"/> All Releases Manager</h1>
           </div>
 
           <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
              <table className="w-full text-left border-collapse">
                     <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
                         <tr>
-                            <th className="p-4 bg-surface-highlight">{t('releaseTitle')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('artist')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('type')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('date')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('status')}</th>
-                            <th className="p-4 bg-surface-highlight text-right">{t('actions')}</th>
+                            <th className="p-4 bg-surface-highlight">Release</th>
+                            <th className="p-4 bg-surface-highlight">Artist</th>
+                            <th className="p-4 bg-surface-highlight">Type</th>
+                            <th className="p-4 bg-surface-highlight">Date</th>
+                            <th className="p-4 bg-surface-highlight">Status</th>
+                            <th className="p-4 bg-surface-highlight text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {allDisplayReleases.length === 0 && (
-                            <tr><td colSpan={6} className="p-8 text-center text-secondary">{t('noReleases')}</td></tr>
+                            <tr><td colSpan={6} className="p-8 text-center text-secondary">No releases found.</td></tr>
                         )}
                         {allDisplayReleases.map((r: any, idx) => (
                             <tr key={idx} className="border-b border-surface-highlight hover:bg-white/5 transition cursor-pointer" onClick={() => setSelectedRelease(r)}>
@@ -615,7 +615,7 @@ export const ArtistHub = () => {
                                         r.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
                                         'bg-yellow-500/20 text-yellow-500'
                                     }`}>
-                                        {r.deletionRequested ? t('deleteReq') : r.status}
+                                        {r.deletionRequested ? "DELETION PENDING" : r.status}
                                     </span>
                                 </td>
                                 <td className="p-4 text-right">
@@ -641,7 +641,7 @@ export const ArtistHub = () => {
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
                <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><ListMusic className="text-primary"/> {t('manageTracks')}</h1>
+               <h1 className="text-3xl font-bold flex items-center gap-3"><ListMusic className="text-primary"/> Manage Test Tracks</h1>
           </div>
           
           <div className="bg-surface-highlight/20 p-4 rounded-lg mb-4 text-sm text-secondary">
@@ -652,11 +652,11 @@ export const ArtistHub = () => {
               <table className="w-full text-left border-collapse">
                   <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
                       <tr>
-                          <th className="p-4 bg-surface-highlight">{t('trackTitle')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('artist')}</th>
+                          <th className="p-4 bg-surface-highlight">Track</th>
+                          <th className="p-4 bg-surface-highlight">Artist</th>
                           <th className="p-4 bg-surface-highlight">Album</th>
                           <th className="p-4 bg-surface-highlight">ID</th>
-                          <th className="p-4 bg-surface-highlight text-right">{t('delete')}</th>
+                          <th className="p-4 bg-surface-highlight text-right">Delete</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -695,13 +695,13 @@ export const ArtistHub = () => {
           
           <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-secondary uppercase">{t('changePass')}</label>
+                  <label className="text-xs font-bold text-secondary uppercase">Change Password</label>
                   <input 
                       type="password" 
                       value={modNewPassword} 
                       onChange={e => setModNewPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
-                      placeholder={t('newPass')}
+                      placeholder="New Password"
                   />
               </div>
               
@@ -709,7 +709,7 @@ export const ArtistHub = () => {
                   onClick={handleModPasswordChange}
                   className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
               >
-                  {t('updatePass')}
+                  Update Password
               </button>
           </div>
       </div>
@@ -718,7 +718,7 @@ export const ArtistHub = () => {
   const renderModDash = () => (
       <div className="w-full h-full flex flex-col p-6 relative overflow-y-auto animate-fade-in pb-8">
           <div className="flex justify-between items-center mb-8 shrink-0">
-              <h1 className="text-3xl font-bold flex items-center gap-3"><Shield className="text-primary"/> {t('modDash')}</h1>
+              <h1 className="text-3xl font-bold flex items-center gap-3"><Shield className="text-primary"/> Moderator Dashboard</h1>
               <button onClick={() => setView('MOD_SETTINGS')} className="text-secondary hover:text-white transition p-2 rounded-full hover:bg-surface-highlight">
                   <Settings size={24}/>
               </button>
@@ -728,28 +728,28 @@ export const ArtistHub = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 shrink-0">
                <button onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} className="bg-primary text-black p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-32 shadow-lg hover:shadow-primary/20 w-full">
                     <UploadCloud size={32}/>
-                    {t('uploadRelease')}
+                    Upload Release
                 </button>
                 <button onClick={() => setView('MOD_ALL_RELEASES')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
                     <Database size={32} className="text-secondary"/>
-                    {t('manageReleases')}
+                    Manage Releases
                 </button>
                 <button onClick={() => setView('MOD_ALL_TRACKS')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
                     <ListMusic size={32} className="text-secondary"/>
-                    {t('manageTracks')}
+                    Manage Test Tracks
                 </button>
                 <button onClick={() => setView('MOD_CREDENTIALS')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
                     <Key size={32} className="text-secondary"/>
-                    {t('artistCreds')}
+                    Artist Credentials
                 </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {/* Artist Requests */}
               <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><User size={18}/> {t('pendingArtists')}</h3>
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><User size={18}/> Pending Artists</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {artistAccounts.filter(a => a.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
+                      {artistAccounts.filter(a => a.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">No pending requests</span>}
                       {artistAccounts.filter(a => a.status === 'PENDING').map(a => (
                           <div key={a.id} className="p-3 bg-surface-highlight rounded flex justify-between items-center animate-slide-in-bottom">
                               <div>
@@ -767,28 +767,28 @@ export const ArtistHub = () => {
 
               {/* Release Requests */}
               <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><UploadCloud size={18}/> {t('pendingReleases')}</h3>
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><UploadCloud size={18}/> Pending Releases</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
+                      {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).length === 0 && <span className="text-secondary text-sm">No pending releases</span>}
                       {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).map(r => (
                           <div key={r.id} className="p-3 bg-surface-highlight rounded flex gap-3 cursor-pointer hover:bg-zinc-800 transition-colors animate-slide-in-bottom items-start" onClick={() => setSelectedRelease(r)}>
                               <img src={r.covers[0]} className="w-12 h-12 rounded object-cover flex-shrink-0" alt=""/>
                               <div className="flex-1 min-w-0 flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
                                       <div className="font-bold truncate">{r.title}</div>
-                                      {r.deletionRequested && <span className="text-[10px] bg-red-500 text-white px-1 rounded font-bold">{t('deleteReq')}</span>}
+                                      {r.deletionRequested && <span className="text-[10px] bg-red-500 text-white px-1 rounded font-bold">DELETE REQ</span>}
                                   </div>
                                   <div className="text-xs text-secondary truncate">{r.artistName} • {r.type}</div>
                                   <div className="flex gap-2 justify-end mt-1" onClick={e => e.stopPropagation()}>
                                       {r.deletionRequested ? (
                                            <>
-                                             <button onClick={() => approveRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">{t('confirmDelete')}</button>
-                                             <button onClick={() => rejectRelease(r.id)} className="text-blue-500 hover:text-white text-[10px] font-bold uppercase border border-blue-500 px-2 py-0.5 rounded hover:bg-blue-500 transition">{t('rejectDel')}</button>
+                                             <button onClick={() => approveRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">Confirm Delete</button>
+                                             <button onClick={() => rejectRelease(r.id)} className="text-blue-500 hover:text-white text-[10px] font-bold uppercase border border-blue-500 px-2 py-0.5 rounded hover:bg-blue-500 transition">Reject Del</button>
                                            </>
                                       ) : (
                                           <>
-                                            <button onClick={() => approveRelease(r.id)} className="text-green-500 hover:text-white text-[10px] font-bold uppercase border border-green-500 px-2 py-0.5 rounded hover:bg-green-500 transition">{t('approve')}</button>
-                                            <button onClick={() => rejectRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">{t('reject')}</button>
+                                            <button onClick={() => approveRelease(r.id)} className="text-green-500 hover:text-white text-[10px] font-bold uppercase border border-green-500 px-2 py-0.5 rounded hover:bg-green-500 transition">Approve</button>
+                                            <button onClick={() => rejectRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">Reject</button>
                                           </>
                                       )}
                                   </div>
@@ -800,9 +800,9 @@ export const ArtistHub = () => {
               
               {/* Profile Edits */}
               <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><Edit size={18}/> {t('profileEdits')}</h3>
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><Edit size={18}/> Profile Edits</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {profileEditRequests.filter(r => r.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
+                      {profileEditRequests.filter(r => r.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">No pending edits</span>}
                       {profileEditRequests.filter(r => r.status === 'PENDING').map(r => (
                           <div key={r.id} className="p-3 bg-surface-highlight rounded flex flex-col gap-2 animate-slide-in-bottom">
                                <div className="font-bold text-sm">{r.artistName} updates</div>
@@ -810,8 +810,8 @@ export const ArtistHub = () => {
                                {r.newBio && <div className="text-xs text-secondary bg-black/20 p-1 rounded italic line-clamp-2">Bio: {r.newBio}</div>}
                                {r.newArtistPick && <div className="text-xs text-secondary bg-black/20 p-1 rounded italic">New Pick: {r.newArtistPick.subtitle}</div>}
                                <div className="flex gap-2 justify-end">
-                                  <button onClick={() => approveProfileEdit(r.id)} className="text-green-500 hover:text-white text-xs font-bold uppercase border border-green-500 px-2 py-1 rounded hover:bg-green-500 transition">{t('approve')}</button>
-                                  <button onClick={() => rejectProfileEdit(r.id)} className="text-red-500 hover:text-white text-xs font-bold uppercase border border-red-500 px-2 py-1 rounded hover:bg-red-500 transition">{t('reject')}</button>
+                                  <button onClick={() => approveProfileEdit(r.id)} className="text-green-500 hover:text-white text-xs font-bold uppercase border border-green-500 px-2 py-1 rounded hover:bg-green-500 transition">Approve</button>
+                                  <button onClick={() => rejectProfileEdit(r.id)} className="text-red-500 hover:text-white text-xs font-bold uppercase border border-red-500 px-2 py-1 rounded hover:bg-red-500 transition">Reject</button>
                               </div>
                           </div>
                       ))}
@@ -825,7 +825,7 @@ export const ArtistHub = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
               >
                   <LogOut size={18} />
-                  {t('logout')}
+                  Log Out
               </button>
           </div>
       </div>
@@ -834,7 +834,7 @@ export const ArtistHub = () => {
   const renderDistribution = () => (
       <div className="w-full max-w-4xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[90vh] overflow-y-auto">
           <button onClick={() => currentModerator ? setView('MOD_DASH') : setView('ARTIST_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-          <h2 className="text-3xl font-bold text-center mb-8">{isEditing ? t('updateRelease') : t('uploadNew')}</h2>
+          <h2 className="text-3xl font-bold text-center mb-8">{isEditing ? 'Edit Release' : 'New Release'}</h2>
           
           <div className="flex justify-center gap-4 mb-8">
               {[1, 2, 3].map(s => (
@@ -844,15 +844,15 @@ export const ArtistHub = () => {
 
           {distStep === 1 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
-                  <h3 className="text-xl font-bold">{t('step1')}</h3>
+                  <h3 className="text-xl font-bold">Step 1: Release Info</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col gap-4">
-                          <input type="text" placeholder={`${t('releaseTitle')} *`} value={distTitle} onChange={e => setDistTitle(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
+                          <input type="text" placeholder="Release Title *" value={distTitle} onChange={e => setDistTitle(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
                           
                           {currentModerator && (
                               <input 
                                   type="text" 
-                                  placeholder={`${t('primaryArtist')} *`} 
+                                  placeholder="Primary Artist Name (e.g. Various Artists) *" 
                                   value={distArtistName} 
                                   onChange={e => setDistArtistName(e.target.value)} 
                                   className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none border-l-4 border-l-primary" 
@@ -871,7 +871,7 @@ export const ArtistHub = () => {
                               <option value="R&B">R&B</option>
                               <option value="Electronic/Dance">Electronic/Dance</option>
                           </select>
-                          <input type="text" placeholder={t('recordLabel')} value={distLabel} onChange={e => setDistLabel(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
+                          <input type="text" placeholder="Record Label" value={distLabel} onChange={e => setDistLabel(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
                       </div>
                       <div className="flex flex-col gap-4">
                           <div className="border-2 border-dashed border-surface-highlight rounded-lg p-8 flex flex-col items-center justify-center text-center hover:border-primary transition cursor-pointer relative overflow-hidden" onClick={() => coverInputRef.current?.click()}>
@@ -887,7 +887,7 @@ export const ArtistHub = () => {
                               ) : (
                                   <>
                                       <Image size={48} className="text-secondary mb-4"/>
-                                      <span className="text-secondary text-sm font-bold">{t('chooseCover')} *</span>
+                                      <span className="text-secondary text-sm font-bold">Upload Covers *</span>
                                   </>
                               )}
                               <input type="file" multiple ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCoverUpload} />
@@ -895,9 +895,9 @@ export const ArtistHub = () => {
                           
                           {/* Main Artists */}
                           <div>
-                              <label className="text-xs text-secondary font-bold uppercase mb-2 block">{t('trackLevelArtist')}</label>
+                              <label className="text-xs text-secondary font-bold uppercase mb-2 block">Additional Main Artists</label>
                               <div className="flex gap-2">
-                                  <input type="text" value={distMainArtistInput} onChange={e => setDistMainArtistInput(e.target.value)} className="flex-1 bg-background p-2 rounded border border-surface-highlight text-sm" placeholder={t('artist')} />
+                                  <input type="text" value={distMainArtistInput} onChange={e => setDistMainArtistInput(e.target.value)} className="flex-1 bg-background p-2 rounded border border-surface-highlight text-sm" placeholder="Artist Name" />
                                   <button onClick={() => { if(distMainArtistInput) { setDistMainArtists([...distMainArtists, distMainArtistInput]); setDistMainArtistInput(""); } }} className="bg-surface-highlight p-2 rounded hover:bg-white hover:text-black"><Plus size={20}/></button>
                               </div>
                               <div className="flex flex-wrap gap-2 mt-2">
@@ -915,11 +915,11 @@ export const ArtistHub = () => {
 
           {distStep === 2 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
-                  <h3 className="text-xl font-bold">{t('step2')}</h3>
+                  <h3 className="text-xl font-bold">Step 2: Tracks</h3>
                   
                   <div className="flex justify-end">
                       <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition">
-                          <Plus size={18}/> {t('addTrack')}
+                          <Plus size={18}/> Add Track (Upload Audio)
                       </button>
                       <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" onChange={handleFileUpload} />
                   </div>
@@ -947,7 +947,7 @@ export const ArtistHub = () => {
                                           value={track.title} 
                                           onChange={e => updateTrack(i, 'title', e.target.value)}
                                           className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
-                                          placeholder={t('trackTitle')}
+                                          placeholder="Track Title"
                                       />
                                   </div>
                                   <button onClick={() => setDistTracks(distTracks.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-400"><Trash2 size={20}/></button>
@@ -976,7 +976,7 @@ export const ArtistHub = () => {
                                       <div className="flex items-center gap-4">
                                           <label className="flex items-center gap-2 cursor-pointer">
                                               <input type="checkbox" checked={track.explicit} onChange={e => updateTrack(i, 'explicit', e.target.checked)} className="rounded text-primary focus:ring-0"/>
-                                              <span className="text-xs font-bold uppercase text-secondary">{t('explicit')}</span>
+                                              <span className="text-xs font-bold uppercase text-secondary">Explicit</span>
                                           </label>
                                           <div className="text-xs text-secondary bg-black/20 px-2 py-1 rounded">{formatDuration(track.duration)}</div>
                                       </div>
@@ -995,13 +995,13 @@ export const ArtistHub = () => {
                                       </select>
                                       
                                       <div className="flex flex-col">
-                                          <label className="text-[10px] uppercase font-bold text-secondary mb-1">{t('trackLevelArtist')}</label>
+                                          <label className="text-[10px] uppercase font-bold text-secondary mb-1">Additional Main Artists</label>
                                           <div className="flex gap-2 mb-1">
                                               <input 
                                                   type="text" 
                                                   value={trackArtistInputs[i] || ""} 
                                                   onChange={e => setTrackArtistInputs({...trackArtistInputs, [i]: e.target.value})}
-                                                  placeholder={t('artist')}
+                                                  placeholder="Artist Name"
                                                   className="flex-1 bg-black/20 p-2 rounded text-sm text-secondary focus:text-white focus:outline-none border border-transparent focus:border-primary"
                                               />
                                               <button onClick={() => addTrackArtist(i)} className="bg-surface p-2 rounded hover:bg-white hover:text-black"><Plus size={16}/></button>
@@ -1018,26 +1018,26 @@ export const ArtistHub = () => {
                               </div>
                           </div>
                       ))}
-                      {distTracks.length === 0 && <div className="text-center text-secondary py-8 border-2 border-dashed border-surface-highlight rounded">{t('addTrack')}</div>}
+                      {distTracks.length === 0 && <div className="text-center text-secondary py-8 border-2 border-dashed border-surface-highlight rounded">No tracks added yet.</div>}
                   </div>
               </div>
           )}
 
           {distStep === 3 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
-                  <h3 className="text-xl font-bold">{t('step3')}</h3>
+                  <h3 className="text-xl font-bold">Step 3: Schedule</h3>
                   <div className="flex flex-col gap-4 max-w-md mx-auto w-full">
                       <div className="flex flex-col gap-1">
-                          <label className="text-xs font-bold text-secondary uppercase">{t('releaseDate')} *</label>
+                          <label className="text-xs font-bold text-secondary uppercase">Release Date *</label>
                           <input type="date" value={distDate} onChange={e => setDistDate(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none calendar-dark" />
                       </div>
                       <div className="flex flex-col gap-1">
-                          <label className="text-xs font-bold text-secondary uppercase">{t('releaseTime')} *</label>
+                          <label className="text-xs font-bold text-secondary uppercase">Release Time *</label>
                           <input type="time" value={distTime} onChange={e => setDistTime(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
                       </div>
                       <div className="flex flex-col gap-1">
-                          <label className="text-xs font-bold text-secondary uppercase">{t('msgToMods')}</label>
-                          <textarea value={distMsg} onChange={e => setDistMsg(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none h-24 resize-none" placeholder={t('trackNote')}></textarea>
+                          <label className="text-xs font-bold text-secondary uppercase">Message to Moderators</label>
+                          <textarea value={distMsg} onChange={e => setDistMsg(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none h-24 resize-none" placeholder="Optional notes..."></textarea>
                       </div>
                   </div>
               </div>
@@ -1045,14 +1045,14 @@ export const ArtistHub = () => {
 
           <div className="flex justify-between mt-8 pt-8 border-t border-surface-highlight">
               {distStep > 1 ? (
-                  <button onClick={() => setDistStep(distStep - 1)} className="px-6 py-2 rounded-full font-bold text-white hover:bg-white/10 transition">{t('back')}</button>
+                  <button onClick={() => setDistStep(distStep - 1)} className="px-6 py-2 rounded-full font-bold text-white hover:bg-white/10 transition">Back</button>
               ) : <div></div>}
               
               {distStep < 3 ? (
-                  <button onClick={handleNextStep} className="px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition">{t('next')}</button>
+                  <button onClick={handleNextStep} className="px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition">Next</button>
               ) : (
                   <button onClick={handleSubmitRelease} className="px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition shadow-lg shadow-primary/20">
-                      {isEditing ? t('updateRelease') : t('submitRelease')}
+                      {isEditing ? 'Update Release' : 'Submit Release'}
                   </button>
               )}
           </div>
@@ -1108,7 +1108,7 @@ export const ArtistHub = () => {
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold flex items-center gap-2">{currentArtist.artistName} <CheckCircle size={20} className="text-blue-500" fill="white" /></h1>
-                        <p className="text-secondary text-sm">{t('artistDash')}</p>
+                        <p className="text-secondary text-sm">Artist Dashboard</p>
                     </div>
                 </div>
             </div>
@@ -1121,7 +1121,7 @@ export const ArtistHub = () => {
                     </div>
                     <div>
                         <div className="text-2xl font-bold">{stats.monthlyPlays.toLocaleString()}</div>
-                        <div className="text-xs text-secondary uppercase font-bold">{t('monthlyPlays')}</div>
+                        <div className="text-xs text-secondary uppercase font-bold">Monthly Plays</div>
                     </div>
                 </div>
                 <div className="bg-surface border border-surface-highlight p-4 rounded-xl flex items-center gap-4">
@@ -1130,7 +1130,7 @@ export const ArtistHub = () => {
                     </div>
                     <div>
                         <div className="text-2xl font-bold">#{stats.globalRank}</div>
-                        <div className="text-xs text-secondary uppercase font-bold">{t('inTheWorld')}</div>
+                        <div className="text-xs text-secondary uppercase font-bold">Global Rank</div>
                     </div>
                 </div>
             </div>
@@ -1138,36 +1138,36 @@ export const ArtistHub = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full shrink-0">
                 <button onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} className="bg-primary text-black p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-32 shadow-lg hover:shadow-primary/20 w-full">
                     <UploadCloud size={32}/>
-                    {t('uploadNew')}
+                    Upload New Release
                 </button>
                 <button onClick={() => setView('PROFILE_EDIT')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
                     <Edit size={32} className="text-secondary"/>
-                    {t('editProfile')}
+                    Edit Profile
                 </button>
                 <button onClick={() => setView('ARTIST_PICK')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
                     <ListMusic size={32} className="text-secondary"/>
-                    {t('artistPick')}
+                    Select Artist Pick
                 </button>
             </div>
 
-            <h2 className="text-2xl font-bold mb-4 shrink-0">{t('myReleases')}</h2>
+            <h2 className="text-2xl font-bold mb-4 shrink-0">My Releases</h2>
             
             {/* Desktop Table - removed max-h to allow full page scroll growth */}
             <div className="hidden md:block flex-1 bg-surface rounded-xl border border-surface-highlight">
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
                         <tr>
-                            <th className="p-4 bg-surface-highlight">{t('releaseTitle')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('type')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('date')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('status')}</th>
-                            <th className="p-4 bg-surface-highlight text-right">{t('actions')}</th>
+                            <th className="p-4 bg-surface-highlight">Release</th>
+                            <th className="p-4 bg-surface-highlight">Type</th>
+                            <th className="p-4 bg-surface-highlight">Date</th>
+                            <th className="p-4 bg-surface-highlight">Status</th>
+                            <th className="p-4 bg-surface-highlight text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {myReleases.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="p-8 text-center text-secondary">{t('noReleases')}</td>
+                                <td colSpan={5} className="p-8 text-center text-secondary">You haven't uploaded any releases yet.</td>
                             </tr>
                         )}
                         {myReleases.map((r, idx) => (
@@ -1185,7 +1185,7 @@ export const ArtistHub = () => {
                                         r.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
                                         'bg-yellow-500/20 text-yellow-500'
                                     }`}>
-                                        {r.deletionRequested ? t('deleteReq') : r.status}
+                                        {r.deletionRequested ? "DELETION PENDING" : r.status}
                                     </span>
                                 </td>
                                 <td className="p-4 text-right">
@@ -1210,7 +1210,7 @@ export const ArtistHub = () => {
 
             {/* Mobile List */}
             <div className="md:hidden flex flex-col gap-3 pb-20">
-                {myReleases.length === 0 && <div className="text-center text-secondary">{t('noReleases')}</div>}
+                {myReleases.length === 0 && <div className="text-center text-secondary">No releases yet.</div>}
                 {myReleases.map((r, idx) => (
                     <div key={idx} className="bg-surface p-4 rounded-lg flex items-center gap-4 cursor-pointer active:scale-95 transition items-start" onClick={() => setSelectedRelease(r)}>
                         <div className="w-16 h-16 shrink-0">
@@ -1224,7 +1224,7 @@ export const ArtistHub = () => {
                                 r.status === 'APPROVED' ? 'text-blue-500' :
                                 r.status === 'REJECTED' ? 'text-red-500' :
                                 'text-yellow-500'
-                            }`}>{r.deletionRequested ? t('deleteReq') : r.status}</div>
+                            }`}>{r.deletionRequested ? "DELETION PENDING" : r.status}</div>
                         </div>
                         <div className="flex flex-col gap-2">
                             <button onClick={(e) => { e.stopPropagation(); handleEditRelease(r); }} className="text-secondary hover:text-white">
@@ -1247,7 +1247,7 @@ export const ArtistHub = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
                 >
                     <LogOut size={18} />
-                    {t('logout')}
+                    Log Out
                 </button>
             </div>
         </div>
@@ -1257,7 +1257,7 @@ export const ArtistHub = () => {
   const renderProfileEditForm = () => (
       <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[85vh] overflow-y-auto custom-scrollbar">
           <button onClick={() => setView('ARTIST_DASH')} className="absolute top-4 left-4 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-          <h2 className="text-2xl font-bold text-center mb-6">{t('editProfile')}</h2>
+          <h2 className="text-2xl font-bold text-center mb-6">Edit Artist Profile</h2>
           
           <div className="flex flex-col gap-6">
               <div className="flex justify-center">
@@ -1271,14 +1271,14 @@ export const ArtistHub = () => {
                           <Camera size={40} className="text-secondary" />
                       )}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                          <span className="text-xs font-bold text-white uppercase">{t('changeCover')}</span>
+                          <span className="text-xs font-bold text-white uppercase">Change</span>
                       </div>
                   </div>
                   <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
               </div>
 
               <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-secondary uppercase">{t('bio')}</label>
+                  <label className="text-xs font-bold text-secondary uppercase">Artist Bio</label>
                   <textarea 
                       value={editBio} 
                       onChange={e => setEditBio(e.target.value)}
@@ -1288,13 +1288,13 @@ export const ArtistHub = () => {
               </div>
 
               <div className="flex flex-col gap-2 border-t border-surface-highlight pt-4">
-                  <label className="text-xs font-bold text-secondary uppercase">{t('changePass')}</label>
+                  <label className="text-xs font-bold text-secondary uppercase">Change Password</label>
                   <input 
                       type="password" 
                       value={editNewPassword} 
                       onChange={e => setEditNewPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
-                      placeholder={t('newPass')}
+                      placeholder="New Password (Optional)"
                   />
               </div>
 
@@ -1302,7 +1302,7 @@ export const ArtistHub = () => {
                   onClick={handleProfileUpdate}
                   className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
               >
-                  {t('submitChanges')}
+                  Submit Changes
               </button>
           </div>
       </div>
@@ -1326,13 +1326,13 @@ export const ArtistHub = () => {
       return (
         <div className="w-full max-w-2xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative h-[80vh] flex flex-col">
             <button onClick={() => setView('ARTIST_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-            <h2 className="text-2xl font-bold text-center mb-6">{t('artistPick')}</h2>
+            <h2 className="text-2xl font-bold text-center mb-6">Select Artist Pick</h2>
             
             <div className="relative mb-6">
                 <Search className="absolute left-4 top-3.5 text-secondary" size={20} />
                 <input 
                     type="text" 
-                    placeholder={t('searchTrackAlbum')}
+                    placeholder="Search for a track or album..." 
                     className="w-full bg-background py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary"
                     value={pickSearch}
                     onChange={e => setPickSearch(e.target.value)}
@@ -1341,8 +1341,8 @@ export const ArtistHub = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-                {pickSearch && searchResults.length === 0 && <div className="text-center text-secondary">{t('noResults')}</div>}
-                {!pickSearch && <div className="text-center text-secondary">{t('searchToFind')}</div>}
+                {pickSearch && searchResults.length === 0 && <div className="text-center text-secondary">No results found.</div>}
+                {!pickSearch && <div className="text-center text-secondary">Search to find content.</div>}
                 
                 {searchResults.map((item: any) => {
                    let image = "";
@@ -1389,7 +1389,7 @@ export const ArtistHub = () => {
           <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4">
               <div className="bg-surface w-full max-w-2xl rounded-xl p-6 relative shadow-2xl border border-surface-highlight animate-zoom-in max-h-[90vh] overflow-hidden flex flex-col">
                   <div className="flex justify-between items-center mb-6 shrink-0">
-                      <h2 className="text-2xl font-bold">{t('releaseTitle')}</h2>
+                      <h2 className="text-2xl font-bold">Release Details</h2>
                       <button onClick={() => setSelectedRelease(null)} className="text-secondary hover:text-white"><X size={24}/></button>
                   </div>
                   
@@ -1401,7 +1401,7 @@ export const ArtistHub = () => {
                               <div className="text-secondary font-bold">{selectedRelease.artistName}</div>
                               <div className="text-sm text-secondary">{selectedRelease.type} • {selectedRelease.genre}</div>
                               <div className="text-sm text-secondary">Label: {selectedRelease.label}</div>
-                              <div className="text-sm text-secondary">{t('released')}: {new Date(selectedRelease.releaseDate).toLocaleString()}</div>
+                              <div className="text-sm text-secondary">Release: {new Date(selectedRelease.releaseDate).toLocaleString()}</div>
                               <div className={`text-xs font-bold uppercase inline-block px-2 py-1 rounded w-fit ${
                                   selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' : 
                                   selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-500' :
@@ -1412,24 +1412,24 @@ export const ArtistHub = () => {
                               </div>
                               {selectedRelease.releaseMessage && (
                                   <div className="mt-2 p-2 bg-white/5 rounded text-sm italic text-secondary">
-                                      {t('trackNote')} {selectedRelease.releaseMessage}
+                                      Note: {selectedRelease.releaseMessage}
                                   </div>
                               )}
                           </div>
                       </div>
 
-                      <h4 className="font-bold mb-3 border-b border-surface-highlight pb-2">{t('step2')}</h4>
+                      <h4 className="font-bold mb-3 border-b border-surface-highlight pb-2">Tracks</h4>
                       <div className="flex flex-col gap-2">
-                          {selectedRelease.tracks.map((track, idx) => (
+                          {selectedRelease.tracks.map((t, idx) => (
                               <div key={idx} className="flex justify-between items-center p-2 hover:bg-surface-highlight rounded">
                                   <div className="flex items-center gap-3">
                                       <span className="text-secondary text-sm w-6">{idx + 1}</span>
                                       <div className="flex flex-col">
-                                          <span className="font-bold text-sm">{track.title}</span>
-                                          <span className="text-xs text-secondary">{track.artist || selectedRelease.artistName} {track.explicit ? `(${t('explicit')})` : ''}</span>
+                                          <span className="font-bold text-sm">{t.title}</span>
+                                          <span className="text-xs text-secondary">{t.artist || selectedRelease.artistName} {t.explicit ? '(Explicit)' : ''}</span>
                                       </div>
                                   </div>
-                                  <span className="text-xs text-secondary">{formatDuration(track.duration)}</span>
+                                  <span className="text-xs text-secondary">{formatDuration(t.duration)}</span>
                               </div>
                           ))}
                       </div>

@@ -25,7 +25,7 @@ const COLORS = [
 ];
 
 export const ProfileModal = () => {
-  const { isProfileModalOpen, setProfileModalOpen, currentUser, logout, updateUserProfile, appSettings, updateSettings, setArtistHubOpen, t } = useStore();
+  const { isProfileModalOpen, setProfileModalOpen, currentUser, logout, updateUserProfile, appSettings, updateSettings, setArtistHubOpen } = useStore();
   const [view, setView] = useState<ModalView>('MENU');
 
   // Edit Profile State
@@ -69,7 +69,7 @@ export const ProfileModal = () => {
   const handleSaveProfile = (e: React.FormEvent) => {
       e.preventDefault();
       if (!editName || !editUsername || !editPass) {
-          setEditMessage({ type: 'error', text: t('fillAll') });
+          setEditMessage({ type: 'error', text: 'All fields are required' });
           return;
       }
       
@@ -81,10 +81,10 @@ export const ProfileModal = () => {
       });
 
       if (result.success) {
-          setEditMessage({ type: 'success', text: t('profileUpdateSent') }); // Reusing existing message or generic success
+          setEditMessage({ type: 'success', text: 'Profile updated successfully!' });
           setTimeout(() => setEditMessage(null), 2000);
       } else {
-          setEditMessage({ type: 'error', text: result.message || 'Error' });
+          setEditMessage({ type: 'error', text: result.message || 'Error updating profile' });
       }
   };
 
@@ -111,7 +111,7 @@ export const ProfileModal = () => {
             >
                 <div className="flex items-center gap-3">
                     <UserIcon size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                    <span className="font-bold">{t('editProfile')}</span>
+                    <span className="font-bold">Edit Profile</span>
                 </div>
                 <ChevronRight size={16} className="text-secondary" />
             </button>
@@ -122,7 +122,7 @@ export const ProfileModal = () => {
             >
                 <div className="flex items-center gap-3">
                     <Settings size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                    <span className="font-bold">{t('appSettings')}</span>
+                    <span className="font-bold">App Settings</span>
                 </div>
                 <ChevronRight size={16} className="text-secondary" />
             </button>
@@ -134,7 +134,7 @@ export const ProfileModal = () => {
             >
                 <div className="flex items-center gap-3">
                     <Mic2 size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                    <span className="font-bold">{t('forArtists')}</span>
+                    <span className="font-bold">Huevify For Artists</span>
                 </div>
                 <ChevronRight size={16} className="text-secondary" />
             </button>
@@ -146,7 +146,7 @@ export const ProfileModal = () => {
                 className="flex items-center gap-3 w-full p-4 rounded hover:bg-red-500/10 transition text-left text-white group"
             >
                 <LogOut size={20} className="text-secondary group-hover:text-red-500 transition-colors" />
-                <span className="font-bold group-hover:text-red-500 transition-colors">{t('logout')}</span>
+                <span className="font-bold group-hover:text-red-500 transition-colors">Log out</span>
             </button>
         </div>
     </>
@@ -158,7 +158,7 @@ export const ProfileModal = () => {
              <button onClick={() => setView('MENU')} className="text-secondary hover:text-white">
                  <ArrowLeft size={24} />
              </button>
-             <h2 className="text-xl font-bold">{t('editProfile')}</h2>
+             <h2 className="text-xl font-bold">Edit Profile</h2>
         </div>
 
         <form onSubmit={handleSaveProfile} className="flex flex-col gap-4 overflow-y-auto max-h-[60vh] px-1">
@@ -179,14 +179,14 @@ export const ProfileModal = () => {
                         <Camera size={32} className="text-secondary" />
                     )}
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                        <span className="text-[10px] font-bold text-white">{t('changeCover')}</span>
+                        <span className="text-[10px] font-bold text-white">CHANGE</span>
                     </div>
                 </div>
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-secondary uppercase">{t('displayName')}</label>
+                <label className="text-xs font-bold text-secondary uppercase">Display Name</label>
                 <input 
                     type="text" 
                     value={editName} 
@@ -196,7 +196,7 @@ export const ProfileModal = () => {
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-secondary uppercase">{t('username')}</label>
+                <label className="text-xs font-bold text-secondary uppercase">Username</label>
                 <input 
                     type="text" 
                     value={editUsername} 
@@ -206,7 +206,7 @@ export const ProfileModal = () => {
             </div>
 
             <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-secondary uppercase">{t('password')}</label>
+                <label className="text-xs font-bold text-secondary uppercase">Password</label>
                 <input 
                     type="password" 
                     value={editPass} 
@@ -216,7 +216,7 @@ export const ProfileModal = () => {
             </div>
 
             <button type="submit" className="mt-4 w-full py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition">
-                {t('saveChanges')}
+                Save Changes
             </button>
         </form>
       </>
@@ -228,7 +228,7 @@ export const ProfileModal = () => {
              <button onClick={() => setView('MENU')} className="text-secondary hover:text-white">
                  <ArrowLeft size={24} />
              </button>
-             <h2 className="text-xl font-bold">{t('appSettings')}</h2>
+             <h2 className="text-xl font-bold">App Settings</h2>
         </div>
 
         <div className="flex flex-col gap-6 overflow-y-auto max-h-[60vh] px-1 pr-2">
@@ -237,7 +237,7 @@ export const ProfileModal = () => {
             <div>
                 <div className="flex items-center gap-2 mb-3">
                     <Palette size={18} className="text-primary" />
-                    <h3 className="font-bold">{t('accentColor')}</h3>
+                    <h3 className="font-bold">Accent Color</h3>
                 </div>
                 <div className="grid grid-cols-8 gap-2">
                     {COLORS.map(color => (
@@ -255,7 +255,7 @@ export const ProfileModal = () => {
             <div>
                 <div className="flex items-center gap-2 mb-3">
                     <Globe size={18} className="text-primary" />
-                    <h3 className="font-bold">{t('language')}</h3>
+                    <h3 className="font-bold">Language</h3>
                 </div>
                 <select 
                     value={appSettings.language}
@@ -271,7 +271,7 @@ export const ProfileModal = () => {
             <div>
                 <div className="flex items-center gap-2 mb-3">
                     <Zap size={18} className="text-primary" />
-                    <h3 className="font-bold">{t('playbackContent')}</h3>
+                    <h3 className="font-bold">Playback & Content</h3>
                 </div>
                 
                 <div className="flex flex-col gap-3">
@@ -279,8 +279,8 @@ export const ProfileModal = () => {
                         <div className="flex items-center gap-3">
                             <ShieldAlert size={20} className="text-secondary" />
                             <div className="flex flex-col">
-                                <span className="font-medium">{t('allowExplicit')}</span>
-                                <span className="text-xs text-secondary">{t('hideExplicit')}</span>
+                                <span className="font-medium">Allow Explicit Content</span>
+                                <span className="text-xs text-secondary">Turn off to hide explicit tracks</span>
                             </div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
@@ -297,7 +297,7 @@ export const ProfileModal = () => {
                     <div className="flex items-center justify-between p-3 bg-surface-highlight rounded">
                         <div className="flex items-center gap-3">
                             <Play size={20} className="text-secondary" />
-                            <span className="font-medium">{t('autoPlay')}</span>
+                            <span className="font-medium">Auto-play</span>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input 

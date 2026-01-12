@@ -7,355 +7,7 @@ interface ArtistStats {
   globalRank: number;
 }
 
-const TRANSLATIONS: Record<string, Record<string, string>> = {
-  English: {
-    home: "Home",
-    search: "Search",
-    library: "Your Library",
-    createPlaylist: "Create Playlist",
-    likedSongs: "Liked Songs",
-    viewProfile: "View Profile",
-    greeting_morning: "Good morning",
-    greeting_afternoon: "Good afternoon",
-    greeting_evening: "Good evening",
-    recForYou: "Recommended for you",
-    dailyTop: "Huevify Daily Top 25",
-    showAll: "Show All",
-    latestReleases: "Latest Releases",
-    popularAlbums: "Popular Albums",
-    updating: "Chart data updating...",
-    plays: "plays",
-    dailyPlays: "daily plays",
-    artist: "Artist",
-    artists: "Artists",
-    songs: "Songs",
-    publicPlaylists: "Public Playlists",
-    noResults: "No results found for",
-    popularReleases: "Popular Releases",
-    allTracks: "All Tracks",
-    searchPlaceholder: "What do you want to listen to?",
-    playlist: "Playlist",
-    system: "System",
-    by: "By",
-    you: "You",
-    released: "Released",
-    min: "min",
-    chooseCover: "Choose Album Cover",
-    select: "SELECT",
-    changeCover: "CHANGE COVER",
-    editPlaylist: "Edit Playlist",
-    deletePlaylist: "Delete Playlist",
-    removeFromLibrary: "Remove from Library",
-    addToLibrary: "Add to Library",
-    emptyLiked: "Songs you like will appear here",
-    saveSongsMsg: "Save songs by tapping the heart icon.",
-    returnHome: "Return Home",
-    notFound: "Playlist not found",
-    artistPick: "Artist Pick",
-    postedBy: "Posted By",
-    latestRelease: "Latest Release",
-    popular: "Popular",
-    discography: "Discography",
-    about: "About",
-    inTheWorld: "in the world",
-    verifiedArtist: "Verified Artist",
-    following: "Following",
-    follow: "Follow",
-    monthlyPlays: "monthly plays",
-    loginTo: "Log in to Huevify",
-    signupFree: "Sign up for free",
-    login: "Log In",
-    signup: "Sign Up",
-    username: "Username",
-    password: "Password",
-    confirmPassword: "Confirm Password",
-    displayName: "Display Name",
-    upload: "UPLOAD",
-    cancel: "Cancel",
-    invalidCreds: "Invalid username or password",
-    fillAll: "Please fill in all fields",
-    passMismatch: "Passwords do not match",
-    userTaken: "Username already taken",
-    editProfile: "Edit Profile",
-    appSettings: "App Settings",
-    forArtists: "Huevify For Artists",
-    logout: "Log out",
-    saveChanges: "Save Changes",
-    accentColor: "Accent Color",
-    language: "Language",
-    playbackContent: "Playback & Content",
-    allowExplicit: "Allow Explicit Content",
-    hideExplicit: "Turn off to hide explicit tracks",
-    autoPlay: "Auto-play",
-    playlistName: "Playlist Name",
-    description: "Description",
-    choosePhoto: "Choose Photo",
-    edit: "Edit",
-    publicPlaylist: "Public Playlist",
-    publicDesc: "Anyone can search for and add this playlist.",
-    save: "Save",
-    deleteLibTitle: "Delete from Library?",
-    deleteLibMsg: "This will delete",
-    delete: "Delete",
-    addToPlaylist: "Add to Playlist",
-    newPlaylist: "New Playlist",
-    recentlyPlayed: "Recently Played",
-    selectTrack: "Select a track to start listening",
-    nowPlaying: "Now Playing",
-    artistDash: "Artist Dashboard",
-    modDash: "Moderator Dashboard",
-    uploadNew: "Upload New Release",
-    uploadRelease: "Upload Release",
-    manageReleases: "Manage Releases",
-    manageTracks: "Manage Test Tracks",
-    artistCreds: "Artist Credentials",
-    pendingArtists: "Pending Artists",
-    pendingReleases: "Pending Releases",
-    profileEdits: "Profile Edits",
-    myReleases: "My Releases",
-    releaseTitle: "Release Title",
-    primaryArtist: "Primary Artist",
-    recordLabel: "Record Label",
-    releaseDate: "Release Date",
-    releaseTime: "Release Time",
-    msgToMods: "Message to Moderators",
-    submitRelease: "Submit Release",
-    updateRelease: "Update Release",
-    step1: "Step 1: Release Info",
-    step2: "Step 2: Tracks",
-    step3: "Step 3: Schedule",
-    addTrack: "Add Track (Upload Audio)",
-    trackTitle: "Track Title",
-    explicit: "Explicit",
-    explicitShort: "E",
-    back: "Back",
-    next: "Next",
-    approve: "Approve",
-    reject: "Reject",
-    deleteReq: "DELETE REQ",
-    confirmDelete: "Confirm Delete",
-    rejectDel: "Reject Del",
-    status: "Status",
-    type: "Type",
-    date: "Date",
-    actions: "Actions",
-    noReleases: "No releases yet.",
-    changePass: "Change Password",
-    newPass: "New Password",
-    updatePass: "Update Password",
-    bio: "Artist Bio",
-    submitChanges: "Submit Changes",
-    searchTrackAlbum: "Search for a track or album...",
-    noPending: "No pending requests",
-    welcomeBack: "Welcome back!",
-    regSent: "Registration sent for approval.",
-    usernameTaken: "Username taken",
-    modExists: "Moderator already exists",
-    artistAccDeleted: "Artist account deleted (Access Revoked). Artist content remains live.",
-    passChanged: "Password changed successfully.",
-    releaseDeleted: "Release deleted from drafts.",
-    releaseSubmitted: "Release submitted!",
-    profileUpdateSent: "Profile update sent for moderation approval.",
-    deletionRequested: "Deletion requested. Pending moderator approval.",
-    trackLevelArtist: "Additional Main Artists",
-    artistNameReq: "Artist Name is required for Moderator uploads.",
-    completeFields: "Please complete all required fields (Title, Type, Genre, Covers)",
-    addOneTrack: "Please add at least one track.",
-    specifyDate: "Please specify Release Date and Time.",
-    releaseUpdated: "Release updated successfully.",
-    trackDeleted: "Test track deleted.",
-    legacyHidden: "Legacy release hidden from platform.",
-    deletionRejected: "Deletion rejected. Release remains live.",
-    releaseRejected: "Release rejected.",
-    trackNote: "Note:",
-    tracksLower: "tracks",
-    huevifyDesc: "Millions of songs. Free on Huevify.",
-    searchToFind: "Search to find content.",
-    chartDesc: "Most played tracks in the last 24h. Updates at 21:00 UTC+3.",
-    genre_Pop: "Pop",
-    genre_RapHipHop: "Rap/Hip-Hop",
-    genre_RnB: "R&B",
-    genre_ElectronicDance: "Electronic/Dance",
-    discoverBest: "Discover the best",
-    genreSuffix: "tracks and releases."
-  },
-  Russian: {
-    home: "Главная",
-    search: "Поиск",
-    library: "Моя медиатека",
-    createPlaylist: "Создать плейлист",
-    likedSongs: "Любимые треки",
-    viewProfile: "Профиль",
-    greeting_morning: "Доброе утро",
-    greeting_afternoon: "Добрый день",
-    greeting_evening: "Добрый вечер",
-    recForYou: "Рекомендовано для вас",
-    dailyTop: "Huevify Daily Top 25",
-    showAll: "Показать все",
-    latestReleases: "Новые релизы",
-    popularAlbums: "Популярные альбомы",
-    updating: "Обновление чарта...",
-    plays: "прослушиваний",
-    dailyPlays: "прослушиваний за день",
-    artist: "Артист",
-    artists: "Артисты",
-    songs: "Треки",
-    publicPlaylists: "Плейлисты пользователей",
-    noResults: "Ничего не найдено по запросу",
-    popularReleases: "Популярные релизы",
-    allTracks: "Все треки",
-    searchPlaceholder: "Что хотите послушать?",
-    playlist: "Плейлист",
-    system: "Система",
-    by: "От",
-    you: "Вы",
-    released: "Дата выхода",
-    min: "мин",
-    chooseCover: "Выберите обложку",
-    select: "ВЫБРАТЬ",
-    changeCover: "ИЗМЕНИТЬ",
-    editPlaylist: "Изменить плейлист",
-    deletePlaylist: "Удалить плейлист",
-    removeFromLibrary: "Удалить из медиатеки",
-    addToLibrary: "Добавить в медиатеку",
-    emptyLiked: "Здесь будут ваши любимые треки",
-    saveSongsMsg: "Сохраняйте треки, нажимая на сердечко.",
-    returnHome: "На главную",
-    notFound: "Плейлист не найден",
-    artistPick: "Выбор артиста",
-    postedBy: "Опубликовано",
-    latestRelease: "Последний релиз",
-    popular: "Популярное",
-    discography: "Дискография",
-    about: "Об исполнителе",
-    inTheWorld: "в мире",
-    verifiedArtist: "Подтвержденный артист",
-    following: "Вы подписаны",
-    follow: "Подписаться",
-    monthlyPlays: "прослушиваний за месяц",
-    loginTo: "Войти в Huevify",
-    signupFree: "Регистрация",
-    login: "Войти",
-    signup: "Зарегистрироваться",
-    username: "Имя пользователя",
-    password: "Пароль",
-    confirmPassword: "Повторите пароль",
-    displayName: "Отображаемое имя",
-    upload: "ЗАГРУЗИТЬ",
-    cancel: "Отмена",
-    invalidCreds: "Неверное имя пользователя или пароль",
-    fillAll: "Заполните все поля",
-    passMismatch: "Пароли не совпадают",
-    userTaken: "Имя пользователя занято",
-    editProfile: "Редактировать профиль",
-    appSettings: "Настройки",
-    forArtists: "Huevify For Artists",
-    logout: "Выйти",
-    saveChanges: "Сохранить",
-    accentColor: "Цвет акцента",
-    language: "Язык",
-    playbackContent: "Воспроизведение и контент",
-    allowExplicit: "Контент 18+",
-    hideExplicit: "Выключите, чтобы скрыть Explicit треки",
-    autoPlay: "Автовоспроизведение",
-    playlistName: "Название плейлиста",
-    description: "Описание",
-    choosePhoto: "Выберите фото",
-    edit: "Изменить",
-    publicPlaylist: "Публичный плейлист",
-    publicDesc: "Любой сможет найти и добавить этот плейлист.",
-    save: "Сохранить",
-    deleteLibTitle: "Удалить из медиатеки?",
-    deleteLibMsg: "Это действие удалит",
-    delete: "Удалить",
-    addToPlaylist: "Добавить в плейлист",
-    newPlaylist: "Новый плейлист",
-    recentlyPlayed: "Недавно прослушано",
-    selectTrack: "Выберите трек, чтобы начать прослушивание",
-    nowPlaying: "Сейчас играет",
-    artistDash: "Кабинет Артиста",
-    modDash: "Кабинет Модератора",
-    uploadNew: "Загрузить релиз",
-    uploadRelease: "Загрузить",
-    manageReleases: "Управление релизами",
-    manageTracks: "Тестовые треки",
-    artistCreds: "Доступы артистов",
-    pendingArtists: "Заявки артистов",
-    pendingReleases: "Ожидают релиза",
-    profileEdits: "Изменения профиля",
-    myReleases: "Мои релизы",
-    releaseTitle: "Название релиза",
-    primaryArtist: "Основной артист",
-    recordLabel: "Лейбл",
-    releaseDate: "Дата релиза",
-    releaseTime: "Время релиза",
-    msgToMods: "Сообщение модераторам",
-    submitRelease: "Отправить релиз",
-    updateRelease: "Обновить релиз",
-    step1: "Шаг 1: Информация",
-    step2: "Шаг 2: Треки",
-    step3: "Шаг 3: Расписание",
-    addTrack: "Добавить трек (Аудиофайл)",
-    trackTitle: "Название трека",
-    explicit: "Explicit (18+)",
-    explicitShort: "E",
-    back: "Назад",
-    next: "Далее",
-    approve: "Принять",
-    reject: "Отклонить",
-    deleteReq: "ЗАПРОС УДАЛЕНИЯ",
-    confirmDelete: "Удалить",
-    rejectDel: "Отмена уд.",
-    status: "Статус",
-    type: "Тип",
-    date: "Дата",
-    actions: "Действия",
-    noReleases: "Релизов пока нет.",
-    changePass: "Сменить пароль",
-    newPass: "Новый пароль",
-    updatePass: "Обновить пароль",
-    bio: "Биография",
-    submitChanges: "Отправить изменения",
-    searchTrackAlbum: "Поиск трека или альбома...",
-    noPending: "Нет ожидающих заявок",
-    welcomeBack: "С возвращением!",
-    regSent: "Заявка отправлена на модерацию.",
-    usernameTaken: "Имя пользователя занято",
-    modExists: "Модератор уже существует",
-    artistAccDeleted: "Аккаунт артиста удален. Контент остался на площадке.",
-    passChanged: "Пароль успешно изменен.",
-    releaseDeleted: "Релиз удален из черновиков.",
-    releaseSubmitted: "Релиз отправлен!",
-    profileUpdateSent: "Обновление профиля отправлено на модерацию.",
-    deletionRequested: "Запрос на удаление отправлен модератору.",
-    trackLevelArtist: "Доп. артисты",
-    artistNameReq: "Имя артиста обязательно для модератора.",
-    completeFields: "Заполните обязательные поля (Название, Тип, Жанр, Обложка)",
-    addOneTrack: "Добавьте хотя бы один трек.",
-    specifyDate: "Укажите дату и время релиза.",
-    releaseUpdated: "Релиз успешно обновлен.",
-    trackDeleted: "Тестовый трек удален.",
-    legacyHidden: "Старый релиз скрыт с платформы.",
-    deletionRejected: "Удаление отменено. Релиз остается.",
-    releaseRejected: "Релиз отклонен.",
-    trackNote: "Прим:",
-    tracksLower: "треков",
-    huevifyDesc: "Миллионы треков. Бесплатно на Huevify.",
-    searchToFind: "Используйте поиск.",
-    chartDesc: "Самые популярные треки за 24 часа. Обновляется в 21:00 UTC+3.",
-    genre_Pop: "Поп",
-    genre_RapHipHop: "Рэп/Хип-Хоп",
-    genre_RnB: "РнБ",
-    genre_ElectronicDance: "Электроника",
-    discoverBest: "Лучшие треки и релизы в жанре",
-    genreSuffix: ""
-  }
-};
-
 interface StoreContextType {
-  // Translations
-  t: (key: string, defaultText?: string) => string;
-
   // Auth
   currentUser: User | null;
   login: (username: string, pass: string) => boolean;
@@ -421,7 +73,7 @@ interface StoreContextType {
   updateReleaseRequest: (id: string, data: Partial<ReleaseRequest>) => void;
   submitProfileEdit: (edit: Omit<ProfileEditRequest, 'id' | 'status' | 'artistId' | 'artistName'>) => void;
   deleteRelease: (releaseId: string) => void;
-  deleteLegacyTrack: (trackId: string) => void; // New function for root structure
+  deleteLegacyTrack: (trackId: string) => void; // New function
   deleteArtistAccount: (artistId: string) => void;
   changeArtistPassword: (newPass: string) => void;
   changeModeratorPassword: (newPass: string) => void;
@@ -520,15 +172,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     crossfade: 0,
     albumCoverIndexes: {}
   });
-
-  const t = (key: string, defaultText?: string): string => {
-      const lang = appSettings.language;
-      const dict = TRANSLATIONS[lang] || TRANSLATIONS.English;
-      const val = dict[key];
-      // Explicitly check for undefined because empty string is a valid translation
-      if (val !== undefined) return val;
-      return defaultText || key;
-  };
 
   // --- Data State ---
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -1004,7 +647,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       
       notifySync('ARTIST_DATA_UPDATE');
-      showNotification(t('artistAccDeleted'), "info");
+      showNotification("Artist account deleted (Access Revoked). Artist content remains live.", "info");
   };
 
   const changeArtistPassword = (newPass: string) => {
@@ -1017,7 +660,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newSession = { ...currentArtist, password: newPass };
       setCurrentArtist(newSession);
       StorageService.save('huevify_current_artist', newSession);
-      showNotification(t('passChanged'), "success");
+      showNotification("Password changed successfully.", "success");
   };
 
   const changeModeratorPassword = (newPass: string) => {
@@ -1026,7 +669,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       StorageService.save('huevify_moderator', updatedMod);
       setCurrentModerator(updatedMod);
       StorageService.save('huevify_current_moderator', updatedMod);
-      showNotification(t('passChanged'), "success");
+      showNotification("Moderator password changed successfully.", "success");
   };
 
   // Helper to remove tracks from playlists and history when a release is deleted
@@ -1070,7 +713,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           
           notifySync('ARTIST_DATA_UPDATE');
           refreshLibrary(releaseRequests);
-          showNotification(t('trackDeleted'), "success");
+          showNotification("Test track deleted.", "success");
       }
   };
 
@@ -1091,7 +734,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           notifySync('ARTIST_DATA_UPDATE');
           refreshLibrary(releaseRequests);
-          showNotification(t('legacyHidden'), "success");
+          showNotification("Legacy release hidden from platform.", "success");
           return;
       }
 
@@ -1103,7 +746,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
           notifySync('ARTIST_DATA_UPDATE');
-          showNotification(t('deletionRequested'), "info");
+          showNotification("Deletion requested. Pending moderator approval.", "info");
       } else {
           const updated = releaseRequests.filter(r => r.id !== releaseId);
           setReleaseRequests(updated);
@@ -1132,7 +775,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
           notifySync('ARTIST_DATA_UPDATE');
           refreshLibrary(updated);
-          showNotification(t('releaseDeleted'), "success");
+          showNotification("Release deleted from drafts.", "success");
       }
   };
 
@@ -1289,13 +932,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const updated = releaseRequests.map(r => r.id === id ? { ...r, deletionRequested: false } : r);
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
-          showNotification(t('deletionRejected'), "info");
+          showNotification("Deletion rejected. Release remains live.", "info");
       } else {
           // Normal rejection of a new release
           const updated = releaseRequests.map(r => r.id === id ? { ...r, status: 'REJECTED' as const, deletionRequested: false } : r);
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
-          showNotification(t('releaseRejected'), "info");
+          showNotification("Release rejected.", "info");
       }
       notifySync('ARTIST_DATA_UPDATE');
   };
@@ -1690,7 +1333,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track) return;
     // 1. Check if track is Explicit and allowed
     if (track.explicit && !appSettings.allowExplicitContent) {
-        showNotification(t('allowExplicit'), "error");
+        showNotification("Content not available. Turn on 'Allow Explicit Content' in settings.", "error");
         return;
     }
 
@@ -1836,7 +1479,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   return (
     <StoreContext.Provider value={{
-      t,
       currentUser, login, register, logout, updateUserProfile,
       appSettings, updateSettings, dailyChart,
       getAlbumCover, changeAlbumCover, getTrackCover,

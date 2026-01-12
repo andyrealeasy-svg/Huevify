@@ -4,15 +4,15 @@ export interface Track {
   title: string;
   artist: string;
   album: string;
-  cover: string; // Keep for track display consistency, usually points to active album cover
-  duration: number; // in seconds
-  url: string; // audio source
+  cover: string;
+  duration: number;
+  url: string;
   plays: number;
-  genre: string; // New field for recommendations
+  genre: string;
   explicit?: boolean;
   feat?: string;
-  hueq?: string; // ISRC equivalent
-  mainArtists?: string[]; // Array of additional main artists
+  hueq?: string;
+  mainArtists?: string[];
 }
 
 export interface DailyChartTrack extends Track {
@@ -23,46 +23,44 @@ export interface Playlist {
   id: string;
   name: string;
   description?: string;
-  customCover?: string; // Base64 or URL
-  tracks: string[]; // array of track IDs
-  isSystem?: boolean; // e.g. "Liked Songs"
-  ownerId?: string; // ID of the user who created this playlist
-  
-  // New fields for Public/Private feature
+  customCover?: string;
+  tracks: string[];
+  isSystem?: boolean;
+  ownerId?: string;
   isPublic?: boolean;
   creatorName?: string;
   creatorAvatar?: string;
-  savedBy?: string[]; // Array of User IDs who added this playlist to their library
+  savedBy?: string[];
 }
 
 export interface Album {
   id: string;
   title: string;
   artist: string;
-  covers: string[]; // Changed from single cover to array
+  covers: string[];
   trackIds: string[];
   year: number;
-  releaseDate?: string; // ISO string for full date display
+  releaseDate?: string;
   recordLabel?: string;
   type?: ReleaseType;
-  mainArtists?: string[]; // Added at album level for better display
+  mainArtists?: string[];
 }
 
 export interface User {
   id: string;
   username: string;
-  password: string; // Stored locally for this prototype
+  password: string;
   displayName: string;
-  avatar?: string; // Base64
+  avatar?: string;
 }
 
 export interface AppSettings {
   accentColor: string;
   language: 'English' | 'Russian';
-  allowExplicitContent: boolean; // Replaced High Quality Audio
+  allowExplicitContent: boolean;
   autoPlay: boolean;
-  crossfade: number; // seconds
-  albumCoverIndexes: Record<string, number>; // Stores user preference for album covers
+  crossfade: number;
+  albumCoverIndexes: Record<string, number>;
 }
 
 export type ViewState = 
@@ -77,21 +75,19 @@ export type ViewState =
 
 export enum PlayMode {
   OFF = 'OFF',
-  CONTEXT = 'CONTEXT', // Repeat Playlist/Album
-  ONE = 'ONE', // Repeat One Track
+  CONTEXT = 'CONTEXT',
+  ONE = 'ONE',
 }
-
-// --- ARTIST HUB TYPES ---
 
 export type ArtistVerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface ArtistAccount {
-  id: string; // Unique ID for the account
-  artistName: string; // Displays as the Artist Name in app
-  username: string; // Login username
+  id: string;
+  artistName: string;
+  username: string;
   password: string; 
   avatar?: string;
-  bio?: string; // Artist Description
+  bio?: string;
   status: ArtistVerificationStatus;
   artistPick?: {
     type: 'TRACK' | 'ALBUM' | 'PLAYLIST';
@@ -109,14 +105,14 @@ export interface ModeratorAccount {
 export interface DistributionTrack {
   title: string;
   explicit: boolean;
-  feat?: string; // Featured artists
-  mainArtists?: string[]; // Additional main artists
-  genre?: string; // Track specific genre
-  fileUrl: string; // Mocked for prototype
+  feat?: string;
+  mainArtists?: string[];
+  genre?: string;
+  fileUrl: string;
   duration: number;
-  existingHueq?: string; // If user inputs an existing code
-  generatedHueq?: string; // Assigned by system on approval
-  artist?: string; // Track-level artist override
+  existingHueq?: string;
+  generatedHueq?: string;
+  artist?: string;
 }
 
 export type ReleaseType = 'Single' | 'Album' | 'EP' | 'Mixtape';
@@ -126,22 +122,16 @@ export interface ReleaseRequest {
   artistId: string;
   artistName: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'LIVE';
-  submissionTime?: string; // ISO String
-  deletionRequested?: boolean; // New: For moderation deletion flow
-  
-  // Info
+  submissionTime?: string;
+  deletionRequested?: boolean;
   title: string;
   type: ReleaseType;
   genre: string;
   label: string;
-  covers: string[]; // Array of covers
+  covers: string[];
   additionalMainArtists?: string[];
-  
-  // Tracks
   tracks: DistributionTrack[];
-  
-  // Schedule
-  releaseDate: string; // ISO String
+  releaseDate: string;
   releaseMessage?: string;
 }
 

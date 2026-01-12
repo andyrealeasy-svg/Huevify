@@ -15,13 +15,13 @@ export const Player = () => {
     currentTrack, isPlaying, togglePlay, nextTrack, prevTrack, 
     progress, duration, seek, volume, setVolume, playMode, toggleRepeat,
     isLiked, toggleLike, setMobilePlayerOpen, isShuffle, toggleShuffle,
-    openAddToPlaylist, goToArtist, getTrackCover, t
+    openAddToPlaylist, goToArtist, getTrackCover
   } = useStore();
 
   if (!currentTrack) {
     return (
       <div className="fixed bottom-16 md:bottom-0 w-full h-16 md:h-24 bg-surface border-t border-surface-highlight flex items-center justify-center text-secondary text-sm z-50">
-        {t('selectTrack')}
+        Select a track to start listening
       </div>
     );
   }

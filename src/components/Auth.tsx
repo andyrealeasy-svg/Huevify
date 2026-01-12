@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Camera, X } from './Icons.tsx';
+import { Logo } from './Logo.tsx';
 
 type AuthMode = 'LANDING' | 'LOGIN' | 'REGISTER';
 
 export const Auth = () => {
-  const { login, register, t } = useStore();
+  const { login, register } = useStore();
   const [mode, setMode] = useState<AuthMode>('LANDING');
 
   // Login State
@@ -27,7 +28,7 @@ export const Auth = () => {
     setLoginError("");
     const success = login(loginUsername, loginPass);
     if (!success) {
-        setLoginError(t('invalidCreds'));
+        setLoginError("Invalid username or password");
     }
   };
 
@@ -36,12 +37,12 @@ export const Auth = () => {
     setRegError("");
 
     if (!regDisplayName || !regUsername || !regPass) {
-        setRegError(t('fillAll'));
+        setRegError("Please fill in all fields");
         return;
     }
 
     if (regPass !== regConfirmPass) {
-        setRegError(t('passMismatch'));
+        setRegError("Passwords do not match");
         return;
     }
 
@@ -53,7 +54,7 @@ export const Auth = () => {
     });
 
     if (!success) {
-        setRegError(t('userTaken'));
+        setRegError("Username already taken");
     }
   };
 
@@ -79,10 +80,10 @@ export const Auth = () => {
                
                <div className="flex flex-col items-center mb-8">
                     <div className="w-24 h-24 rounded-full bg-surface-highlight flex items-center justify-center mb-4 shadow-xl border border-white/5">
-                        <span className="text-4xl font-bold text-primary">H</span>
+                        <Logo className="w-12 h-12 text-primary" />
                     </div>
                     <h1 className="text-3xl font-bold tracking-tighter text-white">Huevify</h1>
-                    <p className="text-secondary mt-2 text-center">{t('huevifyDesc')}</p>
+                    <p className="text-secondary mt-2 text-center">Millions of songs. Free on Huevify.</p>
                </div>
 
                {mode === 'LANDING' && (
@@ -91,59 +92,59 @@ export const Auth = () => {
                             onClick={() => setMode('LOGIN')}
                             className="w-full py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition"
                        >
-                           {t('login')}
+                           Log in
                        </button>
                        <button 
                             onClick={() => setMode('REGISTER')}
                             className="w-full py-3 bg-transparent border border-secondary text-secondary font-bold rounded-full hover:border-white hover:text-white transition"
                        >
-                           {t('signupFree')}
+                           Sign up free
                        </button>
                    </div>
                )}
 
                {mode === 'LOGIN' && (
                    <form onSubmit={handleLogin} className="flex flex-col gap-4 text-white">
-                       <h2 className="text-xl font-bold text-center mb-2">{t('loginTo')}</h2>
+                       <h2 className="text-xl font-bold text-center mb-2">Log in to Huevify</h2>
                        {loginError && <div className="bg-red-500/20 text-red-500 text-sm p-3 rounded text-center">{loginError}</div>}
                        
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('username')}</label>
+                           <label className="text-sm font-bold">Username</label>
                            <input 
                                 type="text" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
-                                placeholder={t('username')}
+                                placeholder="Username"
                                 value={loginUsername}
                                 onChange={e => setLoginUsername(e.target.value)}
                            />
                        </div>
 
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('password')}</label>
+                           <label className="text-sm font-bold">Password</label>
                            <input 
                                 type="password" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
-                                placeholder={t('password')}
+                                placeholder="Password"
                                 value={loginPass}
                                 onChange={e => setLoginPass(e.target.value)}
                            />
                        </div>
 
-                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">{t('login')}</button>
+                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">Log In</button>
                        
                        <button 
                             type="button" 
                             onClick={() => setMode('LANDING')} 
                             className="text-secondary text-sm hover:text-white mt-2"
                         >
-                            {t('cancel')}
+                            Cancel
                        </button>
                    </form>
                )}
 
                {mode === 'REGISTER' && (
                    <form onSubmit={handleRegister} className="flex flex-col gap-4 text-white">
-                       <h2 className="text-xl font-bold text-center mb-2">{t('signupFree')}</h2>
+                       <h2 className="text-xl font-bold text-center mb-2">Sign up for free</h2>
                        {regError && <div className="bg-red-500/20 text-red-500 text-sm p-3 rounded text-center">{regError}</div>}
                        
                        {/* Avatar Upload */}
@@ -158,14 +159,14 @@ export const Auth = () => {
                                     <Camera size={32} className="text-secondary" />
                                 )}
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                                    <span className="text-[10px] font-bold">{t('upload')}</span>
+                                    <span className="text-[10px] font-bold">UPLOAD</span>
                                 </div>
                             </div>
                             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
                        </div>
 
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('displayName')}</label>
+                           <label className="text-sm font-bold">Display Name</label>
                            <input 
                                 type="text" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
@@ -176,7 +177,7 @@ export const Auth = () => {
                        </div>
 
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('username')}</label>
+                           <label className="text-sm font-bold">Username</label>
                            <input 
                                 type="text" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
@@ -187,7 +188,7 @@ export const Auth = () => {
                        </div>
 
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('password')}</label>
+                           <label className="text-sm font-bold">Password</label>
                            <input 
                                 type="password" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
@@ -198,7 +199,7 @@ export const Auth = () => {
                        </div>
 
                        <div className="flex flex-col gap-1">
-                           <label className="text-sm font-bold">{t('confirmPassword')}</label>
+                           <label className="text-sm font-bold">Confirm Password</label>
                            <input 
                                 type="password" 
                                 className="bg-background border border-secondary/30 rounded p-3 focus:border-white focus:outline-none text-white"
@@ -208,14 +209,14 @@ export const Auth = () => {
                            />
                        </div>
 
-                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">{t('signup')}</button>
+                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">Sign Up</button>
                        
                        <button 
                             type="button" 
                             onClick={() => setMode('LANDING')} 
                             className="text-secondary text-sm hover:text-white mt-2"
                         >
-                            {t('cancel')}
+                            Cancel
                        </button>
                    </form>
                )}

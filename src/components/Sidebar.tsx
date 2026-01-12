@@ -1,10 +1,11 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus, User as UserIcon } from './Icons.tsx';
+import { Logo } from './Logo.tsx';
 import { ViewState } from '../types.ts';
 
 export const Sidebar = () => {
-  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen, likedPlaylistId, t } = useStore();
+  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen, likedPlaylistId } = useStore();
 
   const isActive = (type: ViewState['type'], id?: string) => {
     if (view.type !== type) return false;
@@ -33,9 +34,9 @@ export const Sidebar = () => {
   return (
     <div className="w-64 bg-black h-full flex flex-col pt-6 pb-24 hidden md:flex">
       <div className="px-6 mb-2">
-        <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-huevify flex items-center justify-center shrink-0">
-             <span className="text-lg font-bold">H</span>
+        <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-surface-highlight flex items-center justify-center shrink-0">
+             <Logo className="w-5 h-5 text-primary" />
           </div>
           Huevify
         </h1>
@@ -56,7 +57,7 @@ export const Sidebar = () => {
             </div>
             <div className="flex flex-col overflow-hidden">
                 <span className="text-sm font-bold truncate text-white">{currentUser.displayName}</span>
-                <span className="text-[10px] font-bold text-secondary uppercase">{t('viewProfile')}</span>
+                <span className="text-[10px] font-bold text-secondary uppercase">View Profile</span>
             </div>
         </div>
       )}
@@ -64,15 +65,15 @@ export const Sidebar = () => {
       <div className="flex flex-col gap-2">
         <div onClick={() => setView({ type: 'HOME' })} className={navClass(isActive('HOME'))}>
           <Home size={24} />
-          {t('home')}
+          Home
         </div>
         <div onClick={() => setView({ type: 'SEARCH' })} className={navClass(isActive('SEARCH'))}>
           <Search size={24} />
-          {t('search')}
+          Search
         </div>
         <div onClick={() => setView({ type: 'LIBRARY' })} className={navClass(isActive('LIBRARY'))}>
           <Library size={24} />
-          {t('library')}
+          Your Library
         </div>
       </div>
 
@@ -87,7 +88,7 @@ export const Sidebar = () => {
             <div className="w-12 h-12 bg-surface-highlight group-hover:bg-white transition-colors flex items-center justify-center rounded-sm shrink-0">
                <Plus size={20} className="text-secondary group-hover:text-black" />
             </div>
-            <span className="font-bold text-sm">{t('createPlaylist')}</span>
+            <span className="font-bold text-sm">Create Playlist</span>
         </div>
 
         <div 
@@ -97,7 +98,7 @@ export const Sidebar = () => {
           <div className="w-12 h-12 bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center rounded-sm shrink-0">
             <Heart size={20} fill="white" className="text-white" />
           </div>
-          <span className="font-bold text-sm">{t('likedSongs')}</span>
+          <span className="font-bold text-sm">Liked Songs</span>
         </div>
       </div>
 
@@ -130,7 +131,7 @@ export const Sidebar = () => {
                         <span className={`truncate text-sm font-medium ${isActive('PLAYLIST', pl.id) ? 'text-primary' : 'text-secondary group-hover:text-white'}`}>
                             {pl.name}
                         </span>
-                        <span className="text-xs text-secondary truncate">{pl.ownerId === currentUser?.id ? t('playlist') : `${t('by')} ${pl.creatorName}`}</span>
+                        <span className="text-xs text-secondary truncate">{pl.ownerId === currentUser?.id ? 'Playlist' : `By ${pl.creatorName}`}</span>
                     </div>
                 </li>
               );

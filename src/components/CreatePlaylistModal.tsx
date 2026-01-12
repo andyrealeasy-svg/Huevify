@@ -5,7 +5,7 @@ import { X, Image } from './Icons.tsx';
 export const CreatePlaylistModal = () => {
   const { 
     isCreatePlaylistOpen, setCreatePlaylistOpen, createPlaylist, editPlaylist,
-    playlistIdToEdit, playlists, t 
+    playlistIdToEdit, playlists 
   } = useStore();
   
   const [name, setName] = useState("");
@@ -69,7 +69,7 @@ export const CreatePlaylistModal = () => {
           <X size={24} />
         </button>
 
-        <h2 className="text-2xl font-bold mb-6 text-center">{playlistIdToEdit ? t('editPlaylist') : t('createPlaylist')}</h2>
+        <h2 className="text-2xl font-bold mb-6 text-center">{playlistIdToEdit ? 'Edit Playlist' : 'Create Playlist'}</h2>
 
         <div className="flex flex-col gap-6">
           {/* Cover Upload Area */}
@@ -83,13 +83,13 @@ export const CreatePlaylistModal = () => {
               ) : (
                 <>
                   <Image size={48} className="text-secondary mb-2" />
-                  <span className="text-xs text-secondary font-bold">{t('choosePhoto')}</span>
+                  <span className="text-xs text-secondary font-bold">Choose Photo</span>
                 </>
               )}
               
               {/* Hover overlay */}
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                 <span className="text-white font-bold">{t('edit')}</span>
+                 <span className="text-white font-bold">Edit</span>
               </div>
             </div>
             <input 
@@ -104,13 +104,13 @@ export const CreatePlaylistModal = () => {
           <div className="flex flex-col gap-4">
             <input 
               type="text" 
-              placeholder={t('playlistName')}
+              placeholder="Playlist Name" 
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="bg-surface-highlight text-white p-3 rounded focus:outline-none focus:ring-1 focus:ring-white font-bold"
             />
             <textarea 
-              placeholder={t('description')}
+              placeholder="Description" 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="bg-surface-highlight text-white p-3 rounded focus:outline-none focus:ring-1 focus:ring-white resize-none h-24 text-sm"
@@ -126,8 +126,8 @@ export const CreatePlaylistModal = () => {
                 className="w-5 h-5 accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                  <label htmlFor="public-check" className="font-bold text-sm cursor-pointer select-none">{t('publicPlaylist')}</label>
-                  <span className="text-xs text-secondary">{t('publicDesc')}</span>
+                  <label htmlFor="public-check" className="font-bold text-sm cursor-pointer select-none">Public Playlist</label>
+                  <span className="text-xs text-secondary">Anyone can search for and add this playlist.</span>
               </div>
           </div>
 
@@ -136,7 +136,7 @@ export const CreatePlaylistModal = () => {
               onClick={handleSave}
               className="bg-white text-black font-bold py-3 px-8 rounded-full hover:scale-105 transition"
             >
-              {t('save')}
+              Save
             </button>
           </div>
         </div>

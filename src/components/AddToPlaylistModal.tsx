@@ -5,7 +5,7 @@ import { X, ListMusic, Plus } from './Icons';
 export const AddToPlaylistModal = () => {
   const { 
     isAddToPlaylistOpen, closeAddToPlaylist, playlists, addToPlaylist, trackIdToAdd, 
-    setCreatePlaylistOpen, setPlaylistIdToEdit, t
+    setCreatePlaylistOpen, setPlaylistIdToEdit 
   } = useStore();
 
   if (!isAddToPlaylistOpen || !trackIdToAdd) return null;
@@ -27,7 +27,7 @@ export const AddToPlaylistModal = () => {
     <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
       <div className="bg-surface w-full max-w-sm rounded-lg p-4 relative shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-200">
         <div className="flex justify-between items-center mb-4 border-b border-surface-highlight pb-2">
-            <h2 className="text-xl font-bold">{t('addToPlaylist')}</h2>
+            <h2 className="text-xl font-bold">Add to Playlist</h2>
             <button onClick={closeAddToPlaylist} className="text-secondary hover:text-white"><X size={24}/></button>
         </div>
 
@@ -39,7 +39,7 @@ export const AddToPlaylistModal = () => {
                 <div className="w-12 h-12 bg-surface-highlight flex items-center justify-center rounded">
                     <Plus size={24} />
                 </div>
-                <span className="font-bold">{t('newPlaylist')}</span>
+                <span className="font-bold">New Playlist</span>
             </button>
 
             {userPlaylists.map(pl => (
@@ -53,7 +53,7 @@ export const AddToPlaylistModal = () => {
                     </div>
                     <div className="flex flex-col overflow-hidden">
                         <span className="font-bold truncate text-white">{pl.name}</span>
-                        <span className="text-xs text-secondary">{pl.tracks.length} {t('songs')}</span>
+                        <span className="text-xs text-secondary">{pl.tracks.length} songs</span>
                     </div>
                 </button>
             ))}
