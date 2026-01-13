@@ -569,7 +569,9 @@ export const ArtistHub = () => {
                   duration: t?.duration || 0,
                   mainArtists: t?.mainArtists || [],
                   fileUrl: "",
-                  artist: t?.artist // Include track artist
+                  artist: t?.artist,
+                  existingHueq: t?.hueq, // Mapped for display
+                  generatedHueq: t?.hueq // Map both just in case
               };
           })
       }));
@@ -1388,12 +1390,14 @@ export const ArtistHub = () => {
       return (
           <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4">
               <div className="bg-surface w-full max-w-2xl rounded-xl p-6 relative shadow-2xl border border-surface-highlight animate-zoom-in max-h-[90vh] overflow-hidden flex flex-col">
+                  {/* Header */}
                   <div className="flex justify-between items-center mb-6 shrink-0">
                       <h2 className="text-2xl font-bold">{t('releaseTitle')}</h2>
                       <button onClick={() => setSelectedRelease(null)} className="text-secondary hover:text-white"><X size={24}/></button>
                   </div>
                   
                   <div className="overflow-y-auto flex-1 pr-2">
+                      {/* Album Info */}
                       <div className="flex gap-6 mb-6">
                           <img src={selectedRelease.covers[0]} className="w-40 h-40 rounded shadow-lg object-cover bg-zinc-800 shrink-0" />
                           <div className="flex flex-col gap-2">
@@ -1426,10 +1430,19 @@ export const ArtistHub = () => {
                                       <span className="text-secondary text-sm w-6">{idx + 1}</span>
                                       <div className="flex flex-col">
                                           <span className="font-bold text-sm">{track.title}</span>
-                                          <span className="text-xs text-secondary">{track.artist || selectedRelease.artistName} {track.explicit ? `(${t('explicit')})` : ''}</span>
+                                          <span className="text-xs text-secondary flex flex-wrap items-center gap-1">
+                                              <span>{track.artist || selectedRelease.artistName} {track.explicit ? `(${t('explicit')})` : ''}</span>
+                                          </span>
                                       </div>
                                   </div>
-                                  <span className="text-xs text-secondary">{formatDuration(track.duration)}</span>
+                                  <div className="flex items-center gap-4">
+                                      {(track.generatedHueq || track.existingHueq || (track as any).hueq) && (
+                                          <span className="font-mono text-[10px] text-secondary/70 border border-secondary/30 px-2 py-0.5 rounded select-all hover:text-white hover:border-white transition-colors cursor-text" title="HUEQ / ISRC">
+                                              {track.generatedHueq || track.existingHueq || (track as any).hueq}
+                                          </span>
+                                      )}
+                                      <span className="text-xs text-secondary w-10 text-right font-mono">{formatDuration(track.duration)}</span>
+                                  </div>
                               </div>
                           ))}
                       </div>

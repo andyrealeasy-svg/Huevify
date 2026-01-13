@@ -15,13 +15,18 @@ import { Search } from './pages/Search.tsx';
 import { Library } from './pages/Library.tsx';
 import { XCircle, CheckCircle, ShieldAlert } from './components/Icons.tsx';
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
+interface ErrorBoundaryProps {
+  children?: ReactNode;
+}
 
-  static getDerivedStateFromError(error: any) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true };
   }
 
