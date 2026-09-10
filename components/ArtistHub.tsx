@@ -338,46 +338,108 @@ export const ArtistHub = () => {
       }
   };
 
-  // --- Distribution Handlers ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          showNotification("Подготовка и загрузка аудиофайла...", "info");
-          // Convert to Base64 for instant preview & fallback
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              const base64Audio = reader.result as string;
-              
-              // Create temp audio element to get duration
-              const audio = new Audio(base64Audio);
-              audio.onloadedmetadata = async () => {
-                  let finalUrl = base64Audio;
-                  if (isSupabaseConfigured()) {
-                      try {
-                          const storageUrl = await SupabaseService.uploadMedia(file, 'tracks', file.name);
-                          if (storageUrl) {
-                              finalUrl = storageUrl;
-                              showNotification("Аудиофайл загружен в облачное хранилище!", "success");
-                          }
-                      } catch (err) {
-                          console.warn("Storage audio upload fallback:", err);
-                      }
-                  }
+  // --- Audio Duration Helper ---
+  const getAudioDuration = (file: File): Promise<number> => {
+      return new Promise((resolve) => {
+          let objectUrl = '';
+          try {
+              objectUrl = URL.createObjectURL(file);
+          } catch (e) {
+              resolve(180);
+              return;
+          }
 
-                  const newTrack: DistributionTrack = {
-                      title: file.name.replace(/\.[^/.]+$/, ""),
-                      explicit: false,
-                      mainArtists: [],
-                      genre: distGenre, // Default to release genre
-                      duration: audio.duration,
-                      fileUrl: finalUrl,
-                      generatedHueq: generateHUEQ()
-                  };
-                  setDistTracks(prev => [...prev, newTrack]);
-              };
+          const audio = new Audio();
+          let cleaned = false;
+          
+          const cleanup = () => {
+              if (cleaned) return;
+              cleaned = true;
+              audio.removeEventListener('loadedmetadata', onLoaded);
+              audio.removeEventListener('error', onError);
+              try { URL.revokeObjectURL(objectUrl); } catch (e) {}
           };
-          reader.readAsDataURL(file);
+
+          const onLoaded = () => {
+              const dur = audio.duration;
+              cleanup();
+              resolve(isNaN(dur) || !isFinite(dur) || dur <= 0 ? 180 : dur);
+          };
+
+          const onError = () => {
+              cleanup();
+              resolve(180);
+          };
+
+          const timer = setTimeout(() => {
+              cleanup();
+              resolve(180);
+          }, 2500);
+
+          audio.addEventListener('loadedmetadata', () => {
+              clearTimeout(timer);
+              onLoaded();
+          });
+          audio.addEventListener('error', () => {
+              clearTimeout(timer);
+              onError();
+          });
+
+          audio.src = objectUrl;
+      });
+  };
+
+  // --- Distribution Handlers ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      const fileList = Array.from(files);
+      showNotification(`Подготовка и загрузка (${fileList.length} файлов)...`, "info");
+
+      for (const file of fileList) {
+          try {
+              const duration = await getAudioDuration(file);
+              let finalUrl: string | null = null;
+
+              if (isSupabaseConfigured()) {
+                  try {
+                      finalUrl = await SupabaseService.uploadMedia(file, 'tracks', file.name);
+                  } catch (err) {
+                      console.warn("Storage audio upload error:", err);
+                  }
+              }
+
+              // Fallback to Blob URL if cloud failed or not configured
+              if (!finalUrl) {
+                  try {
+                      finalUrl = URL.createObjectURL(file);
+                  } catch (e) {
+                      finalUrl = "";
+                  }
+                  showNotification(`Трек "${file.name.replace(/\.[^/.]+$/, "")}" добавлен`, "info");
+              } else {
+                  showNotification(`Трек "${file.name.replace(/\.[^/.]+$/, "")}" успешно загружен!`, "success");
+              }
+
+              const newTrack: DistributionTrack = {
+                  title: file.name.replace(/\.[^/.]+$/, ""),
+                  explicit: false,
+                  mainArtists: [],
+                  genre: distGenre || "Pop",
+                  duration: duration,
+                  fileUrl: finalUrl,
+                  generatedHueq: generateHUEQ()
+              };
+
+              setDistTracks(prev => [...prev, newTrack]);
+          } catch (err) {
+              console.error("File upload error:", err);
+              showNotification(`Ошибка загрузки ${file.name}`, "error");
+          }
       }
+
+      e.target.value = '';
   };
 
   const updateTrack = (idx: number, field: keyof DistributionTrack, val: any) => {
@@ -1314,7 +1376,7 @@ export const ArtistHub = () => {
                       <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition">
                           <Plus size={18}/> {t('addTrack')}
                       </button>
-                      <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" onChange={handleFileUpload} />
+                      <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
                   </div>
 
                   <div className="flex flex-col gap-4 max-h-[300px] overflow-y-auto">

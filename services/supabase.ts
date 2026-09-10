@@ -701,11 +701,25 @@ export const SupabaseService = {
     const filePath = `${folder}/${cleanName || 'item'}_${uniqueId}${ext}`;
 
     const bucketName = 'media';
-    const { data, error } = await supabase.storage.from(bucketName).upload(filePath, blob, {
+    let { data, error } = await supabase.storage.from(bucketName).upload(filePath, blob, {
       contentType: mimeType || 'application/octet-stream',
       cacheControl: '31536000',
       upsert: true
     });
+
+    if (error && (error.message?.toLowerCase().includes('bucket') || (error as any).status === 404)) {
+      try {
+        await supabase.storage.createBucket(bucketName, { public: true });
+        const retry = await supabase.storage.from(bucketName).upload(filePath, blob, {
+          contentType: mimeType || 'application/octet-stream',
+          cacheControl: '31536000',
+          upsert: true
+        });
+        error = retry.error;
+      } catch (e) {
+        console.warn('Auto create storage bucket failed:', e);
+      }
+    }
 
     if (error) {
       console.warn(`Supabase storage upload failed for ${filePath}:`, error.message);
