@@ -145,6 +145,25 @@ export interface ReleaseRequest {
   releaseMessage?: string;
 }
 
+export interface ReleaseDraft {
+  id: string;
+  artistId: string;
+  artistName: string;
+  title: string;
+  type: ReleaseType;
+  genre: string;
+  label: string;
+  covers: string[];
+  additionalMainArtists: string[];
+  tracks: DistributionTrack[];
+  releaseDate?: string;
+  releaseTime?: string;
+  releaseMessage?: string;
+  lastSaved: string; // ISO String
+  step: number; // 1, 2, 3
+  isEditingOriginalId?: string | null;
+}
+
 export interface ProfileEditRequest {
   id: string;
   artistId: string;

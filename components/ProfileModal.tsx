@@ -328,45 +328,45 @@ export const ProfileModal = () => {
                 </div>
             </div>
 
-            {/* Cloud Database & Storage (Supabase) */}
+            {/* Cloud Database & Storage */}
             <div>
                 <div className="flex items-center gap-2 mb-3">
                     <Database size={18} className="text-primary" />
-                    <h3 className="font-bold">Cloud Database & Storage (Supabase)</h3>
+                    <h3 className="font-bold">Облачная база данных и хранилище</h3>
                 </div>
                 <div className="p-3 bg-surface-highlight rounded border border-surface-highlight flex flex-col gap-3">
                     <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Database</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">База данных</span>
                         {isSupabaseConnected ? (
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                Connected
+                                Подключено
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                Ready (Local Fallback)
+                                Автономный режим
                             </span>
                         )}
                     </div>
 
                     <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Storage (Media)</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Медиа-хранилище</span>
                         {isStorageReady ? (
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                Bucket Active
+                                Активно
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-                                Uploads Enabled
+                                Доступно
                             </span>
                         )}
                     </div>
 
                     <p className="text-xs text-secondary leading-relaxed">
-                        Tracks, album covers, playlist art, and avatars are uploaded to Supabase Storage (bucket <code className="text-primary font-mono bg-black/30 px-1 py-0.5 rounded">media</code>). SQL setup script is included in <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">supabase/schema.sql</code>.
+                        Треки, обложки релизов, плейлистов и аватары безопасно синхронизируются в облачном хранилище.
                     </p>
                 </div>
             </div>
@@ -379,7 +379,7 @@ export const ProfileModal = () => {
                 </div>
                 <div className="p-3 bg-surface-highlight rounded border border-surface-highlight flex flex-col gap-3">
                     <p className="text-xs text-secondary leading-relaxed">
-                        Если в браузере остались устаревшие релизы, треки или тестовые данные из LocalStorage / IndexedDB, нажмите кнопку ниже для полной очистки и обновления из облака Supabase.
+                        Если в браузере остались устаревшие релизы, треки или тестовые данные из LocalStorage / IndexedDB, нажмите кнопку ниже для полной очистки и обновления из облачного хранилища.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-2 pt-1">
                         <button

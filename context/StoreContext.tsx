@@ -180,7 +180,18 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     genre_RnB: "R&B",
     genre_ElectronicDance: "Electronic/Dance",
     discoverBest: "Discover the best",
-    genreSuffix: "tracks and releases."
+    genreSuffix: "tracks and releases.",
+    saveDraft: "Save to Draft",
+    draftSaved: "Release draft saved successfully.",
+    drafts: "Drafts",
+    draftsDesc: "Unpublished release drafts",
+    noDrafts: "No saved drafts.",
+    continueDraft: "Continue",
+    deleteDraft: "Delete Draft",
+    draftDeleted: "Draft deleted.",
+    resumeDraftPrompt: "You have an unsaved draft. Resume working on it?",
+    resume: "Resume",
+    discardDraft: "Discard Draft"
   },
   Russian: {
     home: "Главная",
@@ -352,7 +363,18 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     genre_RnB: "РнБ",
     genre_ElectronicDance: "Электроника",
     discoverBest: "Лучшие треки и релизы в жанре",
-    genreSuffix: ""
+    genreSuffix: "",
+    saveDraft: "Сохранить в черновик",
+    draftSaved: "Черновик релиза сохранён.",
+    drafts: "Черновики",
+    draftsDesc: "Неопубликованные черновики релизов",
+    noDrafts: "Нет сохранённых черновиков.",
+    continueDraft: "Продолжить",
+    deleteDraft: "Удалить черновик",
+    draftDeleted: "Черновик удалён.",
+    resumeDraftPrompt: "У вас есть несохранённый черновик. Хотите продолжить работу над ним?",
+    resume: "Продолжить",
+    discardDraft: "Сбросить черновик"
   }
 };
 

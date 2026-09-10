@@ -105,6 +105,27 @@ CREATE TABLE IF NOT EXISTS public.moderator_accounts (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 10. Release Drafts Table
+CREATE TABLE IF NOT EXISTS public.release_drafts (
+    id TEXT PRIMARY KEY,
+    artist_id TEXT NOT NULL,
+    artist_name TEXT,
+    title TEXT,
+    type TEXT DEFAULT 'Single',
+    genre TEXT DEFAULT 'Pop',
+    label TEXT,
+    covers JSONB DEFAULT '[]'::jsonb,
+    additional_main_artists JSONB DEFAULT '[]'::jsonb,
+    tracks JSONB DEFAULT '[]'::jsonb,
+    release_date TEXT,
+    release_time TEXT,
+    release_message TEXT,
+    last_saved TIMESTAMPTZ DEFAULT NOW(),
+    step INT DEFAULT 1,
+    is_editing_original_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.artist_accounts ENABLE ROW LEVEL SECURITY;
@@ -115,6 +136,7 @@ ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.track_plays ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_chart ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profile_edit_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.release_drafts ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read & write for app prototype clients with anon key
 DO $$ 
@@ -145,6 +167,9 @@ BEGIN
 
     DROP POLICY IF EXISTS "Public access profile_edit_requests" ON public.profile_edit_requests;
     CREATE POLICY "Public access profile_edit_requests" ON public.profile_edit_requests FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Public access release_drafts" ON public.release_drafts;
+    CREATE POLICY "Public access release_drafts" ON public.release_drafts FOR ALL USING (true) WITH CHECK (true);
 END $$;
 
 -- Enable Realtime publication for tables
@@ -152,6 +177,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.releases;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.playlists;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.artist_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.moderator_accounts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.release_drafts;
 
 -- ==============================================================================
 -- 9. STORAGE BUCKET CONFIGURATION ('media')

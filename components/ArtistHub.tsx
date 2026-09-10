@@ -4,10 +4,11 @@ import { compressImage } from '../utils/imageCompressor.ts';
 import { 
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio, 
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
-  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp
+  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save
 } from './Icons.tsx';
-import { DistributionTrack, ReleaseType, ReleaseRequest } from '../types.ts';
+import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft } from '../types.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
+import { StorageService } from '../services/storage.ts';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
 
@@ -54,6 +55,11 @@ export const ArtistHub = () => {
   const [distMainArtists, setDistMainArtists] = useState<string[]>([]);
   const [distMainArtistInput, setDistMainArtistInput] = useState("");
   const [distTracks, setDistTracks] = useState<DistributionTrack[]>([]);
+
+  // Drafts State
+  const [drafts, setDrafts] = useState<ReleaseDraft[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   
   // Editing Mode
   const [isEditing, setIsEditing] = useState(false);
@@ -104,6 +110,175 @@ export const ArtistHub = () => {
           }
       }
   }, [isArtistHubOpen, currentArtist, currentModerator]);
+
+  // Drafts Management Logic
+  const getDraftsKey = () => {
+      if (currentArtist) return `huevify_drafts_${currentArtist.id}`;
+      if (currentModerator) return `huevify_drafts_mod`;
+      return 'huevify_drafts_general';
+  };
+
+  const loadDrafts = async () => {
+      const key = getDraftsKey();
+      const localLoaded = StorageService.load<ReleaseDraft[]>(key, []);
+      const localArr = Array.isArray(localLoaded) ? localLoaded : [];
+      setDrafts(localArr);
+
+      // Also sync from cloud if configured
+      if (isSupabaseConfigured()) {
+          try {
+              const artistId = currentArtist?.id || (currentModerator ? 'mod' : undefined);
+              const remoteDrafts = await SupabaseService.fetchDrafts(artistId);
+              if (remoteDrafts && remoteDrafts.length > 0) {
+                  const mergedMap = new Map<string, ReleaseDraft>();
+                  localArr.forEach(d => mergedMap.set(d.id, d));
+                  remoteDrafts.forEach(rd => {
+                      const existing = mergedMap.get(rd.id);
+                      if (!existing || new Date(rd.lastSaved).getTime() >= new Date(existing.lastSaved).getTime()) {
+                          mergedMap.set(rd.id, rd);
+                      }
+                  });
+                  const merged = Array.from(mergedMap.values()).sort((a, b) => new Date(b.lastSaved).getTime() - new Date(a.lastSaved).getTime());
+                  setDrafts(merged);
+                  StorageService.save(key, merged);
+              }
+          } catch (e) {
+              console.warn("Cloud drafts sync error:", e);
+          }
+      }
+  };
+
+  useEffect(() => {
+      if (isArtistHubOpen) {
+          loadDrafts();
+      }
+  }, [isArtistHubOpen, currentArtist, currentModerator]);
+
+  const buildCurrentDraft = (idOverride?: string): ReleaseDraft => {
+      const id = idOverride || activeDraftId || `draft_${Date.now()}`;
+      return {
+          id,
+          artistId: currentArtist?.id || (currentModerator ? 'mod' : 'unknown'),
+          artistName: distArtistName || currentArtist?.artistName || 'Various Artists',
+          title: distTitle,
+          type: distType,
+          genre: distGenre,
+          label: distLabel,
+          covers: distCovers,
+          additionalMainArtists: distMainArtists,
+          tracks: distTracks,
+          releaseDate: distDate,
+          releaseTime: distTime,
+          releaseMessage: distMsg,
+          lastSaved: new Date().toISOString(),
+          step: distStep,
+          isEditingOriginalId: isEditing ? editingId : null,
+      };
+  };
+
+  const saveCurrentDraft = (notify: boolean = true) => {
+      // If form is completely blank, don't create an empty draft
+      if (!distTitle.trim() && distTracks.length === 0 && distCovers.length === 0 && !distArtistName.trim()) {
+          if (notify) showNotification("Заполните хотя бы одно поле для сохранения черновика.", "info");
+          return;
+      }
+
+      const draft = buildCurrentDraft();
+      setActiveDraftId(draft.id);
+
+      const key = getDraftsKey();
+      const existing = StorageService.load<ReleaseDraft[]>(key, []);
+      const updated = [draft, ...existing.filter(d => d.id !== draft.id)];
+      StorageService.save(key, updated);
+      setDrafts(updated);
+      setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+      // Save to cloud in background
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveDraft(draft).catch(err => {
+              console.warn("Cloud save draft error:", err);
+          });
+      }
+
+      if (notify) {
+          showNotification(t('draftSaved'), "success");
+      }
+  };
+
+  const handleResumeDraft = (draft: ReleaseDraft) => {
+      setDistTitle(draft.title || "");
+      setDistArtistName(draft.artistName || "");
+      setDistType(draft.type || 'Single');
+      setDistGenre(draft.genre || 'Pop');
+      setDistLabel(draft.label || "");
+      setDistCovers(draft.covers || []);
+      setDistMainArtists(draft.additionalMainArtists || []);
+      setDistTracks(draft.tracks || []);
+      setDistDate(draft.releaseDate || "");
+      setDistTime(draft.releaseTime || "00:00");
+      setDistMsg(draft.releaseMessage || "");
+      setDistStep(draft.step || 1);
+      setIsEditing(Boolean(draft.isEditingOriginalId));
+      setEditingId(draft.isEditingOriginalId || null);
+      setActiveDraftId(draft.id);
+      setLastSavedTime(new Date(draft.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setView('DISTRIBUTION');
+      showNotification(t('resume'), "info");
+  };
+
+  const handleDeleteDraft = (draftId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      const key = getDraftsKey();
+      const existing = StorageService.load<ReleaseDraft[]>(key, []);
+      const updated = existing.filter(d => d.id !== draftId);
+      StorageService.save(key, updated);
+      setDrafts(updated);
+      if (activeDraftId === draftId) {
+          setActiveDraftId(null);
+      }
+      if (isSupabaseConfigured()) {
+          SupabaseService.deleteDraft(draftId).catch(err => {
+              console.warn("Cloud delete draft error:", err);
+          });
+      }
+      showNotification(t('draftDeleted'), "info");
+  };
+
+  // Auto-Save Effect (Debounced 1.5s when in DISTRIBUTION view)
+  useEffect(() => {
+      if (view !== 'DISTRIBUTION') return;
+      if (!distTitle.trim() && distTracks.length === 0 && distCovers.length === 0 && !distArtistName.trim()) {
+          return;
+      }
+
+      const timer = setTimeout(() => {
+          saveCurrentDraft(false);
+      }, 1500);
+
+      return () => clearTimeout(timer);
+  }, [
+      view, distStep, distTitle, distArtistName, distType, distGenre, distLabel,
+      distCovers, distMainArtists, distTracks, distDate, distTime, distMsg, isEditing, editingId
+  ]);
+
+  // Handle beforeunload and page visibility changes to flush draft save immediately
+  useEffect(() => {
+      const handleBeforeUnload = () => {
+          if (view === 'DISTRIBUTION' && (distTitle || distTracks.length > 0 || distCovers.length > 0)) {
+              const draft = buildCurrentDraft();
+              const key = getDraftsKey();
+              const existing = StorageService.load<ReleaseDraft[]>(key, []);
+              const updated = [draft, ...existing.filter(d => d.id !== draft.id)];
+              StorageService.save(key, updated);
+              if (isSupabaseConfigured()) {
+                  SupabaseService.saveDraft(draft).catch(() => {});
+              }
+          }
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [distTitle, distTracks, distCovers, distStep, distDate, distTime, distMsg, distGenre, distType, distLabel, distMainArtists, view, activeDraftId]);
 
   if (!isArtistHubOpen) return null;
 
@@ -182,7 +357,7 @@ export const ArtistHub = () => {
                           const storageUrl = await SupabaseService.uploadMedia(file, 'tracks', file.name);
                           if (storageUrl) {
                               finalUrl = storageUrl;
-                              showNotification("Аудиофайл загружен в Supabase Storage!", "success");
+                              showNotification("Аудиофайл загружен в облачное хранилище!", "success");
                           }
                       } catch (err) {
                           console.warn("Storage audio upload fallback:", err);
@@ -373,6 +548,20 @@ export const ArtistHub = () => {
           showNotification(t('releaseSubmitted'), "success");
       }
       
+      // Clear active draft if this release was from a draft
+      if (activeDraftId) {
+          const key = getDraftsKey();
+          const existing = StorageService.load<ReleaseDraft[]>(key, []);
+          const updated = existing.filter(d => d.id !== activeDraftId);
+          StorageService.save(key, updated);
+          setDrafts(updated);
+          if (isSupabaseConfigured()) {
+              SupabaseService.deleteDraft(activeDraftId).catch(err => {
+                  console.warn("Cloud delete draft on submit error:", err);
+              });
+          }
+      }
+      
       // Navigate back
       if (currentModerator) {
           setView('MOD_ALL_RELEASES');
@@ -394,6 +583,8 @@ export const ArtistHub = () => {
       setTrackArtistInputs({});
       setIsEditing(false);
       setEditingId(null);
+      setActiveDraftId(null);
+      setLastSavedTime(null);
   };
   
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -869,6 +1060,65 @@ export const ArtistHub = () => {
                 </button>
           </div>
 
+          {/* Saved Drafts Section for Mod */}
+          {drafts.length > 0 && (
+              <div className="mb-8 shrink-0">
+                  <div className="flex justify-between items-center mb-3">
+                      <h2 className="text-xl font-bold flex items-center gap-2">
+                          <Bookmark size={20} className="text-primary" />
+                          {t('drafts')} <span className="text-sm font-normal text-secondary">({drafts.length})</span>
+                      </h2>
+                      <span className="text-xs text-secondary">{t('draftsDesc')}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {drafts.map(d => (
+                          <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
+                              <div className="flex items-start gap-3">
+                                  <div className="w-14 h-14 rounded-lg bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5">
+                                      {d.covers && d.covers.length > 0 ? (
+                                          <img src={d.covers[0]} className="w-full h-full object-cover" alt="" />
+                                      ) : (
+                                          <FileAudio size={24} className="text-secondary opacity-60" />
+                                      )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-sm truncate text-white">
+                                          {d.title || <span className="italic text-secondary">Без названия</span>}
+                                      </div>
+                                      <div className="text-xs text-secondary truncate mt-0.5">
+                                          {d.artistName || "Various"} • {d.type || 'Single'} • {d.tracks?.length || 0} {t('tracksLower')}
+                                      </div>
+                                      <div className="text-[10px] text-secondary/70 mt-1 flex items-center gap-1">
+                                          <Clock size={10} />
+                                          <span>{new Date(d.lastSaved).toLocaleDateString()} {new Date(d.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                      </div>
+                                  </div>
+                              </div>
+                              
+                              <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
+                                  <button 
+                                      onClick={(e) => handleDeleteDraft(d.id, e)}
+                                      className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
+                                      title={t('deleteDraft')}
+                                  >
+                                      <Trash2 size={14} />
+                                      <span>{t('deleteDraft')}</span>
+                                  </button>
+                                  <button 
+                                      onClick={() => handleResumeDraft(d)}
+                                      className="text-xs font-bold bg-primary text-black px-3.5 py-1.5 rounded-full hover:scale-105 transition flex items-center gap-1.5 shadow-sm"
+                                  >
+                                      <Edit size={12} />
+                                      <span>{t('continueDraft')}</span>
+                                  </button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {/* Artist Requests */}
               <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
@@ -958,7 +1208,25 @@ export const ArtistHub = () => {
 
   const renderDistribution = () => (
       <div className="w-full max-w-4xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[90vh] overflow-y-auto">
-          <button onClick={() => currentModerator ? setView('MOD_DASH') : setView('ARTIST_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
+          <div className="flex justify-between items-center mb-6">
+              <button onClick={() => currentModerator ? setView('MOD_DASH') : setView('ARTIST_DASH')} className="text-secondary hover:text-white flex items-center gap-2 text-sm font-medium transition">
+                  <ArrowLeft size={20}/>
+                  <span>{t('back')}</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                  <button 
+                      onClick={() => saveCurrentDraft(true)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-surface-highlight hover:bg-zinc-700 text-xs font-semibold rounded-full text-secondary hover:text-white transition border border-white/5"
+                      title={t('saveDraft')}
+                  >
+                      <Bookmark size={14} className={activeDraftId ? "text-primary" : ""} />
+                      <span>{t('saveDraft')}</span>
+                      {lastSavedTime && <span className="text-[10px] text-primary/80 font-mono">({lastSavedTime})</span>}
+                  </button>
+              </div>
+          </div>
+
           <h2 className="text-3xl font-bold text-center mb-8">{isEditing ? t('updateRelease') : t('uploadNew')}</h2>
           
           <div className="flex justify-center gap-4 mb-8">
@@ -1171,8 +1439,22 @@ export const ArtistHub = () => {
                           <label className="text-xs font-bold text-secondary uppercase">{t('msgToMods')}</label>
                           <textarea value={distMsg} onChange={e => setDistMsg(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none h-24 resize-none" placeholder={t('trackNote')}></textarea>
                       </div>
+
+                      {/* Draft Status Banner on Step 3 */}
+                      <div className="p-3 bg-surface-highlight/40 border border-surface-highlight rounded-lg flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 text-secondary">
+                              <Bookmark size={15} className="text-primary"/>
+                              <span>{lastSavedTime ? `${t('draftSaved')} (${lastSavedTime})` : t('draftAutoSaved')}</span>
+                          </div>
+                          <button 
+                              onClick={() => saveCurrentDraft(true)}
+                              className="text-primary hover:text-primary/80 font-bold px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition"
+                          >
+                              {t('saveDraft')}
+                          </button>
+                      </div>
                       
-                      <div className="mt-4 border-t border-surface-highlight pt-4">
+                      <div className="mt-2 border-t border-surface-highlight pt-4">
                           <h4 className="text-sm font-bold text-secondary uppercase mb-2">Release Preview</h4>
                           <div className="flex flex-col gap-2">
                               {distTracks.map((track, idx) => (
@@ -1189,18 +1471,34 @@ export const ArtistHub = () => {
               </div>
           )}
 
-          <div className="flex justify-between mt-8 pt-8 border-t border-surface-highlight">
+          <div className="flex flex-wrap justify-between items-center gap-4 mt-8 pt-8 border-t border-surface-highlight">
               {distStep > 1 ? (
                   <button onClick={() => setDistStep(distStep - 1)} className="px-6 py-2 rounded-full font-bold text-white hover:bg-white/10 transition">{t('back')}</button>
               ) : <div></div>}
               
-              {distStep < 3 ? (
-                  <button onClick={handleNextStep} className="px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition">{t('next')}</button>
-              ) : (
-                  <button onClick={handleSubmitRelease} className="px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition shadow-lg shadow-primary/20">
-                      {isEditing ? t('updateRelease') : t('submitRelease')}
+              <div className="flex items-center gap-3">
+                  {/* Save to Draft button available on Step 3 or anywhere */}
+                  <button 
+                      onClick={() => {
+                          saveCurrentDraft(true);
+                          if (currentModerator) setView('MOD_DASH');
+                          else setView('ARTIST_DASH');
+                      }}
+                      className="px-5 py-2 rounded-full font-bold bg-surface-highlight text-white hover:bg-zinc-700 transition flex items-center gap-2 border border-white/10 shadow-sm"
+                      title={t('saveDraft')}
+                  >
+                      <Bookmark size={16} className="text-primary" />
+                      <span>{t('saveDraft')}</span>
                   </button>
-              )}
+
+                  {distStep < 3 ? (
+                      <button onClick={handleNextStep} className="px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition">{t('next')}</button>
+                  ) : (
+                      <button onClick={handleSubmitRelease} className="px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition shadow-lg shadow-primary/20">
+                          {isEditing ? t('updateRelease') : t('submitRelease')}
+                      </button>
+                  )}
+              </div>
           </div>
       </div>
   );
@@ -1295,6 +1593,65 @@ export const ArtistHub = () => {
                     {t('artistPick')}
                 </button>
             </div>
+
+            {/* Saved Drafts Section */}
+            {drafts.length > 0 && (
+                <div className="mb-8 shrink-0">
+                    <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <Bookmark size={20} className="text-primary" />
+                            {t('drafts')} <span className="text-sm font-normal text-secondary">({drafts.length})</span>
+                        </h2>
+                        <span className="text-xs text-secondary">{t('draftsDesc')}</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {drafts.map(d => (
+                            <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-14 h-14 rounded-lg bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5">
+                                        {d.covers && d.covers.length > 0 ? (
+                                            <img src={d.covers[0]} className="w-full h-full object-cover" alt="" />
+                                        ) : (
+                                            <FileAudio size={24} className="text-secondary opacity-60" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-sm truncate text-white">
+                                            {d.title || <span className="italic text-secondary">Без названия</span>}
+                                        </div>
+                                        <div className="text-xs text-secondary truncate mt-0.5">
+                                            {d.type || 'Single'} • {d.tracks?.length || 0} {t('tracksLower')}
+                                        </div>
+                                        <div className="text-[10px] text-secondary/70 mt-1 flex items-center gap-1">
+                                            <Clock size={10} />
+                                            <span>{new Date(d.lastSaved).toLocaleDateString()} {new Date(d.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
+                                    <button 
+                                        onClick={(e) => handleDeleteDraft(d.id, e)}
+                                        className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
+                                        title={t('deleteDraft')}
+                                    >
+                                        <Trash2 size={14} />
+                                        <span>{t('deleteDraft')}</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => handleResumeDraft(d)}
+                                        className="text-xs font-bold bg-primary text-black px-3.5 py-1.5 rounded-full hover:scale-105 transition flex items-center gap-1.5 shadow-sm"
+                                    >
+                                        <Edit size={12} />
+                                        <span>{t('continueDraft')}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <h2 className="text-2xl font-bold mb-4 shrink-0">{t('myReleases')}</h2>
             

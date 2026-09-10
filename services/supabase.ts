@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ReleaseRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount } from '../types';
+import { ReleaseRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft } from '../types';
 
 const metaEnv = (import.meta as any).env || {};
 const supabaseUrl = (metaEnv.VITE_SUPABASE_URL || 'https://kzcxbokjnbafaozcmjjg.supabase.co') as string | undefined;
@@ -383,6 +383,91 @@ export const SupabaseService = {
     }
   },
 
+  // --- DRAFTS ---
+  async fetchDrafts(artistId?: string): Promise<ReleaseDraft[] | null> {
+    if (!supabase) return null;
+    try {
+      let query = supabase.from('release_drafts').select('*').order('last_saved', { ascending: false });
+      if (artistId && artistId !== 'mod' && artistId !== 'unknown') {
+        query = query.eq('artist_id', artistId);
+      }
+      const { data, error } = await query;
+      if (error) {
+        console.warn('Supabase fetchDrafts error:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        artistId: row.artist_id,
+        artistName: row.artist_name || '',
+        title: row.title || '',
+        type: row.type || 'Single',
+        genre: row.genre || 'Pop',
+        label: row.label || '',
+        covers: row.covers || [],
+        additionalMainArtists: row.additional_main_artists || [],
+        tracks: row.tracks || [],
+        releaseDate: row.release_date || '',
+        releaseTime: row.release_time || '',
+        releaseMessage: row.release_message || '',
+        lastSaved: row.last_saved || row.created_at || new Date().toISOString(),
+        step: row.step || 1,
+        isEditingOriginalId: row.is_editing_original_id || null
+      }));
+    } catch (e) {
+      console.warn('Supabase fetchDrafts failed:', e);
+      return null;
+    }
+  },
+
+  async saveDraft(draft: ReleaseDraft): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const row = {
+        id: draft.id,
+        artist_id: draft.artistId,
+        artist_name: draft.artistName,
+        title: draft.title,
+        type: draft.type,
+        genre: draft.genre,
+        label: draft.label,
+        covers: draft.covers || [],
+        additional_main_artists: draft.additionalMainArtists || [],
+        tracks: draft.tracks || [],
+        release_date: draft.releaseDate || '',
+        release_time: draft.releaseTime || '',
+        release_message: draft.releaseMessage || '',
+        last_saved: draft.lastSaved || new Date().toISOString(),
+        step: draft.step || 1,
+        is_editing_original_id: draft.isEditingOriginalId || null
+      };
+      const { error } = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
+      if (error) {
+        console.warn('Supabase saveDraft error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveDraft failed:', e);
+      return false;
+    }
+  },
+
+  async deleteDraft(draftId: string): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase.from('release_drafts').delete().eq('id', draftId);
+      if (error) {
+        console.warn('Supabase deleteDraft error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteDraft failed:', e);
+      return false;
+    }
+  },
+
   // --- REALTIME SUBSCRIPTION ---
   subscribeToChanges(onUpdate: (table: string) => void): (() => void) | null {
     if (!supabase) return null;
@@ -393,6 +478,7 @@ export const SupabaseService = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'playlists' }, () => onUpdate('playlists'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_accounts' }, () => onUpdate('artist_accounts'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'moderator_accounts' }, () => onUpdate('moderator_accounts'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'release_drafts' }, () => onUpdate('release_drafts'))
         .subscribe();
 
       return () => {

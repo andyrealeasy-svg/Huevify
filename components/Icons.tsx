@@ -5,7 +5,7 @@ import {
   ArrowLeft, Plus, ChevronDown, Image, X, Check, Edit, MoreHorizontal,
   User, LogOut, Settings, Camera, Upload, Palette, Globe, Zap, ChevronRight, ChevronLeft, Music2, Moon,
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
-  Database, Key, ChevronUp
+  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw
 } from 'lucide-react';
 
 export { 
@@ -14,5 +14,5 @@ export {
   ArrowLeft, Plus, ChevronDown, Image, X, Check, Edit, MoreHorizontal,
   User, LogOut, Settings, Camera, Upload, Palette, Globe, Zap, ChevronRight, ChevronLeft, Music2, Moon,
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
-  Database, Key, ChevronUp
+  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw
 };
