@@ -22,18 +22,26 @@ export const Auth = () => {
   const [regConfirmPass, setRegConfirmPass] = useState("");
   const [regAvatar, setRegAvatar] = useState<string>("");
   const [regError, setRegError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
-    const success = login(loginUsername, loginPass);
-    if (!success) {
+    setIsSubmitting(true);
+    try {
+      const success = await login(loginUsername, loginPass);
+      if (!success) {
         setLoginError(t('invalidCreds'));
+      }
+    } catch (err) {
+      setLoginError(t('invalidCreds'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError("");
 
@@ -47,15 +55,22 @@ export const Auth = () => {
         return;
     }
 
-    const success = register({
-        username: regUsername,
-        password: regPass,
-        displayName: regDisplayName,
-        avatar: regAvatar || undefined
-    });
+    setIsSubmitting(true);
+    try {
+      const success = await register({
+          username: regUsername,
+          password: regPass,
+          displayName: regDisplayName,
+          avatar: regAvatar || undefined
+      });
 
-    if (!success) {
-        setRegError(t('userTaken'));
+      if (!success) {
+          setRegError(t('userTaken'));
+      }
+    } catch (err) {
+      setRegError('Registration error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -135,7 +150,15 @@ export const Auth = () => {
                            />
                        </div>
 
-                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">{t('login')}</button>
+                       <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                       >
+                           {isSubmitting ? (
+                             <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                           ) : t('login')}
+                       </button>
                        
                        <button 
                             type="button" 
@@ -214,7 +237,15 @@ export const Auth = () => {
                            />
                        </div>
 
-                       <button type="submit" className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4">{t('signup')}</button>
+                       <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className="w-full py-3 bg-primary text-black font-bold rounded-full hover:scale-105 transition mt-4 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                       >
+                           {isSubmitting ? (
+                             <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                           ) : t('signup')}
+                       </button>
                        
                        <button 
                             type="button" 

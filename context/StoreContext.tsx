@@ -362,8 +362,8 @@ interface StoreContextType {
 
   // Auth
   currentUser: User | null;
-  login: (username: string, pass: string) => boolean;
-  register: (user: Omit<User, 'id'>) => boolean;
+  login: (username: string, pass: string) => Promise<boolean> | boolean;
+  register: (user: Omit<User, 'id'>) => Promise<boolean> | boolean;
   logout: () => void;
   updateUserProfile: (data: Partial<User>) => { success: boolean; message?: string };
   
@@ -414,7 +414,7 @@ interface StoreContextType {
   existingArtists: string[];
   
   // Artist Actions
-  registerArtist: (data: Omit<ArtistAccount, 'id' | 'status'>) => { success: boolean, message?: string };
+  registerArtist: (data: Omit<ArtistAccount, 'id' | 'status'>) => Promise<{ success: boolean, message?: string }> | { success: boolean, message?: string };
   registerModerator: (data: ModeratorAccount) => Promise<{ success: boolean, message?: string }> | { success: boolean, message?: string };
   loginArtistOrMod: (username: string, pass: string, type: 'ARTIST' | 'MODERATOR') => Promise<{ success: boolean, message?: string }> | { success: boolean, message?: string };
   logoutArtistHub: () => void;
@@ -888,11 +888,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
-            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod] = await Promise.all([
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers] = await Promise.all([
               SupabaseService.fetchReleases(),
               SupabaseService.fetchArtistAccounts(),
               SupabaseService.fetchPlaylists(),
-              SupabaseService.fetchModeratorAccount()
+              SupabaseService.fetchModeratorAccount(),
+              SupabaseService.fetchUsers()
             ]);
 
             if (remoteReleases !== null) {
@@ -909,6 +910,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (remotePlaylists !== null) {
               setPlaylists(remotePlaylists);
               StorageService.save('huevify_playlists', remotePlaylists);
+            }
+            if (remoteUsers !== null) {
+              const localUsers = StorageService.load<User[]>('huevify_users', []);
+              const mergedMap = new Map<string, User>();
+              localUsers.forEach(u => mergedMap.set(u.id, u));
+              remoteUsers.forEach(u => mergedMap.set(u.id, u));
+              const merged = Array.from(mergedMap.values());
+              StorageService.save('huevify_users', merged);
             }
             if (remoteMod) {
               setHasModerator(true);
@@ -963,6 +972,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const freshPlaylists = await SupabaseService.fetchPlaylists();
         if (freshPlaylists) {
           setPlaylists(freshPlaylists);
+        }
+      } else if (table === 'users') {
+        const freshUsers = await SupabaseService.fetchUsers();
+        if (freshUsers) {
+          const localUsers = StorageService.load<User[]>('huevify_users', []);
+          const mergedMap = new Map<string, User>();
+          localUsers.forEach(u => mergedMap.set(u.id, u));
+          freshUsers.forEach(u => mergedMap.set(u.id, u));
+          const merged = Array.from(mergedMap.values());
+          StorageService.save('huevify_users', merged);
         }
       } else if (table === 'moderator_accounts') {
         const freshMod = await SupabaseService.fetchModeratorAccount();
@@ -1059,11 +1078,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Artist Hub Methods ---
 
-  const registerArtist = (data: Omit<ArtistAccount, 'id' | 'status'>): { success: boolean, message?: string } => {
-      if (artistAccounts.some(a => a.username === data.username)) return { success: false, message: "Username taken" };
+  const registerArtist = async (data: Omit<ArtistAccount, 'id' | 'status'>): Promise<{ success: boolean, message?: string }> => {
+      const trimmedUser = data.username.trim();
+      if (artistAccounts.some(a => a.username.toLowerCase() === trimmedUser.toLowerCase())) {
+        return { success: false, message: "Username taken" };
+      }
+      if (isSupabaseConfigured()) {
+        try {
+          const remoteArtists = await SupabaseService.fetchArtistAccounts();
+          if (remoteArtists && remoteArtists.some(a => a.username.toLowerCase() === trimmedUser.toLowerCase())) {
+            return { success: false, message: "Username taken" };
+          }
+        } catch (e) {
+          console.warn('Check remote artist username error:', e);
+        }
+      }
       
       const newArtist: ArtistAccount = {
           ...data,
+          username: trimmedUser,
           id: `art_${Date.now()}`,
           status: 'PENDING'
       };
@@ -1072,7 +1105,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       StorageService.save('huevify_artist_accounts', updated);
       notifySync('ARTIST_DATA_UPDATE');
       if (isSupabaseConfigured()) {
-          SupabaseService.saveArtistAccount(newArtist).catch(e => console.warn('Supabase save artist error:', e));
+          await SupabaseService.saveArtistAccount(newArtist).catch(e => console.warn('Supabase save artist error:', e));
       }
       return { success: true };
   };
@@ -1525,6 +1558,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setProfileEditRequests(updatedReqs);
       StorageService.save('huevify_profile_requests', updatedReqs);
       notifySync('ARTIST_DATA_UPDATE');
+
+      if (isSupabaseConfigured()) {
+        const updatedArtist = updatedAccounts.find(a => a.id === req.artistId);
+        if (updatedArtist) {
+          SupabaseService.saveArtistAccount(updatedArtist).catch(e => console.warn('Supabase save artist profile edit error:', e));
+        }
+      }
   };
   const rejectProfileEdit = (id: string) => {
       const updatedReqs = profileEditRequests.map(r => r.id === id ? { ...r, status: 'REJECTED' as const } : r);
@@ -1704,6 +1744,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           StorageService.save('huevify_playlists', updatedPlaylists);
           setPlaylists(updatedPlaylists);
           notifySync('PLAYLISTS_UPDATE');
+          if (isSupabaseConfigured()) {
+            updatedPlaylists.filter(p => p.ownerId === currentUser.id).forEach(p => {
+              SupabaseService.savePlaylist(p).catch(e => console.warn('Supabase sync playlist creator error:', e));
+            });
+          }
       }
       if (isSupabaseConfigured()) {
           SupabaseService.saveUser(updatedUser).catch(e => console.warn('Supabase save user error:', e));
@@ -1712,23 +1757,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // --- Auth Methods ---
-  const login = (username: string, pass: string): boolean => {
+  const login = async (username: string, pass: string): Promise<boolean> => {
+    const trimmedUser = username.trim();
     const users = StorageService.load<User[]>('huevify_users', []);
-    const user = users.find(u => u.username === username && u.password === pass);
+    let user = users.find(u => u.username.toLowerCase() === trimmedUser.toLowerCase() && u.password === pass);
+    
+    // If not found in local storage, check Supabase directly
+    if (!user && isSupabaseConfigured()) {
+      try {
+        const remoteUser = await SupabaseService.fetchUserByUsername(trimmedUser);
+        if (remoteUser && remoteUser.password === pass) {
+          user = remoteUser;
+          const updatedUsers = [...users.filter(u => u.id !== user!.id), user];
+          StorageService.save('huevify_users', updatedUsers);
+        }
+      } catch (e) {
+        console.warn('Supabase login check failed:', e);
+      }
+    }
+
     if (user) {
         setCurrentUser(user);
         StorageService.save('huevify_current_user', user);
+        
+        // Restore user preferences if in Supabase
+        if (isSupabaseConfigured()) {
+          SupabaseService.fetchUserPreferences(user.id).then(prefs => {
+            if (prefs) {
+              if (prefs.likedTracks) StorageService.save(`huevify_liked_${user.id}`, prefs.likedTracks);
+              if (prefs.followedArtists) StorageService.save(`huevify_followed_${user.id}`, prefs.followedArtists);
+            }
+          }).catch(e => console.warn('Restore user prefs error:', e));
+        }
+
         return true;
     }
     return false;
   };
 
-  const register = (newUser: Omit<User, 'id'>): boolean => {
+  const register = async (newUser: Omit<User, 'id'>): Promise<boolean> => {
+      const trimmedUser = newUser.username.trim();
       const users = StorageService.load<User[]>('huevify_users', []);
-      if (users.some(u => u.username === newUser.username)) {
-          return false; // User exists
+      if (users.some(u => u.username.toLowerCase() === trimmedUser.toLowerCase())) {
+          return false; // User exists in local storage
       }
-      const user: User = { ...newUser, id: `user_${Date.now()}` };
+      if (isSupabaseConfigured()) {
+          try {
+              const remoteExists = await SupabaseService.fetchUserByUsername(trimmedUser);
+              if (remoteExists) {
+                  return false; // User already exists in Supabase
+              }
+          } catch (e) {
+              console.warn('Check existing user error:', e);
+          }
+      }
+      const user: User = { ...newUser, username: trimmedUser, id: `user_${Date.now()}` };
       const updatedUsers = [...users, user];
       StorageService.save('huevify_users', updatedUsers);
       setCurrentUser(user);
@@ -1840,7 +1923,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleFollowArtist = (artistName: string) => {
-    setFollowedArtists(prev => prev.includes(artistName) ? prev.filter(a => a !== artistName) : [...prev, artistName]);
+    setFollowedArtists(prev => {
+      const updated = prev.includes(artistName) ? prev.filter(a => a !== artistName) : [...prev, artistName];
+      if (currentUser) {
+        StorageService.save(`huevify_followed_${currentUser.id}`, updated);
+        if (isSupabaseConfigured()) {
+          SupabaseService.saveUserPreferences(currentUser.id, { followedArtists: updated }).catch(e => console.warn('Supabase follow sync error:', e));
+        }
+      }
+      return updated;
+    });
   };
   const isArtistFollowed = (artistName: string) => followedArtists.includes(artistName);
 
@@ -2053,7 +2145,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return likedPl ? likedPl.tracks.includes(trackId) : false; 
   };
   
-  const toggleAlbumLike = (albumId: string) => { setLikedAlbumIds(prev => prev.includes(albumId) ? prev.filter(id => id !== albumId) : [...prev, albumId]); };
+  const toggleAlbumLike = (albumId: string) => { 
+    setLikedAlbumIds(prev => {
+      const updated = prev.includes(albumId) ? prev.filter(id => id !== albumId) : [...prev, albumId];
+      if (currentUser) {
+        StorageService.save(`huevify_liked_albums_${currentUser.id}`, updated);
+        if (isSupabaseConfigured()) {
+          SupabaseService.saveUserPreferences(currentUser.id, { likedAlbumIds: updated }).catch(e => console.warn('Supabase liked albums sync error:', e));
+        }
+      }
+      return updated;
+    });
+  };
   const isAlbumLiked = (albumId: string) => likedAlbumIds.includes(albumId);
   const openAddToPlaylist = (trackId: string) => { setTrackIdToAdd(trackId); setAddToPlaylistOpen(true); };
   const closeAddToPlaylist = () => { setAddToPlaylistOpen(false); setTrackIdToAdd(null); };

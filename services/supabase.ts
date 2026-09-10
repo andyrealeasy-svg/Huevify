@@ -184,6 +184,28 @@ export const SupabaseService = {
     }
   },
 
+  async fetchUserByUsername(username: string): Promise<User | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('username', username.trim())
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        id: data.id,
+        username: data.username,
+        password: data.password,
+        displayName: data.display_name,
+        avatar: data.avatar || undefined
+      };
+    } catch (e) {
+      console.warn('Supabase fetchUserByUsername failed:', e);
+      return null;
+    }
+  },
+
   async saveUser(user: User): Promise<boolean> {
     if (!supabase) return false;
     try {

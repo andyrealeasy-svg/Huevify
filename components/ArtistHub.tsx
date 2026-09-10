@@ -148,7 +148,7 @@ export const ArtistHub = () => {
           return;
       }
 
-      const res = registerArtist({
+      const res = await registerArtist({
           artistName: finalArtistName, 
           username, 
           password,
