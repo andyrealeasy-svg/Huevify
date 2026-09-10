@@ -79,13 +79,9 @@ export const Auth = () => {
   };
 
   return (
-    <div className="fixed inset-0 overflow-y-auto">
-       {/* Fixed Background Layer */}
-       <div className="fixed inset-0 bg-background z-[-2]"></div>
-       <div className="fixed inset-0 bg-gradient-to-b from-huevify/40 to-black z-[-1]"></div>
-       
+    <div className="fixed inset-0 overflow-y-auto bg-background bg-gradient-to-b from-[#1e3a8a]/40 to-black">
        <div className="min-h-full flex items-center justify-center p-4">
-           <div className="z-10 w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-300 relative my-4">
+           <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-300 relative my-4">
                
                <div className="flex flex-col items-center mb-8">
                     <div className="w-24 h-24 rounded-full bg-surface-highlight flex items-center justify-center mb-4 shadow-xl border border-white/5">
