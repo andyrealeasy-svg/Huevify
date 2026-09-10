@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert } from './Icons.tsx';
+import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2 } from './Icons.tsx';
 import { AppSettings } from '../types.ts';
+import { compressImage } from '../utils/imageCompressor.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
 type ModalView = 'MENU' | 'PROFILE_EDIT' | 'APP_SETTINGS';
 
@@ -25,8 +27,10 @@ const COLORS = [
 ];
 
 export const ProfileModal = () => {
-  const { isProfileModalOpen, setProfileModalOpen, currentUser, logout, updateUserProfile, appSettings, updateSettings, setArtistHubOpen, t } = useStore();
+  const { isProfileModalOpen, setProfileModalOpen, currentUser, logout, updateUserProfile, appSettings, updateSettings, setArtistHubOpen, t, isSupabaseConnected, clearAppCache } = useStore();
   const [view, setView] = useState<ModalView>('MENU');
+  const [isStorageReady, setIsStorageReady] = useState<boolean | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Edit Profile State
   const [editName, setEditName] = useState("");
@@ -45,6 +49,10 @@ export const ProfileModal = () => {
           setEditPass(currentUser.password);
           setEditAvatar(currentUser.avatar || "");
           setEditMessage(null);
+          
+          if (isSupabaseConfigured()) {
+              SupabaseService.checkStorageBucket().then(ok => setIsStorageReady(ok));
+          }
       }
   }, [isProfileModalOpen, currentUser]);
 
@@ -55,14 +63,22 @@ export const ProfileModal = () => {
       setArtistHubOpen(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditAvatar(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file, 400, 400, 0.85);
+      if (compressed) {
+        let finalAvatar = compressed;
+        if (isSupabaseConfigured()) {
+          try {
+            const url = await SupabaseService.uploadMedia(compressed, 'avatars', file.name);
+            if (url) finalAvatar = url;
+          } catch (err) {
+            console.warn('Avatar storage upload fallback:', err);
+          }
+        }
+        setEditAvatar(finalAvatar);
+      }
     }
   };
 
@@ -308,6 +324,92 @@ export const ProfileModal = () => {
                             />
                             <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                         </label>
+                    </div>
+                </div>
+            </div>
+
+            {/* Cloud Database & Storage (Supabase) */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <Database size={18} className="text-primary" />
+                    <h3 className="font-bold">Cloud Database & Storage (Supabase)</h3>
+                </div>
+                <div className="p-3 bg-surface-highlight rounded border border-surface-highlight flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Database</span>
+                        {isSupabaseConnected ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Connected
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                Ready (Local Fallback)
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary">Storage (Media)</span>
+                        {isStorageReady ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Bucket Active
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+                                Uploads Enabled
+                            </span>
+                        )}
+                    </div>
+
+                    <p className="text-xs text-secondary leading-relaxed">
+                        Tracks, album covers, playlist art, and avatars are uploaded to Supabase Storage (bucket <code className="text-primary font-mono bg-black/30 px-1 py-0.5 rounded">media</code>). SQL setup script is included in <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">supabase/schema.sql</code>.
+                    </p>
+                </div>
+            </div>
+
+            {/* Local Storage & Cache Maintenance */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <Trash2 size={18} className="text-red-400" />
+                    <h3 className="font-bold">Локальный кэш и хранилище</h3>
+                </div>
+                <div className="p-3 bg-surface-highlight rounded border border-surface-highlight flex flex-col gap-3">
+                    <p className="text-xs text-secondary leading-relaxed">
+                        Если в браузере остались устаревшие релизы, треки или тестовые данные из LocalStorage / IndexedDB, нажмите кнопку ниже для полной очистки и обновления из облака Supabase.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                        <button
+                            type="button"
+                            disabled={isClearing}
+                            onClick={async () => {
+                                setIsClearing(true);
+                                await clearAppCache(true);
+                                setIsClearing(false);
+                            }}
+                            className="flex-1 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                            <Trash2 size={14} />
+                            {isClearing ? "Очистка..." : "Очистить кэш (сохранить вход)"}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isClearing}
+                            onClick={async () => {
+                                if (window.confirm("Вы уверены? Это действие очистит весь локальный кэш и выполнит выход из аккаунта.")) {
+                                    setIsClearing(true);
+                                    await clearAppCache(false);
+                                    setIsClearing(false);
+                                    setProfileModalOpen(false);
+                                }
+                            }}
+                            className="py-2 px-3 bg-white/5 hover:bg-white/10 text-secondary hover:text-white border border-white/10 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                            Полный сброс
+                        </button>
                     </div>
                 </div>
             </div>

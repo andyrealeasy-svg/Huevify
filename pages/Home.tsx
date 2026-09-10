@@ -168,42 +168,50 @@ export const Home = () => {
 
       <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('latestReleases')}</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up mb-8">
-        {latestReleases.map(album => (
-          <div 
-            key={album.id} 
-            onClick={() => setView({ type: 'ALBUM', id: album.id })}
-            className="w-[150px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
-          >
-            <div className="relative mb-3 md:mb-4 w-full aspect-square">
-              <img src={album.covers[0]} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
-              <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                <Play fill="black" size={24} className="text-black ml-1" />
+        {latestReleases.length === 0 ? (
+          <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noReleases')}</div>
+        ) : (
+          latestReleases.map(album => (
+            <div 
+              key={album.id} 
+              onClick={() => setView({ type: 'ALBUM', id: album.id })}
+              className="w-[150px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
+            >
+              <div className="relative mb-3 md:mb-4 w-full aspect-square">
+                <img src={album.covers[0]} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
+                <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                  <Play fill="black" size={24} className="text-black ml-1" />
+                </div>
               </div>
+              <h4 className="font-bold truncate text-sm md:text-base">{album.title}</h4>
+              <p className="text-xs md:text-sm text-secondary truncate">{album.artist}</p>
             </div>
-            <h4 className="font-bold truncate text-sm md:text-base">{album.title}</h4>
-            <p className="text-xs md:text-sm text-secondary truncate">{album.artist}</p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('popularAlbums')}</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
-        {albums.map(album => (
-          <div 
-            key={album.id} 
-            onClick={() => setView({ type: 'ALBUM', id: album.id })}
-            className="w-[150px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
-          >
-            <div className="relative mb-3 md:mb-4 w-full aspect-square">
-              <img src={album.covers[0]} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
-              <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                <Play fill="black" size={24} className="text-black ml-1" />
+        {albums.length === 0 ? (
+          <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noReleases')}</div>
+        ) : (
+          albums.map(album => (
+            <div 
+              key={album.id} 
+              onClick={() => setView({ type: 'ALBUM', id: album.id })}
+              className="w-[150px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
+            >
+              <div className="relative mb-3 md:mb-4 w-full aspect-square">
+                <img src={album.covers[0]} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
+                <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                  <Play fill="black" size={24} className="text-black ml-1" />
+                </div>
               </div>
+              <h4 className="font-bold truncate text-sm md:text-base">{album.title}</h4>
+              <p className="text-xs md:text-sm text-secondary truncate">{album.artist} • {album.year}</p>
             </div>
-            <h4 className="font-bold truncate text-sm md:text-base">{album.title}</h4>
-            <p className="text-xs md:text-sm text-secondary truncate">{album.artist} • {album.year}</p>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

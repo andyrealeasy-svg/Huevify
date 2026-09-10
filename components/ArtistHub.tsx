@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore } from '../context/StoreContext.tsx';
+import { useStore, generateHUEQ } from '../context/StoreContext.tsx';
+import { compressImage } from '../utils/imageCompressor.ts';
 import { 
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio, 
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
   Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp
 } from './Icons.tsx';
 import { DistributionTrack, ReleaseType, ReleaseRequest } from '../types.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
 
@@ -95,16 +97,20 @@ export const ArtistHub = () => {
               setView('MOD_DASH');
               setModNewPassword("");
           }
-          else setView('AUTH');
+          else {
+              setView('AUTH');
+              setRole('ARTIST');
+              setMessage("");
+          }
       }
   }, [isArtistHubOpen, currentArtist, currentModerator]);
 
   if (!isArtistHubOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
       e.preventDefault();
       setMessage("");
-      const res = loginArtistOrMod(username, password, role);
+      const res = await loginArtistOrMod(username, password, role);
       if (res.success) {
           if (role === 'ARTIST') {
               setView('ARTIST_DASH');
@@ -116,7 +122,7 @@ export const ArtistHub = () => {
       }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
       
       if (role === 'MODERATOR') {
@@ -124,7 +130,7 @@ export const ArtistHub = () => {
               setMessage(t('modExists'));
               return;
           }
-          const res = registerModerator({ username, password });
+          const res = await registerModerator({ username, password });
           if (res.success) {
               setMessage("Moderator registered! Please login.");
               setAuthMode('LOGIN');
@@ -161,21 +167,36 @@ export const ArtistHub = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          // Convert to Base64 for persistence
+          showNotification("Подготовка и загрузка аудиофайла...", "info");
+          // Convert to Base64 for instant preview & fallback
           const reader = new FileReader();
           reader.onloadend = () => {
               const base64Audio = reader.result as string;
               
               // Create temp audio element to get duration
               const audio = new Audio(base64Audio);
-              audio.onloadedmetadata = () => {
+              audio.onloadedmetadata = async () => {
+                  let finalUrl = base64Audio;
+                  if (isSupabaseConfigured()) {
+                      try {
+                          const storageUrl = await SupabaseService.uploadMedia(file, 'tracks', file.name);
+                          if (storageUrl) {
+                              finalUrl = storageUrl;
+                              showNotification("Аудиофайл загружен в Supabase Storage!", "success");
+                          }
+                      } catch (err) {
+                          console.warn("Storage audio upload fallback:", err);
+                      }
+                  }
+
                   const newTrack: DistributionTrack = {
                       title: file.name.replace(/\.[^/.]+$/, ""),
                       explicit: false,
                       mainArtists: [],
                       genre: distGenre, // Default to release genre
                       duration: audio.duration,
-                      fileUrl: base64Audio
+                      fileUrl: finalUrl,
+                      generatedHueq: generateHUEQ()
                   };
                   setDistTracks(prev => [...prev, newTrack]);
               };
@@ -284,7 +305,7 @@ export const ArtistHub = () => {
       setDistStep(prev => prev + 1);
   };
 
-  const handleSubmitRelease = () => {
+  const handleSubmitRelease = async () => {
       if (!distDate || !distTime) {
           showNotification(t('specifyDate'), "error");
           return;
@@ -298,14 +319,44 @@ export const ArtistHub = () => {
           artistName: distArtistName || "Various Artists" 
       } : undefined;
 
+      // Ensure any tracks or covers still in data: format are uploaded to Supabase Storage if connected
+      let finalTracks = distTracks;
+      let finalCovers = distCovers;
+
+      if (isSupabaseConfigured()) {
+          finalTracks = await Promise.all(distTracks.map(async (t) => {
+              if (t.fileUrl && t.fileUrl.startsWith('data:')) {
+                  try {
+                      const url = await SupabaseService.uploadMedia(t.fileUrl, 'tracks', `${t.title}.mp3`);
+                      if (url) return { ...t, fileUrl: url };
+                  } catch (e) {
+                      console.warn('Track storage upload fallback:', e);
+                  }
+              }
+              return t;
+          }));
+
+          finalCovers = await Promise.all(distCovers.map(async (c, idx) => {
+              if (c && c.startsWith('data:')) {
+                  try {
+                      const url = await SupabaseService.uploadMedia(c, 'covers', `cover_${idx}.jpg`);
+                      if (url) return url;
+                  } catch (e) {
+                      console.warn('Cover storage upload fallback:', e);
+                  }
+              }
+              return c;
+          }));
+      }
+
       const payload = {
           title: distTitle,
           type: distType,
           genre: distGenre,
           label: distLabel || (currentArtist?.artistName || distArtistName || "Independent"),
-          covers: distCovers, 
+          covers: finalCovers, 
           additionalMainArtists: distMainArtists,
-          tracks: distTracks,
+          tracks: finalTracks,
           releaseDate: dateTime.toISOString(),
           releaseMessage: distMsg
       };
@@ -345,25 +396,43 @@ export const ArtistHub = () => {
       setEditingId(null);
   };
   
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) {
-          Array.from(files).forEach((file: File) => {
-              const reader = new FileReader();
-              reader.onloadend = () => setDistCovers(prev => [...prev, reader.result as string]);
-              reader.readAsDataURL(file);
-          });
+          for (const file of Array.from(files)) {
+              const compressed = await compressImage(file, 800, 800, 0.85);
+              if (compressed) {
+                  let finalCover = compressed;
+                  if (isSupabaseConfigured()) {
+                      try {
+                          const storageUrl = await SupabaseService.uploadMedia(compressed, 'covers', file.name);
+                          if (storageUrl) finalCover = storageUrl;
+                      } catch (err) {
+                          console.warn('Cover storage upload fallback:', err);
+                      }
+                  }
+                  setDistCovers(prev => [...prev, finalCover]);
+              }
+          }
       }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditAvatar(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file, 400, 400, 0.85);
+      if (compressed) {
+        let finalAvatar = compressed;
+        if (isSupabaseConfigured()) {
+          try {
+            const storageUrl = await SupabaseService.uploadMedia(compressed, 'avatars', file.name);
+            if (storageUrl) finalAvatar = storageUrl;
+          } catch (err) {
+            console.warn('Avatar storage upload fallback:', err);
+          }
+        }
+        setEditAvatar(finalAvatar);
+      }
     }
   };
 
@@ -428,25 +497,32 @@ export const ArtistHub = () => {
                       {role === 'ARTIST' ? <Mic2 size={32} className="text-primary" /> : <Shield size={32} className="text-primary" />}
                   </div>
               </div>
-              <h2 className="text-2xl font-bold text-center mb-6">{authMode === 'LOGIN' ? `${t('login')} ` : `${t('signup')} `} Huevify For {role === 'ARTIST' ? t('artists') : 'Moderators'}</h2>
+              <h2 className="text-2xl font-bold text-center mb-6">
+                  {role === 'MODERATOR' 
+                      ? (hasModerator ? "Вход для модератора" : `${authMode === 'LOGIN' ? t('login') : t('signup')} Huevify For Moderators`)
+                      : `${authMode === 'LOGIN' ? t('login') : t('signup')} Huevify For ${t('artists')}`}
+              </h2>
               
-              <div className="flex bg-surface-highlight p-1 rounded-full mb-6">
-                  <button 
-                      onClick={() => setRole('ARTIST')} 
-                      className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'ARTIST' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
-                  >
-                      {t('artist')}
-                  </button>
-                  
-                  {(!hasModerator || authMode === 'LOGIN') && (
+              {/* Only show role toggle if no moderator exists yet */}
+              {!hasModerator && (
+                  <div className="flex bg-surface-highlight p-1 rounded-full mb-6">
                       <button 
-                          onClick={() => setRole('MODERATOR')}
+                          type="button"
+                          onClick={() => { setRole('ARTIST'); setMessage(""); }} 
+                          className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'ARTIST' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
+                      >
+                          {t('artist')}
+                      </button>
+                      
+                      <button 
+                          type="button"
+                          onClick={() => { setRole('MODERATOR'); setMessage(""); }}
                           className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'MODERATOR' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
                       >
                           Moderator
                       </button>
-                  )}
-              </div>
+                  </div>
+              )}
 
               {message && <div className="bg-red-500/20 text-red-500 p-3 rounded mb-4 text-center text-sm animate-pulse">{message}</div>}
 
@@ -497,16 +573,56 @@ export const ArtistHub = () => {
                   />
                   
                   <button type="submit" className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition-transform mt-2 shadow-lg hover:shadow-primary/20">
-                      {authMode === 'LOGIN' ? t('login') : 'Submit Application'}
+                      {authMode === 'LOGIN' ? (role === 'MODERATOR' ? "Войти как модератор" : t('login')) : (role === 'MODERATOR' ? "Зарегистрировать модератора" : 'Submit Application')}
                   </button>
               </form>
 
-              <p className="text-center text-secondary text-sm mt-4">
-                  {authMode === 'LOGIN' ? "Don't have an account?" : "Already have an account?"} 
-                  <button onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
-                      {authMode === 'LOGIN' ? t('signup') : t('login')}
-                  </button>
-              </p>
+              {role === 'ARTIST' ? (
+                  <p className="text-center text-secondary text-sm mt-4">
+                      {authMode === 'LOGIN' ? "Don't have an account?" : "Already have an account?"} 
+                      <button type="button" onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
+                          {authMode === 'LOGIN' ? t('signup') : t('login')}
+                      </button>
+                  </p>
+              ) : (
+                  !hasModerator && (
+                      <p className="text-center text-secondary text-sm mt-4">
+                          {authMode === 'LOGIN' ? "Нет аккаунта модератора?" : "Уже зарегистрирован?"} 
+                          <button type="button" onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
+                              {authMode === 'LOGIN' ? t('signup') : t('login')}
+                          </button>
+                      </p>
+                  )
+              )}
+
+              {/* Discreet toggle to moderator login if moderator exists, and return button if currently in moderator login */}
+              {hasModerator && (
+                  role === 'ARTIST' ? (
+                      authMode === 'LOGIN' && (
+                          <div className="mt-4 pt-3 border-t border-white/5 text-center">
+                              <button 
+                                  type="button" 
+                                  onClick={() => { setRole('MODERATOR'); setAuthMode('LOGIN'); setMessage(""); }} 
+                                  className="text-xs text-secondary/60 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                              >
+                                  <Shield size={13} />
+                                  Вход для модератора
+                              </button>
+                          </div>
+                      )
+                  ) : (
+                      <div className="mt-4 pt-3 border-t border-white/5 text-center">
+                          <button 
+                              type="button" 
+                              onClick={() => { setRole('ARTIST'); setMessage(""); }} 
+                              className="text-xs text-secondary hover:text-white transition-colors inline-flex items-center gap-1.5"
+                          >
+                              <ArrowLeft size={13} />
+                              Вернуться к входу для артистов
+                          </button>
+                      </div>
+                  )
+              )}
           </div>
       </div>
   );
@@ -604,7 +720,7 @@ export const ArtistHub = () => {
                         {allDisplayReleases.map((r: any, idx) => (
                             <tr key={idx} className="border-b border-surface-highlight hover:bg-white/5 transition cursor-pointer" onClick={() => setSelectedRelease(r)}>
                                 <td className="p-4 flex items-center gap-3">
-                                    <img src={r.covers[0]} className="w-10 h-10 rounded object-cover shadow-sm flex-shrink-0" />
+                                    <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-10 h-10 rounded object-cover shadow-sm flex-shrink-0" />
                                     <span className="font-bold">{r.title}</span>
                                 </td>
                                 <td className="p-4 font-bold text-sm">{r.artistName}</td>
@@ -662,6 +778,13 @@ export const ArtistHub = () => {
                       </tr>
                   </thead>
                   <tbody>
+                      {tracks.length === 0 && (
+                          <tr>
+                              <td colSpan={5} className="p-8 text-center text-secondary">
+                                  {t('noTracks')}
+                              </td>
+                          </tr>
+                      )}
                       {tracks.map(t => {
                           const isTest = t.id.startsWith('t');
                           return (
@@ -774,7 +897,7 @@ export const ArtistHub = () => {
                       {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
                       {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).map(r => (
                           <div key={r.id} className="p-3 bg-surface-highlight rounded flex gap-3 cursor-pointer hover:bg-zinc-800 transition-colors animate-slide-in-bottom items-start" onClick={() => setSelectedRelease(r)}>
-                              <img src={r.covers[0]} className="w-12 h-12 rounded object-cover flex-shrink-0" alt=""/>
+                              <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-12 h-12 rounded object-cover flex-shrink-0" alt=""/>
                               <div className="flex-1 min-w-0 flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
                                       <div className="font-bold truncate">{r.title}</div>
@@ -944,13 +1067,20 @@ export const ArtistHub = () => {
                                           )}
                                       </div>
                                       <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center text-xs font-bold text-secondary">{i+1}</div>
-                                      <input 
-                                          type="text" 
-                                          value={track.title} 
-                                          onChange={e => updateTrack(i, 'title', e.target.value)}
-                                          className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
-                                          placeholder={t('trackTitle')}
-                                      />
+                                      <div className="flex flex-col w-full">
+                                          <input 
+                                              type="text" 
+                                              value={track.title} 
+                                              onChange={e => updateTrack(i, 'title', e.target.value)}
+                                              className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
+                                              placeholder={t('trackTitle')}
+                                          />
+                                          {track.generatedHueq && !track.existingHueq && (
+                                              <span className="text-[10px] text-secondary/70 font-mono mt-1">
+                                                  HUEQ: {track.generatedHueq}
+                                              </span>
+                                          )}
+                                      </div>
                                   </div>
                                   <button onClick={() => setDistTracks(distTracks.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-400"><Trash2 size={20}/></button>
                               </div>
@@ -1040,6 +1170,20 @@ export const ArtistHub = () => {
                       <div className="flex flex-col gap-1">
                           <label className="text-xs font-bold text-secondary uppercase">{t('msgToMods')}</label>
                           <textarea value={distMsg} onChange={e => setDistMsg(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none h-24 resize-none" placeholder={t('trackNote')}></textarea>
+                      </div>
+                      
+                      <div className="mt-4 border-t border-surface-highlight pt-4">
+                          <h4 className="text-sm font-bold text-secondary uppercase mb-2">Release Preview</h4>
+                          <div className="flex flex-col gap-2">
+                              {distTracks.map((track, idx) => (
+                                  <div key={idx} className="flex justify-between items-center bg-surface-highlight p-2 rounded">
+                                      <span className="font-bold text-sm">{track.title}</span>
+                                      <span className="font-mono text-[10px] text-secondary/70 border border-secondary/30 px-2 py-0.5 rounded select-all hover:text-white hover:border-white transition-colors cursor-text" title="HUEQ">
+                                          {track.existingHueq || track.generatedHueq}
+                                      </span>
+                                  </div>
+                              ))}
+                          </div>
                       </div>
                   </div>
               </div>
@@ -1175,7 +1319,7 @@ export const ArtistHub = () => {
                         {myReleases.map((r, idx) => (
                             <tr key={idx} className="border-b border-surface-highlight hover:bg-white/5 transition cursor-pointer" onClick={() => setSelectedRelease(r)}>
                                 <td className="p-4 flex items-center gap-3">
-                                    <img src={r.covers[0]} className="w-10 h-10 rounded object-cover shadow-sm flex-shrink-0" />
+                                    <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-10 h-10 rounded object-cover shadow-sm flex-shrink-0" />
                                     <span className="font-bold">{r.title}</span>
                                 </td>
                                 <td className="p-4 text-sm text-secondary">{r.type}</td>
@@ -1216,7 +1360,7 @@ export const ArtistHub = () => {
                 {myReleases.map((r, idx) => (
                     <div key={idx} className="bg-surface p-4 rounded-lg flex items-center gap-4 cursor-pointer active:scale-95 transition items-start" onClick={() => setSelectedRelease(r)}>
                         <div className="w-16 h-16 shrink-0">
-                            <img src={r.covers[0]} className="w-full h-full rounded object-cover shadow-sm" />
+                            <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-full h-full rounded object-cover shadow-sm" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="font-bold text-lg truncate">{r.title}</div>

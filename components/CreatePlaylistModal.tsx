@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { X, Image } from './Icons.tsx';
+import { compressImage } from '../utils/imageCompressor.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
 export const CreatePlaylistModal = () => {
   const { 
@@ -36,14 +38,22 @@ export const CreatePlaylistModal = () => {
 
   if (!isCreatePlaylistOpen) return null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCover(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file, 600, 600, 0.85);
+      if (compressed) {
+        let finalCover = compressed;
+        if (isSupabaseConfigured()) {
+          try {
+            const url = await SupabaseService.uploadMedia(compressed, 'playlists', file.name);
+            if (url) finalCover = url;
+          } catch (err) {
+            console.warn('Playlist cover storage upload fallback:', err);
+          }
+        }
+        setCover(finalCover);
+      }
     }
   };
 

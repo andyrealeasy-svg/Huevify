@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Camera, X } from './Icons.tsx';
+import { compressImage } from '../utils/imageCompressor.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
 type AuthMode = 'LANDING' | 'LOGIN' | 'REGISTER';
 
@@ -57,14 +59,22 @@ export const Auth = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setRegAvatar(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file, 400, 400, 0.85);
+      if (compressed) {
+        let finalAvatar = compressed;
+        if (isSupabaseConfigured()) {
+          try {
+            const url = await SupabaseService.uploadMedia(compressed, 'avatars', file.name);
+            if (url) finalAvatar = url;
+          } catch (err) {
+            console.warn('Avatar storage upload fallback:', err);
+          }
+        }
+        setRegAvatar(finalAvatar);
+      }
     }
   };
 

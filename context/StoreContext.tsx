@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification } from '../types';
 import { generateInitialData, StorageService } from '../services/data';
+import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase';
 
 interface ArtistStats {
   monthlyPlays: number;
@@ -140,6 +142,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     date: "Date",
     actions: "Actions",
     noReleases: "No releases yet.",
+    noTracks: "No tracks yet.",
     changePass: "Change Password",
     newPass: "New Password",
     updatePass: "Update Password",
@@ -311,6 +314,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     date: "Дата",
     actions: "Действия",
     noReleases: "Релизов пока нет.",
+    noTracks: "Треков пока нет.",
     changePass: "Сменить пароль",
     newPass: "Новый пароль",
     updatePass: "Обновить пароль",
@@ -411,8 +415,8 @@ interface StoreContextType {
   
   // Artist Actions
   registerArtist: (data: Omit<ArtistAccount, 'id' | 'status'>) => { success: boolean, message?: string };
-  registerModerator: (data: ModeratorAccount) => { success: boolean, message?: string };
-  loginArtistOrMod: (username: string, pass: string, type: 'ARTIST' | 'MODERATOR') => { success: boolean, message?: string };
+  registerModerator: (data: ModeratorAccount) => Promise<{ success: boolean, message?: string }> | { success: boolean, message?: string };
+  loginArtistOrMod: (username: string, pass: string, type: 'ARTIST' | 'MODERATOR') => Promise<{ success: boolean, message?: string }> | { success: boolean, message?: string };
   logoutArtistHub: () => void;
   submitRelease: (
       release: Omit<ReleaseRequest, 'id' | 'status' | 'artistId' | 'artistName' | 'submissionTime'>,
@@ -487,6 +491,8 @@ interface StoreContextType {
   isLiked: (trackId: string) => boolean;
   toggleAlbumLike: (albumId: string) => void;
   isAlbumLiked: (albumId: string) => boolean;
+  isSupabaseConnected: boolean;
+  clearAppCache: (keepAuth?: boolean) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -499,8 +505,7 @@ export const useStore = () => {
   return context;
 };
 
-// Helper to generate HUEQ: 000XX0
-const generateHUEQ = (): string => {
+export const generateHUEQ = (): string => {
     const randomDigit = () => Math.floor(Math.random() * 10);
     const randomChar = () => String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
     return `${randomDigit()}${randomDigit()}${randomDigit()}${randomChar()}${randomChar()}${randomDigit()}`;
@@ -541,6 +546,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   const [dailyChart, setDailyChart] = useState<DailyChartTrack[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(isSupabaseConfigured());
   
   // --- Artist Hub State ---
   const [isArtistHubOpen, setArtistHubOpen] = useState(false);
@@ -691,8 +697,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
           const { tracks: initialTracks, albums: initialAlbums } = generateInitialData();
           const plays = storedPlays || StorageService.load<Record<string, number>>('huevify_plays', {});
-          const deletedLegacyAlbums = StorageService.load<string[]>('huevify_deleted_legacy', []);
-          const deletedLegacyTracks = StorageService.load<string[]>('huevify_deleted_legacy_tracks', []);
+          const loadedDeletedLegacyAlbums = StorageService.load<string[]>('huevify_deleted_legacy', []);
+          const deletedLegacyAlbums = Array.isArray(loadedDeletedLegacyAlbums) ? loadedDeletedLegacyAlbums : [];
+          
+          const loadedDeletedLegacyTracks = StorageService.load<string[]>('huevify_deleted_legacy_tracks', []);
+          const deletedLegacyTracks = Array.isArray(loadedDeletedLegacyTracks) ? loadedDeletedLegacyTracks : [];
           
           // Identify tracks that belong to deleted legacy albums
           const deletedLegacyTrackIdsFromAlbums = new Set<string>();
@@ -702,16 +711,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
           });
 
-          // Filter out deleted legacy albums and tracks (both from album delete AND individual track delete)
+          // Filter out deleted legacy albums, tracks, and any test artifacts
           let mergedTracks = initialTracks.filter(t => 
+              !isTestTrack(t) &&
               !deletedLegacyTrackIdsFromAlbums.has(t.id) && 
               !deletedLegacyTracks.includes(t.id)
           ); 
-          let mergedAlbums = initialAlbums.filter(a => !deletedLegacyAlbums.includes(a.id));
+          let mergedAlbums = initialAlbums.filter(a => 
+              !isTestAlbum(a) &&
+              !deletedLegacyAlbums.includes(a.id)
+          );
           
           const artistSet = new Set(mergedAlbums.map(a => a.artist));
 
-          requests.forEach(req => {
+          const validRequests = (Array.isArray(requests) ? requests : []).filter(req => {
+              if (!req || !req.tracks) return false;
+              if (isTestAlbum(req)) return false;
+              return true;
+          });
+          validRequests.forEach(req => {
               // Safety check for malformed requests
               if (!req || !req.tracks) return;
 
@@ -734,7 +752,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       id: albumId,
                       title: req.title,
                       artist: req.artistName,
-                      covers: req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
+                      covers: req.covers && req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
                       trackIds: [],
                       year: new Date(req.releaseDate).getFullYear(),
                       releaseDate: req.releaseDate, 
@@ -776,7 +794,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               title: t.title,
                               artist: t.artist || req.artistName, // Use track override or release artist
                               album: req.title,
-                              cover: req.covers[0], 
+                              cover: req.covers && req.covers.length > 0 ? req.covers[0] : "https://picsum.photos/300", 
                               duration: t.duration, 
                               url: t.fileUrl, 
                               plays: 0,
@@ -821,22 +839,32 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Initialization & User Switching ---
   useEffect(() => {
-    try {
+    let isMounted = true;
+    const initApp = async () => {
+      try {
+        await StorageService.init();
+        if (!isMounted) return;
+
         // 1. Load User
         const sessionUser = StorageService.load<User | null>('huevify_current_user', null);
         if (sessionUser) setCurrentUser(sessionUser);
         
         // 2. Load Global Data
-        const savedArtistAccounts = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []);
+        const savedArtistAccounts = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []).filter(a => !isTestArtist(a));
         setArtistAccounts(savedArtistAccounts);
         
-        const savedReleaseRequests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+        const loadedReleaseRequests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []).filter(r => !isTestAlbum(r));
+        const savedReleaseRequests = Array.isArray(loadedReleaseRequests) ? loadedReleaseRequests : [];
         setReleaseRequests(savedReleaseRequests);
         
-        const savedProfileRequests = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []);
+        const savedProfileRequests = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []).filter(pr => {
+          const name = (pr.artistName || '').trim().toLowerCase();
+          return !['the algorithms', 'binary beats', 'null pointer', 'stack overflow'].includes(name);
+        });
         setProfileEditRequests(savedProfileRequests);
 
-        const savedDeletedLegacy = StorageService.load<string[]>('huevify_deleted_legacy', []);
+        const loadedDeletedLegacy = StorageService.load<string[]>('huevify_deleted_legacy', []);
+        const savedDeletedLegacy = Array.isArray(loadedDeletedLegacy) ? loadedDeletedLegacy : [];
         setDeletedLegacyIds(savedDeletedLegacy);
 
         const mod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
@@ -844,7 +872,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Load Artist/Mod Session
         const sessionArtist = StorageService.load<ArtistAccount | null>('huevify_current_artist', null);
-        if (sessionArtist) setCurrentArtist(sessionArtist);
+        if (sessionArtist && !isTestArtist(sessionArtist)) {
+          setCurrentArtist(sessionArtist);
+        } else if (sessionArtist) {
+          setCurrentArtist(null);
+          StorageService.save('huevify_current_artist', null);
+        }
 
         const sessionMod = StorageService.load<ModeratorAccount | null>('huevify_current_moderator', null);
         if (sessionMod) setCurrentModerator(sessionMod);
@@ -852,15 +885,100 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Initial Lib Refresh
         refreshLibrary(savedReleaseRequests);
 
+        // Supabase Cloud Sync
+        if (isSupabaseConfigured()) {
+          try {
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod] = await Promise.all([
+              SupabaseService.fetchReleases(),
+              SupabaseService.fetchArtistAccounts(),
+              SupabaseService.fetchPlaylists(),
+              SupabaseService.fetchModeratorAccount()
+            ]);
+
+            if (remoteReleases !== null) {
+              const filtered = remoteReleases.filter(r => !isTestAlbum(r));
+              setReleaseRequests(filtered);
+              StorageService.save('huevify_release_requests', filtered);
+              refreshLibrary(filtered);
+            }
+            if (remoteArtists !== null) {
+              const filtered = remoteArtists.filter(a => !isTestArtist(a));
+              setArtistAccounts(filtered);
+              StorageService.save('huevify_artist_accounts', filtered);
+            }
+            if (remotePlaylists !== null) {
+              setPlaylists(remotePlaylists);
+              StorageService.save('huevify_playlists', remotePlaylists);
+            }
+            if (remoteMod) {
+              setHasModerator(true);
+              StorageService.save('huevify_moderator', remoteMod);
+            } else {
+              const localMod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
+              if (localMod) {
+                // If local exists but not in DB, sync local to Supabase
+                SupabaseService.saveModeratorAccount(localMod).catch(e => console.warn('Sync mod to Supabase error:', e));
+              }
+            }
+            setIsSupabaseConnected(true);
+          } catch (supaErr) {
+            console.warn("Supabase initial sync error:", supaErr);
+          }
+        }
+
         audioRef.current.volume = 0.5;
-    } catch (e) {
+      } catch (e) {
         console.error("Initialization failed", e);
-    }
-    
-    // Artificial delay to prevent "Logged out" flash, ensured to run
-    setTimeout(() => {
-        setIsInitialized(true);
-    }, 500);
+      } finally {
+        if (isMounted) {
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initApp();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // --- Realtime Supabase Subscription ---
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const unsubscribe = SupabaseService.subscribeToChanges(async (table) => {
+      if (table === 'releases') {
+        const freshReleases = await SupabaseService.fetchReleases();
+        if (freshReleases) {
+          const filtered = freshReleases.filter(r => !isTestAlbum(r));
+          setReleaseRequests(filtered);
+          refreshLibrary(filtered);
+        }
+      } else if (table === 'artist_accounts') {
+        const freshArtists = await SupabaseService.fetchArtistAccounts();
+        if (freshArtists) {
+          setArtistAccounts(freshArtists.filter(a => !isTestArtist(a)));
+        }
+      } else if (table === 'playlists') {
+        const freshPlaylists = await SupabaseService.fetchPlaylists();
+        if (freshPlaylists) {
+          setPlaylists(freshPlaylists);
+        }
+      } else if (table === 'moderator_accounts') {
+        const freshMod = await SupabaseService.fetchModeratorAccount();
+        if (freshMod) {
+          setHasModerator(true);
+          StorageService.save('huevify_moderator', freshMod);
+        } else {
+          setHasModerator(false);
+          StorageService.save('huevify_moderator', null);
+        }
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // --- Load User-Specific Data when currentUser changes ---
@@ -886,15 +1004,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   });
               }
 
-              // Load Recent per user
-              const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []);
-              setRecentlyPlayed(userRecent);
+              // Load Recent per user and rehydrate with live tracks
+              const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []).filter(t => !isTestTrack(t));
+              const hydratedRecent = userRecent.map(r => tracks.find(t => t.id === r.id) || r).filter(t => !isTestTrack(t));
+              setRecentlyPlayed(hydratedRecent);
 
               // Load Followed/Liked per user (Already separated by key)
-              const storedLikedAlbums = StorageService.load<string[]>(`huevify_liked_albums_${currentUser.id}`, []);
+              const storedLikedAlbums = StorageService.load<string[]>(`huevify_liked_albums_${currentUser.id}`, []).filter(aid => !isTestAlbum({ id: aid }));
               setLikedAlbumIds(storedLikedAlbums);
               
-              const storedFollowedArtists = StorageService.load<string[]>(`huevify_followed_artists_${currentUser.id}`, []);
+              const storedFollowedArtists = StorageService.load<string[]>(`huevify_followed_artists_${currentUser.id}`, []).filter(name => !isTestArtist({ artistName: name }));
               setFollowedArtists(storedFollowedArtists);
           } catch(e) {
               console.error("Failed to load user specific data", e);
@@ -906,7 +1025,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setLikedAlbumIds([]);
           setFollowedArtists([]);
       }
-  }, [currentUser]);
+  }, [currentUser, tracks]);
 
   // --- Release Scheduler Check ---
   useEffect(() => {
@@ -952,22 +1071,40 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setArtistAccounts(updated);
       StorageService.save('huevify_artist_accounts', updated);
       notifySync('ARTIST_DATA_UPDATE');
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveArtistAccount(newArtist).catch(e => console.warn('Supabase save artist error:', e));
+      }
       return { success: true };
   };
 
-  const registerModerator = (data: ModeratorAccount): { success: boolean, message?: string } => {
+  const registerModerator = async (data: ModeratorAccount): Promise<{ success: boolean, message?: string }> => {
       if (hasModerator) return { success: false, message: "Moderator already exists" };
       StorageService.save('huevify_moderator', data);
       setHasModerator(true);
       setCurrentModerator(data);
       // Persist Mod Session
       StorageService.save('huevify_current_moderator', data);
+      if (isSupabaseConfigured()) {
+          try {
+              await SupabaseService.saveModeratorAccount(data);
+          } catch (e) {
+              console.warn('Supabase save moderator error:', e);
+          }
+      }
       return { success: true };
   };
 
-  const loginArtistOrMod = (username: string, pass: string, type: 'ARTIST' | 'MODERATOR'): { success: boolean, message?: string } => {
+  const loginArtistOrMod = async (username: string, pass: string, type: 'ARTIST' | 'MODERATOR'): Promise<{ success: boolean, message?: string }> => {
       if (type === 'MODERATOR') {
-          const mod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
+          let mod = StorageService.load<ModeratorAccount | null>('huevify_moderator', null);
+          if ((!mod || mod.username !== username || mod.password !== pass) && isSupabaseConfigured()) {
+              const remoteMod = await SupabaseService.fetchModeratorAccount();
+              if (remoteMod) {
+                  mod = remoteMod;
+                  setHasModerator(true);
+                  StorageService.save('huevify_moderator', remoteMod);
+              }
+          }
           if (mod && username === mod.username && pass === mod.password) {
               setCurrentModerator(mod);
               StorageService.save('huevify_current_moderator', mod);
@@ -975,7 +1112,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           return { success: false, message: "Invalid moderator credentials" };
       } else {
-          const artist = artistAccounts.find(a => a.username === username && a.password === pass);
+          let artist = artistAccounts.find(a => a.username === username && a.password === pass);
+          if (!artist && isSupabaseConfigured()) {
+              const remoteArtists = await SupabaseService.fetchArtistAccounts();
+              if (remoteArtists) {
+                  const filtered = remoteArtists.filter(a => !isTestArtist(a));
+                  const found = filtered.find(a => a.username === username && a.password === pass);
+                  if (found) {
+                      artist = found;
+                      setArtistAccounts(filtered);
+                      StorageService.save('huevify_artist_accounts', filtered);
+                  }
+              }
+          }
           if (!artist) return { success: false, message: "Invalid credentials" };
           if (artist.status === 'PENDING') return { success: false, message: "Account pending approval" };
           if (artist.status === 'REJECTED') return { success: false, message: "Account rejected" };
@@ -1005,6 +1154,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       notifySync('ARTIST_DATA_UPDATE');
       showNotification(t('artistAccDeleted'), "info");
+      if (isSupabaseConfigured()) {
+          SupabaseService.deleteArtistAccount(artistId).catch(e => console.warn('Supabase delete artist error:', e));
+      }
   };
 
   const changeArtistPassword = (newPass: string) => {
@@ -1018,6 +1170,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCurrentArtist(newSession);
       StorageService.save('huevify_current_artist', newSession);
       showNotification(t('passChanged'), "success");
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveArtistAccount(newSession).catch(e => console.warn('Supabase update artist password error:', e));
+      }
   };
 
   const changeModeratorPassword = (newPass: string) => {
@@ -1027,6 +1182,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCurrentModerator(updatedMod);
       StorageService.save('huevify_current_moderator', updatedMod);
       showNotification(t('passChanged'), "success");
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveModeratorAccount(updatedMod).catch(e => console.warn('Supabase update mod pass error:', e));
+      }
   };
 
   // Helper to remove tracks from playlists and history when a release is deleted
@@ -1050,7 +1208,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const updatedRecent = userRecent.filter(t => !trackSet.has(t.id));
           
           setRecentlyPlayed(updatedRecent);
-          StorageService.save(`huevify_recent_${currentUser.id}`, updatedRecent);
+          const historyToSave = updatedRecent.map(t => ({
+              ...t,
+              url: t.url && t.url.startsWith('data:') ? '' : t.url
+          }));
+          StorageService.save(`huevify_recent_${currentUser.id}`, historyToSave);
       }
   };
 
@@ -1060,7 +1222,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
       }
       
-      const deletedTracks = StorageService.load<string[]>('huevify_deleted_legacy_tracks', []);
+      const loadedDeletedTracks = StorageService.load<string[]>('huevify_deleted_legacy_tracks', []);
+      const deletedTracks = Array.isArray(loadedDeletedTracks) ? loadedDeletedTracks : [];
       if (!deletedTracks.includes(trackId)) {
           const updated = [...deletedTracks, trackId];
           StorageService.save('huevify_deleted_legacy_tracks', updated);
@@ -1127,12 +1290,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []);
               const updatedRecent = userRecent.filter(t => !t.id.includes(releaseId));
               setRecentlyPlayed(updatedRecent);
-              StorageService.save(`huevify_recent_${currentUser.id}`, updatedRecent);
+              const historyToSave = updatedRecent.map(t => ({
+                  ...t,
+                  url: t.url && t.url.startsWith('data:') ? '' : t.url
+              }));
+              StorageService.save(`huevify_recent_${currentUser.id}`, historyToSave);
           }
 
           notifySync('ARTIST_DATA_UPDATE');
           refreshLibrary(updated);
           showNotification(t('releaseDeleted'), "success");
+          if (isSupabaseConfigured()) {
+              SupabaseService.deleteRelease(releaseId).catch(e => console.warn('Supabase delete release error:', e));
+          }
       }
   };
 
@@ -1171,6 +1341,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (newRelease.status === 'LIVE' || newRelease.status === 'APPROVED') {
           refreshLibrary(updated);
       }
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveRelease(newRelease).catch(e => console.warn('Supabase save release error:', e));
+      }
   };
 
   const updateReleaseRequest = (id: string, data: Partial<ReleaseRequest>) => {
@@ -1202,6 +1375,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (req && (req.status === 'LIVE' || req.status === 'APPROVED')) {
           refreshLibrary(updated);
       }
+      if (isSupabaseConfigured() && req) {
+          SupabaseService.saveRelease(req).catch(e => console.warn('Supabase update release error:', e));
+      }
   };
 
   const submitProfileEdit = (editData: Omit<ProfileEditRequest, 'id' | 'status' | 'artistId' | 'artistName'>) => {
@@ -1224,12 +1400,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setArtistAccounts(updated);
       StorageService.save('huevify_artist_accounts', updated);
       notifySync('ARTIST_DATA_UPDATE');
+      if (isSupabaseConfigured()) {
+          const a = updated.find(x => x.id === id);
+          if (a) SupabaseService.saveArtistAccount(a).catch(e => console.warn('Supabase approve artist error:', e));
+      }
   };
   const rejectArtist = (id: string) => {
       const updated = artistAccounts.map(a => a.id === id ? { ...a, status: 'REJECTED' as const } : a);
       setArtistAccounts(updated);
       StorageService.save('huevify_artist_accounts', updated);
       notifySync('ARTIST_DATA_UPDATE');
+      if (isSupabaseConfigured()) {
+          const a = updated.find(x => x.id === id);
+          if (a) SupabaseService.saveArtistAccount(a).catch(e => console.warn('Supabase reject artist error:', e));
+      }
   };
 
   const approveRelease = (id: string) => {
@@ -1254,16 +1438,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const userRecent = StorageService.load<Track[]>(`huevify_recent_${currentUser.id}`, []);
               const updatedRecent = userRecent.filter(t => !t.id.includes(id));
               setRecentlyPlayed(updatedRecent);
-              StorageService.save(`huevify_recent_${currentUser.id}`, updatedRecent);
+              const historyToSave = updatedRecent.map(t => ({
+                  ...t,
+                  url: t.url && t.url.startsWith('data:') ? '' : t.url
+              }));
+              StorageService.save(`huevify_recent_${currentUser.id}`, historyToSave);
           }
 
           refreshLibrary(updated);
           notifySync('ARTIST_DATA_UPDATE');
+          if (isSupabaseConfigured()) {
+              SupabaseService.deleteRelease(id).catch(e => console.warn('Supabase delete release error:', e));
+          }
           return;
       }
 
       const tracksWithHueqs = existingReq.tracks.map(t => {
           if (t.existingHueq) return t; 
+          if (t.generatedHueq) return t;
           return { ...t, generatedHueq: generateHUEQ() }; 
       });
 
@@ -1281,6 +1473,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (req && new Date(req.releaseDate).getTime() <= Date.now()) {
           refreshLibrary(updatedRequests);
       }
+      if (isSupabaseConfigured() && req) {
+          SupabaseService.saveRelease(req).catch(e => console.warn('Supabase approve release error:', e));
+      }
   };
   const rejectRelease = (id: string) => {
       // If it's a deletion request rejection, we just cancel the deletion request
@@ -1290,12 +1485,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
           showNotification(t('deletionRejected'), "info");
+          if (isSupabaseConfigured()) {
+              const r = updated.find(x => x.id === id);
+              if (r) SupabaseService.saveRelease(r).catch(e => console.warn('Supabase cancel deletion error:', e));
+          }
       } else {
           // Normal rejection of a new release
           const updated = releaseRequests.map(r => r.id === id ? { ...r, status: 'REJECTED' as const, deletionRequested: false } : r);
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
           showNotification(t('releaseRejected'), "info");
+          if (isSupabaseConfigured()) {
+              const r = updated.find(x => x.id === id);
+              if (r) SupabaseService.saveRelease(r).catch(e => console.warn('Supabase reject release error:', e));
+          }
       }
       notifySync('ARTIST_DATA_UPDATE');
   };
@@ -1363,13 +1566,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
             const sorted = chartData.sort((a, b) => b.dailyPlays - a.dailyPlays).slice(0, 25);
             setDailyChart(sorted);
-            StorageService.save('huevify_daily_chart', sorted);
+            const chartToSave = sorted.map(t => ({
+                ...t,
+                url: t.url && t.url.startsWith('data:') ? '' : t.url
+            }));
+            StorageService.save('huevify_daily_chart', chartToSave);
 
             StorageService.save('huevify_chart_snapshot', currentPlaysMap);
             StorageService.save('huevify_last_chart_update', now.toISOString());
         } else {
-            const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []);
-            setDailyChart(savedChart);
+            const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []).filter(t => !isTestTrack(t));
+            const hydratedChart = savedChart.map(ct => {
+                const live = tracks.find(t => t.id === ct.id);
+                return live ? { ...live, dailyPlays: ct.dailyPlays } : ct;
+            }).filter(t => !isTestTrack(t));
+            setDailyChart(hydratedChart);
         }
     };
 
@@ -1494,6 +1705,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setPlaylists(updatedPlaylists);
           notifySync('PLAYLISTS_UPDATE');
       }
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveUser(updatedUser).catch(e => console.warn('Supabase save user error:', e));
+      }
       return { success: true };
   };
 
@@ -1519,6 +1733,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       StorageService.save('huevify_users', updatedUsers);
       setCurrentUser(user);
       StorageService.save('huevify_current_user', user);
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveUser(user).catch(e => console.warn('Supabase register user error:', e));
+      }
       return true;
   };
 
@@ -1706,7 +1923,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setRecentlyPlayed(prev => {
             const filtered = prev.filter(t => t.id !== track.id);
             const newHistory = [track, ...filtered].slice(0, 10);
-            StorageService.save(`huevify_recent_${currentUser.id}`, newHistory);
+            const historyToSave = newHistory.map(t => ({
+                ...t,
+                url: t.url && t.url.startsWith('data:') ? '' : t.url
+            }));
+            StorageService.save(`huevify_recent_${currentUser.id}`, historyToSave);
             return newHistory;
         });
     }
@@ -1766,6 +1987,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       StorageService.save('huevify_playlists', newGlobalPlaylists);
       setPlaylists(newGlobalPlaylists);
       notifySync('PLAYLISTS_UPDATE');
+      if (isSupabaseConfigured()) {
+          newGlobalPlaylists.forEach(pl => SupabaseService.savePlaylist(pl).catch(e => console.warn('Supabase save playlist error:', e)));
+      }
   };
   const createPlaylist = (name: string, description?: string, cover?: string, isPublic: boolean = false) => {
     if (!currentUser) return;
@@ -1780,7 +2004,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const openDeleteModal = (id: string) => { setPlaylistToDelete(id); setIsDeleteModalOpen(true); };
   const closeDeleteModal = () => { setIsDeleteModalOpen(false); setPlaylistToDelete(null); };
-  const confirmDeletePlaylist = () => { if (!playlistToDelete) return; const id = playlistToDelete; if (view.type === 'PLAYLIST' && (view as any).id === id) setViewInternal({ type: 'LIBRARY' }); const all = [...playlists]; const updated = all.filter(p => p.id !== id); syncPlaylists(updated); closeDeleteModal(); };
+  const confirmDeletePlaylist = () => { 
+    if (!playlistToDelete) return; 
+    const id = playlistToDelete; 
+    if (view.type === 'PLAYLIST' && (view as any).id === id) setViewInternal({ type: 'LIBRARY' }); 
+    const all = [...playlists]; 
+    const updated = all.filter(p => p.id !== id); 
+    syncPlaylists(updated); 
+    closeDeleteModal(); 
+    if (isSupabaseConfigured()) {
+        SupabaseService.deletePlaylist(id).catch(e => console.warn('Supabase delete playlist error:', e));
+    }
+  };
   const deletePlaylist = (id: string) => openDeleteModal(id);
   const addToPlaylist = (playlistId: string, trackId: string) => { 
       const updated = playlists.map(p => { 
@@ -1823,6 +2058,52 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const openAddToPlaylist = (trackId: string) => { setTrackIdToAdd(trackId); setAddToPlaylistOpen(true); };
   const closeAddToPlaylist = () => { setAddToPlaylistOpen(false); setTrackIdToAdd(null); };
 
+  const clearAppCache = async (keepAuth = false) => {
+    try {
+      showNotification("Очистка кэша приложения...", "info");
+      await StorageService.clearAllCache(keepAuth);
+
+      if (isSupabaseConfigured()) {
+        const [remoteReleases, remoteArtists, remotePlaylists, remoteMod] = await Promise.all([
+          SupabaseService.fetchReleases(),
+          SupabaseService.fetchArtistAccounts(),
+          SupabaseService.fetchPlaylists(),
+          SupabaseService.fetchModeratorAccount()
+        ]);
+        const cleanReleases = Array.isArray(remoteReleases) ? remoteReleases.filter(r => !isTestAlbum(r)) : [];
+        const cleanArtists = Array.isArray(remoteArtists) ? remoteArtists.filter(a => !isTestArtist(a)) : [];
+        const cleanPlaylists = Array.isArray(remotePlaylists) ? remotePlaylists : [];
+
+        setReleaseRequests(cleanReleases);
+        setArtistAccounts(cleanArtists);
+        setPlaylists(cleanPlaylists);
+        refreshLibrary(cleanReleases);
+        if (remoteMod) {
+          setHasModerator(true);
+          StorageService.save('huevify_moderator', remoteMod);
+        } else {
+          setHasModerator(false);
+        }
+      } else {
+        setReleaseRequests([]);
+        setArtistAccounts([]);
+        setPlaylists([]);
+        refreshLibrary([]);
+      }
+
+      if (!keepAuth) {
+        setCurrentUser(null);
+        setCurrentArtist(null);
+        setCurrentModerator(null);
+      }
+
+      showNotification("Кэш успешно очищен!", "success");
+    } catch (e) {
+      console.warn("Failed clearing cache:", e);
+      showNotification("Ошибка при очистке кэша", "error");
+    }
+  };
+
   if (!isInitialized && currentUser) {
       return (
           <div className="flex h-screen w-full bg-black items-center justify-center flex-col gap-4">
@@ -1852,7 +2133,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,
       setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, togglePlaylistSave, toggleLike, isLiked,
-      toggleAlbumLike, isAlbumLiked
+      toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache
     }}>
       {children}
     </StoreContext.Provider>
