@@ -126,23 +126,55 @@ export const SupabaseService = {
     }
   },
 
+  async fetchArtistByUsername(username: string): Promise<ArtistAccount | null> {
+    if (!supabase) return null;
+    try {
+      const trimmed = username.trim();
+      const { data, error } = await supabase
+        .from('artist_accounts')
+        .select('*')
+        .ilike('username', trimmed)
+        .limit(1)
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        id: data.id,
+        artistName: data.artist_name,
+        username: data.username,
+        password: data.password,
+        avatar: data.avatar,
+        bio: data.bio,
+        status: data.status,
+        artistPick: data.artist_pick
+      };
+    } catch (e) {
+      console.warn('Supabase fetchArtistByUsername error:', e);
+      return null;
+    }
+  },
+
   async saveArtistAccount(account: ArtistAccount): Promise<boolean> {
     if (!supabase) return false;
     try {
       const row = {
         id: account.id,
         artist_name: account.artistName,
-        username: account.username,
+        username: account.username.trim(),
         password: account.password,
         avatar: account.avatar || null,
         bio: account.bio || null,
         status: account.status,
-        artist_pick: account.artistPick || null
+        artist_pick: account.artistPick || null,
+        updated_at: new Date().toISOString()
       };
       const { error } = await supabase.from('artist_accounts').upsert(row, { onConflict: 'id' });
       if (error) {
-        console.warn('Supabase saveArtistAccount error:', error.message);
-        return false;
+        // Fallback update by username in case of ID discrepancy
+        const { error: error2 } = await supabase.from('artist_accounts').update(row).ilike('username', account.username.trim());
+        if (error2) {
+          console.warn('Supabase saveArtistAccount error:', error2.message);
+          return false;
+        }
       }
       return true;
     } catch (e) {
@@ -468,6 +500,85 @@ export const SupabaseService = {
     }
   },
 
+  // --- TRACK PLAYS & ANALYTICS ---
+  async fetchTrackPlays(): Promise<Record<string, number> | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.from('track_plays').select('track_id, plays');
+      if (error) {
+        console.warn('Supabase fetchTrackPlays error:', error.message);
+        return null;
+      }
+      const map: Record<string, number> = {};
+      (data || []).forEach((row: any) => {
+        if (row.track_id) {
+          map[row.track_id] = Number(row.plays) || 0;
+        }
+      });
+      return map;
+    } catch (e) {
+      console.warn('Supabase fetchTrackPlays failed:', e);
+      return null;
+    }
+  },
+
+  async saveTrackPlays(playsMap: Record<string, number>): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const entries = Object.entries(playsMap);
+      if (entries.length === 0) return true;
+
+      const rows = entries.map(([track_id, plays]) => ({
+        track_id,
+        plays: Number(plays) || 0,
+        updated_at: new Date().toISOString()
+      }));
+
+      // Upsert in chunks of 50
+      for (let i = 0; i < rows.length; i += 50) {
+        const chunk = rows.slice(i, i + 50);
+        const { error } = await supabase.from('track_plays').upsert(chunk, { onConflict: 'track_id' });
+        if (error) {
+          console.warn('Supabase saveTrackPlays chunk error:', error.message);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveTrackPlays failed:', e);
+      return false;
+    }
+  },
+
+  async incrementTrackPlay(trackId: string, incrementBy: number = 1): Promise<number | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('track_plays')
+        .select('plays')
+        .eq('track_id', trackId)
+        .maybeSingle();
+
+      const current = (data && data.plays !== null && data.plays !== undefined) ? Number(data.plays) : 0;
+      const nextPlays = current + incrementBy;
+
+      const { error: upsertErr } = await supabase
+        .from('track_plays')
+        .upsert({
+          track_id: trackId,
+          plays: nextPlays,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'track_id' });
+
+      if (upsertErr) {
+        console.warn('Supabase incrementTrackPlay error:', upsertErr.message);
+      }
+      return nextPlays;
+    } catch (e) {
+      console.warn('Supabase incrementTrackPlay failed:', e);
+      return null;
+    }
+  },
+
   // --- REALTIME SUBSCRIPTION ---
   subscribeToChanges(onUpdate: (table: string) => void): (() => void) | null {
     if (!supabase) return null;
@@ -479,6 +590,7 @@ export const SupabaseService = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_accounts' }, () => onUpdate('artist_accounts'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'moderator_accounts' }, () => onUpdate('moderator_accounts'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'release_drafts' }, () => onUpdate('release_drafts'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'track_plays' }, () => onUpdate('track_plays'))
         .subscribe();
 
       return () => {

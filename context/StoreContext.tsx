@@ -681,36 +681,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
   };
 
-  // --- Automated Play Count System ---
+  // --- Global Play Count Synchronization ---
   useEffect(() => {
-    const interval = setInterval(() => {
-        const now = new Date();
-        if (now.getMinutes() === 30) {
-             const currentHour = now.getHours();
-             const lastUpdateHour = StorageService.load('huevify_last_play_update_hour', -1);
-             
-             if (lastUpdateHour !== currentHour) {
-                 setTracks(prevTracks => {
-                     const updated = prevTracks.map(t => {
-                         let add = 0;
-                         if (t.plays <= 10000) {
-                             add = Math.floor(Math.random() * 1000) + 1;
-                         } else if (t.plays <= 50000) {
-                             add = Math.floor(Math.random() * 9900) + 100;
-                         } else {
-                             add = Math.floor(Math.random() * 24000) + 1000;
-                         }
-                         return { ...t, plays: t.plays + add };
-                     });
-                     const playCounts = updated.reduce((acc, t) => ({ ...acc, [t.id]: t.plays }), {});
-                     StorageService.save('huevify_plays', playCounts);
-                     notifySync('TRACKS_UPDATE');
-                     return updated;
-                 });
-                 StorageService.save('huevify_last_play_update_hour', currentHour);
-             }
+    if (!isSupabaseConfigured()) return;
+    // Periodic background sync of track plays every 60s
+    const interval = setInterval(async () => {
+      try {
+        const remotePlays = await SupabaseService.fetchTrackPlays();
+        if (remotePlays) {
+          const stored = StorageService.load<Record<string, number>>('huevify_plays', {});
+          const merged = { ...stored, ...remotePlays };
+          StorageService.save('huevify_plays', merged);
+          setTracks(prev => prev.map(t => ({
+            ...t,
+            plays: merged[t.id] !== undefined ? merged[t.id] : t.plays
+          })));
         }
-    }, 10000); 
+      } catch (e) {
+        console.warn("Background track plays sync error:", e);
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, []); 
 
@@ -910,20 +900,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
-            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers] = await Promise.all([
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays] = await Promise.all([
               SupabaseService.fetchReleases(),
               SupabaseService.fetchArtistAccounts(),
               SupabaseService.fetchPlaylists(),
               SupabaseService.fetchModeratorAccount(),
-              SupabaseService.fetchUsers()
+              SupabaseService.fetchUsers(),
+              SupabaseService.fetchTrackPlays()
             ]);
+
+            // Sync track plays across all devices
+            const localPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+            const mergedPlays: Record<string, number> = { ...localPlays };
+            if (remoteTrackPlays) {
+              Object.entries(remoteTrackPlays).forEach(([tid, count]) => {
+                mergedPlays[tid] = Math.max(mergedPlays[tid] || 0, count);
+              });
+              StorageService.save('huevify_plays', mergedPlays);
+            }
 
             if (remoteReleases !== null) {
               const filtered = remoteReleases.filter(r => !isTestAlbum(r));
               setReleaseRequests(filtered);
               StorageService.save('huevify_release_requests', filtered);
-              refreshLibrary(filtered);
+              refreshLibrary(filtered, mergedPlays);
+            } else {
+              refreshLibrary(savedReleaseRequests, mergedPlays);
             }
+
             if (remoteArtists !== null) {
               const filtered = remoteArtists.filter(a => !isTestArtist(a));
               setArtistAccounts(filtered);
@@ -988,7 +992,29 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else if (table === 'artist_accounts') {
         const freshArtists = await SupabaseService.fetchArtistAccounts();
         if (freshArtists) {
-          setArtistAccounts(freshArtists.filter(a => !isTestArtist(a)));
+          const filtered = freshArtists.filter(a => !isTestArtist(a));
+          setArtistAccounts(filtered);
+          StorageService.save('huevify_artist_accounts', filtered);
+          setCurrentArtist(prev => {
+            if (!prev) return null;
+            const updated = filtered.find(a => a.id === prev.id || a.username.trim().toLowerCase() === prev.username.trim().toLowerCase());
+            if (updated) {
+              StorageService.save('huevify_current_artist', updated);
+              return updated;
+            }
+            return prev;
+          });
+        }
+      } else if (table === 'track_plays') {
+        const freshPlays = await SupabaseService.fetchTrackPlays();
+        if (freshPlays) {
+          const stored = StorageService.load<Record<string, number>>('huevify_plays', {});
+          const merged = { ...stored, ...freshPlays };
+          StorageService.save('huevify_plays', merged);
+          setTracks(prev => prev.map(t => ({
+            ...t,
+            plays: merged[t.id] !== undefined ? merged[t.id] : t.plays
+          })));
         }
       } else if (table === 'playlists') {
         const freshPlaylists = await SupabaseService.fetchPlaylists();
@@ -1167,22 +1193,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           return { success: false, message: "Invalid moderator credentials" };
       } else {
-          let artist = artistAccounts.find(a => a.username === username && a.password === pass);
-          if (!artist && isSupabaseConfigured()) {
-              const remoteArtists = await SupabaseService.fetchArtistAccounts();
-              if (remoteArtists) {
-                  const filtered = remoteArtists.filter(a => !isTestArtist(a));
-                  const found = filtered.find(a => a.username === username && a.password === pass);
-                  if (found) {
-                      artist = found;
+          const trimmedUsername = username.trim();
+          const trimmedPass = pass.trim();
+          
+          let artist: ArtistAccount | undefined = undefined;
+
+          // Always fetch latest from Supabase if configured to get latest APPROVED status
+          if (isSupabaseConfigured()) {
+              try {
+                  const remoteArtists = await SupabaseService.fetchArtistAccounts();
+                  if (remoteArtists) {
+                      const filtered = remoteArtists.filter(a => !isTestArtist(a));
                       setArtistAccounts(filtered);
                       StorageService.save('huevify_artist_accounts', filtered);
+                      artist = filtered.find(
+                          a => a.username.trim().toLowerCase() === trimmedUsername.toLowerCase() && a.password.trim() === trimmedPass
+                      );
                   }
+              } catch (e) {
+                  console.warn('Login artist fetch error:', e);
               }
           }
-          if (!artist) return { success: false, message: "Invalid credentials" };
-          if (artist.status === 'PENDING') return { success: false, message: "Account pending approval" };
-          if (artist.status === 'REJECTED') return { success: false, message: "Account rejected" };
+
+          // Fallback to local accounts if not found in remote or offline
+          if (!artist) {
+              artist = artistAccounts.find(
+                  a => a.username.trim().toLowerCase() === trimmedUsername.toLowerCase() && a.password.trim() === trimmedPass
+              );
+          }
+
+          if (!artist) {
+              const currentList = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', artistAccounts);
+              const exists = currentList.some(a => a.username.trim().toLowerCase() === trimmedUsername.toLowerCase());
+              if (exists) {
+                  return { success: false, message: t('invalidCreds', "Неверный пароль") };
+              }
+              return { success: false, message: t('artistNotFound', "Аккаунт артиста не найден") };
+          }
+
+          if (artist.status === 'PENDING') {
+              return { success: false, message: t('accountPending', "Заявка на регистрацию находится на рассмотрении модератором") };
+          }
+          if (artist.status === 'REJECTED') {
+              return { success: false, message: t('accountRejected', "Заявка на регистрацию отклонена модератором") };
+          }
           
           setCurrentArtist(artist);
           StorageService.save('huevify_current_artist', artist);
@@ -2006,15 +2060,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentTrack, hasCountedListen, playMode, tracks, isShuffle, appSettings.autoPlay]);
 
   const handleListenCount = (track: Track) => {
-    const addedPlays = Math.floor(100 + Math.random() * 9900); 
     setTracks(prev => {
-        const updated = prev.map(t => t.id === track.id ? { ...t, plays: t.plays + addedPlays } : t);
+        const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + 1 } : t);
         const playCounts = updated.reduce((acc, t) => ({ ...acc, [t.id]: t.plays }), {});
         StorageService.save('huevify_plays', playCounts);
         notifySync('TRACKS_UPDATE');
         return updated;
     });
     setHasCountedListen(true);
+
+    if (isSupabaseConfigured()) {
+        SupabaseService.incrementTrackPlay(track.id, 1).then(newCount => {
+            if (newCount !== null) {
+                setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
+                const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+                currentPlays[track.id] = newCount;
+                StorageService.save('huevify_plays', currentPlays);
+            }
+        }).catch(e => console.warn('Increment track play error:', e));
+    }
   };
 
   const playTrack = (track: Track) => {

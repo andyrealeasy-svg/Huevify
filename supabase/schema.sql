@@ -178,6 +178,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.playlists;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.artist_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.moderator_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.release_drafts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.track_plays;
 
 -- ==============================================================================
 -- 9. STORAGE BUCKET CONFIGURATION ('media')
