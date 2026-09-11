@@ -2032,12 +2032,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       lastTimeRef.current = now;
 
-      // Count play ONLY if active listen > 30s AND hasn't counted for this specific track instance yet
-      if (cumulativeTimeRef.current > 30 && !hasCountedListen && currentTrack) {
+      // Count play IF active listen >= 30s OR listen duration >= 50% of short track, AND hasn't counted yet
+      const threshold = audio.duration && audio.duration < 30 ? Math.max(5, audio.duration * 0.5) : 30;
+      if (cumulativeTimeRef.current >= threshold && !hasCountedListen && currentTrack) {
           handleListenCount(currentTrack);
       }
     };
     const handleEnded = () => {
+      if (!hasCountedListen && currentTrack) {
+          handleListenCount(currentTrack);
+      }
       if (playMode === PlayMode.ONE) { 
           audio.currentTime = 0; 
           // Logic: If user repeats ONE, it counts as a new listen for the next loop
@@ -2060,17 +2064,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentTrack, hasCountedListen, playMode, tracks, isShuffle, appSettings.autoPlay]);
 
   const handleListenCount = (track: Track) => {
+    if (!track) return;
+    setHasCountedListen(true);
+
+    // Random plays multiplier: 1 listen = +100..10000 plays
+    const addedPlays = Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
+
     setTracks(prev => {
-        const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + 1 } : t);
+        const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + addedPlays } : t);
         const playCounts = updated.reduce((acc, t) => ({ ...acc, [t.id]: t.plays }), {});
         StorageService.save('huevify_plays', playCounts);
         notifySync('TRACKS_UPDATE');
         return updated;
     });
-    setHasCountedListen(true);
 
     if (isSupabaseConfigured()) {
-        SupabaseService.incrementTrackPlay(track.id, 1).then(newCount => {
+        SupabaseService.incrementTrackPlay(track.id, addedPlays).then(newCount => {
             if (newCount !== null) {
                 setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
                 const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
