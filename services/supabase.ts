@@ -164,8 +164,7 @@ export const SupabaseService = {
         avatar: account.avatar || null,
         bio: account.bio || null,
         status: account.status,
-        artist_pick: account.artistPick || null,
-        updated_at: new Date().toISOString()
+        artist_pick: account.artistPick || null
       };
       const { error } = await supabase.from('artist_accounts').upsert(row, { onConflict: 'id' });
       if (error) {
@@ -353,7 +352,11 @@ export const SupabaseService = {
         saved_by: playlist.savedBy || []
       };
       const { error } = await supabase.from('playlists').upsert(row, { onConflict: 'id' });
-      return !error;
+      if (error) {
+        console.warn('Supabase savePlaylist error:', error.message);
+        return false;
+      }
+      return true;
     } catch (e) {
       console.warn('Supabase savePlaylist failed:', e);
       return false;
@@ -364,7 +367,11 @@ export const SupabaseService = {
     if (!supabase) return false;
     try {
       const { error } = await supabase.from('playlists').delete().eq('id', playlistId);
-      return !error;
+      if (error) {
+        console.warn('Supabase deletePlaylist error:', error.message);
+        return false;
+      }
+      return true;
     } catch (e) {
       console.warn('Supabase deletePlaylist failed:', e);
       return false;
@@ -385,9 +392,11 @@ export const SupabaseService = {
         likedAlbumIds: data.liked_album_ids || [],
         followedArtists: data.followed_artists || [],
         recentlyPlayed: data.recently_played || [],
-        settings: data.settings || null
+        settings: data.settings || null,
+        likedTracks: data.liked_tracks || data.settings?.liked_tracks || []
       };
     } catch (e) {
+      console.warn('Supabase fetchUserPreferences failed:', e);
       return null;
     }
   },
@@ -397,20 +406,40 @@ export const SupabaseService = {
     followedArtists?: string[];
     recentlyPlayed?: any[];
     settings?: any;
+    likedTracks?: string[];
   }): Promise<boolean> {
     if (!supabase) return false;
     try {
-      const row = {
+      const row: Record<string, any> = {
         user_id: userId,
-        liked_album_ids: prefs.likedAlbumIds,
-        followed_artists: prefs.followedArtists,
-        recently_played: prefs.recentlyPlayed,
-        settings: prefs.settings,
         updated_at: new Date().toISOString()
       };
-      const { error } = await supabase.from('user_preferences').upsert(row, { onConflict: 'user_id' });
-      return !error;
+      if (prefs.likedAlbumIds !== undefined) row.liked_album_ids = prefs.likedAlbumIds;
+      if (prefs.followedArtists !== undefined) row.followed_artists = prefs.followedArtists;
+      if (prefs.recentlyPlayed !== undefined) row.recently_played = prefs.recentlyPlayed;
+      if (prefs.settings !== undefined) row.settings = prefs.settings;
+
+      if (prefs.likedTracks !== undefined) {
+        row.liked_tracks = prefs.likedTracks;
+      }
+
+      let { error } = await supabase.from('user_preferences').upsert(row, { onConflict: 'user_id' });
+
+      // If liked_tracks column does not exist in schema cache (PGRST204), fallback to storing in settings.liked_tracks
+      if (error && error.code === 'PGRST204' && row.liked_tracks !== undefined) {
+        delete row.liked_tracks;
+        row.settings = { ...(row.settings || {}), liked_tracks: prefs.likedTracks };
+        const retry = await supabase.from('user_preferences').upsert(row, { onConflict: 'user_id' });
+        error = retry.error;
+      }
+
+      if (error) {
+        console.warn('Supabase saveUserPreferences error:', error.message);
+        return false;
+      }
+      return true;
     } catch (e) {
+      console.warn('Supabase saveUserPreferences failed:', e);
       return false;
     }
   },

@@ -37,15 +37,29 @@ export const Library = () => {
   // --- LIBRARY ROOT VIEW ---
   if (view.type === 'LIBRARY') {
       // System playlists OR Owned by me OR Saved by me
-      // Also filter out Liked Songs from OTHER users (they start with liked_ but ownerId mismatch)
-      const myPlaylists = playlists.filter(pl => {
-          // If system playlist (liked songs), only show mine
-          if (pl.id.startsWith('liked_') && pl.ownerId !== currentUser?.id) return false;
-          
+      // Always ensure current user's Liked Songs playlist is present as the first item
+      const currentLikedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+      let userLikedPl = playlists.find(p => p.id === currentLikedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id));
+      if (!userLikedPl) {
+          const guestLiked = playlists.find(p => p.id === 'liked');
+          userLikedPl = {
+              id: currentLikedId,
+              name: t('likedSongs'),
+              tracks: guestLiked?.tracks || [],
+              isSystem: true,
+              description: 'Your favorite tracks',
+              ownerId: currentUser?.id
+          };
+      }
+
+      const otherPlaylists = playlists.filter(pl => {
+          if (pl.id.startsWith('liked') || pl.id === 'liked') return false;
           return pl.isSystem || 
           (currentUser && pl.ownerId === currentUser.id) ||
           (currentUser && pl.savedBy?.includes(currentUser.id));
       });
+      
+      const myPlaylists = [userLikedPl, ...otherPlaylists];
       
       const likedAlbums = albums.filter(a => isAlbumLiked(a.id));
 
@@ -60,8 +74,9 @@ export const Library = () => {
                           const t = tracks.find(t => t.id === pl.tracks[0]);
                           if (t) cover = getTrackCover(t);
                       }
+                      const isLikedPl = pl.id.startsWith('liked') || pl.id === 'liked';
                       // Hide system text for Liked Songs
-                      const subText = pl.id.startsWith('liked_') ? t('playlist') : (pl.isSystem ? t('system') : `${t('by')} ${pl.creatorName || t('you')}`);
+                      const subText = isLikedPl ? t('playlist') : (pl.isSystem ? t('system') : `${t('by')} ${pl.creatorName || t('you')}`);
 
                       return (
                           <div 
@@ -70,7 +85,7 @@ export const Library = () => {
                               className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
                           >
                               <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative">
-                                  {pl.id.startsWith('liked_') ? (
+                                  {isLikedPl ? (
                                       <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
                                           <Heart size={32} fill="white" className="text-white md:w-10 md:h-10" />
                                       </div>
@@ -366,17 +381,25 @@ export const Library = () => {
          if (recentlyPlayed.length > 0) cover = getTrackCover(recentlyPlayed[0]);
          releaseType = t('playlist');
       } else {
-          let pl = playlists.find(p => p.id === id || (isLikedSongs && (p.id === `liked_${currentUser?.id}` || p.id === 'liked')));
-          if (!pl && isLikedSongs) {
-              const likedId = currentUser ? `liked_${currentUser.id}` : 'liked';
-              pl = {
-                  id: likedId,
-                  name: t('likedSongs'),
-                  tracks: [],
-                  isSystem: true,
-                  description: 'Your favorite tracks',
-                  ownerId: currentUser?.id
-              };
+          let pl: any = undefined;
+          if (isLikedSongs) {
+              const currentLikedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+              pl = playlists.find(p => p.id === currentLikedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id));
+              if (!pl) {
+                  pl = playlists.find(p => p.id === 'liked');
+              }
+              if (!pl) {
+                  pl = {
+                      id: currentLikedId,
+                      name: t('likedSongs'),
+                      tracks: [],
+                      isSystem: true,
+                      description: 'Your favorite tracks',
+                      ownerId: currentUser?.id
+                  };
+              }
+          } else {
+              pl = playlists.find(p => p.id === id);
           }
           if (!pl) {
              return (
@@ -406,7 +429,7 @@ export const Library = () => {
               const firstTrack = tracks.find(t => t.id === pl.tracks[0]);
               cover = firstTrack ? getTrackCover(firstTrack) : "";
           }
-          items = pl.tracks.map(tid => tracks.find(t => t.id === tid)).filter(Boolean);
+          items = (pl.tracks || []).map((tid: string) => tracks.find(t => t.id === tid)).filter(Boolean);
       }
     } else {
       const alb = albums.find(a => a.id === id);

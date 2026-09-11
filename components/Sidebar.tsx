@@ -21,14 +21,17 @@ export const Sidebar = () => {
   };
 
   // Filter playlists: 
-  // 1. System playlists must belong to the current user (if they have an ownerId like 'liked_userid')
+  // 1. System playlists: only show current user's Liked Songs (or guest's if no user)
   // 2. Or be owned by current user
   // 3. Or be saved by current user
-  const visiblePlaylists = playlists.filter(pl => 
-      (pl.isSystem && (!pl.ownerId || pl.ownerId === currentUser?.id)) ||
-      (currentUser && pl.ownerId === currentUser.id) ||
-      (currentUser && pl.savedBy?.includes(currentUser.id))
-  );
+  const currentLikedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+  const visiblePlaylists = playlists.filter(pl => {
+    if (pl.id.startsWith('liked') || pl.id === 'liked') {
+      return pl.id === currentLikedId || (currentUser && pl.ownerId === currentUser.id);
+    }
+    return (currentUser && pl.ownerId === currentUser.id) ||
+           (currentUser && pl.savedBy?.includes(currentUser.id));
+  });
 
   return (
     <div className="w-64 bg-black h-full flex flex-col pt-6 pb-24 hidden md:flex">

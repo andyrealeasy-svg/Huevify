@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS public.artist_accounts (
     bio TEXT,
     status TEXT NOT NULL DEFAULT 'APPROVED',
     artist_pick JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 3. Users Table
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS public.playlists (
 -- 5. User Preferences Table (Likes, Follows, History, Settings)
 CREATE TABLE IF NOT EXISTS public.user_preferences (
     user_id TEXT PRIMARY KEY,
+    liked_tracks JSONB DEFAULT '[]'::jsonb,
     liked_album_ids JSONB DEFAULT '[]'::jsonb,
     followed_artists JSONB DEFAULT '[]'::jsonb,
     recently_played JSONB DEFAULT '[]'::jsonb,

@@ -535,7 +535,9 @@ export const generateHUEQ = (): string => {
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // --- Auth State ---
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    return StorageService.load<User | null>('huevify_current_user', null);
+  });
   const [isInitialized, setIsInitialized] = useState(false);
 
   // --- Settings State ---
@@ -557,14 +559,53 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return defaultText || key;
   };
 
+  // Helper ID
+  const likedPlaylistId = currentUser ? `liked_${currentUser.id}` : 'liked';
+
+  const ensureUserLikedPlaylist = (list: Playlist[], user: User | null = currentUser): Playlist[] => {
+      const likedId = user ? `liked_${user.id}` : 'liked';
+      const existing = list.find(p => p.id === likedId || (user && p.id.startsWith('liked') && p.ownerId === user.id));
+      if (existing) {
+          // Ensure correct ID and ownerId
+          if (existing.id !== likedId || (user && existing.ownerId !== user.id)) {
+              return list.map(p => (p === existing ? { ...p, id: likedId, ownerId: user?.id } : p));
+          }
+          return list;
+      }
+
+      const localPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
+      const existingLocal = localPlaylists.find(p => p.id === likedId || (user && p.id.startsWith('liked') && p.ownerId === user.id) || (p.id === 'liked' && (!user || p.ownerId === user.id)));
+
+      const likedPl: Playlist = existingLocal ? { ...existingLocal, id: likedId, ownerId: user?.id } : {
+          id: likedId,
+          name: 'Liked Songs',
+          tracks: [],
+          isSystem: true,
+          description: 'Your favorite tracks',
+          ownerId: user?.id
+      };
+
+      return [likedPl, ...list];
+  };
+
   // --- Data State ---
   const [tracks, setTracks] = useState<Track[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => {
+    const user = StorageService.load<User | null>('huevify_current_user', null);
+    const localPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
+    return ensureUserLikedPlaylist(localPlaylists, user);
+  });
   const [recommendations, setRecommendations] = useState<Track[]>([]);
   const [recentlyPlayed, setRecentlyPlayed] = useState<Track[]>([]);
-  const [likedAlbumIds, setLikedAlbumIds] = useState<string[]>([]);
-  const [followedArtists, setFollowedArtists] = useState<string[]>([]);
+  const [likedAlbumIds, setLikedAlbumIds] = useState<string[]>(() => {
+    const user = StorageService.load<User | null>('huevify_current_user', null);
+    return user ? StorageService.load<string[]>(`huevify_liked_albums_${user.id}`, []) : [];
+  });
+  const [followedArtists, setFollowedArtists] = useState<string[]>(() => {
+    const user = StorageService.load<User | null>('huevify_current_user', null);
+    return user ? StorageService.load<string[]>(`huevify_followed_artists_${user.id}`, []) : [];
+  });
   
   const [dailyChart, setDailyChart] = useState<DailyChartTrack[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -613,29 +654,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const lastTimeRef = useRef(0);
   // Real-time Sync Channel
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
-
-  // Helper ID
-  const likedPlaylistId = currentUser ? `liked_${currentUser.id}` : 'liked';
-
-  const ensureUserLikedPlaylist = (list: Playlist[]): Playlist[] => {
-      if (!currentUser) return list;
-      const likedId = `liked_${currentUser.id}`;
-      if (list.some(p => p.id === likedId)) return list;
-
-      const localPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
-      const existingLocal = localPlaylists.find(p => p.id === likedId || (p.id === 'liked' && p.ownerId === currentUser.id));
-
-      const likedPl: Playlist = existingLocal ? { ...existingLocal, id: likedId, ownerId: currentUser.id } : {
-          id: likedId,
-          name: 'Liked Songs',
-          tracks: [],
-          isSystem: true,
-          description: 'Your favorite tracks',
-          ownerId: currentUser.id
-      };
-
-      return [likedPl, ...list];
-  };
 
   const sanitizeChart = (chartToSanitize: DailyChartTrack[], currentTracks: Track[]): DailyChartTrack[] => {
     if (!chartToSanitize || !Array.isArray(chartToSanitize)) return [];
@@ -942,6 +960,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Initial Lib Refresh
         refreshLibrary(savedReleaseRequests);
 
+        // Load Local Playlists
+        const savedPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
+        const initialPlaylists = ensureUserLikedPlaylist(savedPlaylists);
+        setPlaylists(initialPlaylists);
+        StorageService.save('huevify_playlists', initialPlaylists);
+
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
@@ -992,7 +1016,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               StorageService.save('huevify_artist_accounts', filtered);
             }
             if (remotePlaylists !== null) {
-              const mergedPls = ensureUserLikedPlaylist(remotePlaylists);
+              const localPls = StorageService.load<Playlist[]>('huevify_playlists', initialPlaylists);
+              const plsMap = new Map<string, Playlist>();
+              localPls.forEach(p => plsMap.set(p.id, p));
+              remotePlaylists.forEach(p => {
+                const existing = plsMap.get(p.id);
+                if (existing) {
+                  const mergedTracks = Array.from(new Set([...(existing.tracks || []), ...(p.tracks || [])]));
+                  plsMap.set(p.id, { ...p, tracks: mergedTracks });
+                } else {
+                  plsMap.set(p.id, p);
+                }
+              });
+              const activeUser = sessionUser || currentUser;
+              const mergedPls = ensureUserLikedPlaylist(Array.from(plsMap.values()), activeUser);
               setPlaylists(mergedPls);
               StorageService.save('huevify_playlists', mergedPls);
             }
@@ -1004,6 +1041,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const merged = Array.from(mergedMap.values());
               StorageService.save('huevify_users', merged);
             }
+
+            const activeUser = sessionUser || currentUser;
+            if (activeUser) {
+              try {
+                const prefs = await SupabaseService.fetchUserPreferences(activeUser.id);
+                if (prefs) {
+                  if (prefs.likedAlbumIds && prefs.likedAlbumIds.length > 0) {
+                    setLikedAlbumIds(prev => {
+                      const merged = Array.from(new Set([...prev, ...prefs.likedAlbumIds]));
+                      StorageService.save(`huevify_liked_albums_${activeUser.id}`, merged);
+                      return merged;
+                    });
+                  }
+                  if (prefs.followedArtists && prefs.followedArtists.length > 0) {
+                    setFollowedArtists(prev => {
+                      const merged = Array.from(new Set([...prev, ...prefs.followedArtists]));
+                      StorageService.save(`huevify_followed_artists_${activeUser.id}`, merged);
+                      return merged;
+                    });
+                  }
+                  if (prefs.likedTracks && prefs.likedTracks.length > 0) {
+                    const likedId = `liked_${activeUser.id}`;
+                    setPlaylists(prev => {
+                      const updated = prev.map(p => {
+                        if (p.id === likedId || (p.id.startsWith('liked') && p.ownerId === activeUser.id)) {
+                          const mergedTracks = Array.from(new Set([...p.tracks, ...prefs.likedTracks]));
+                          return { ...p, tracks: mergedTracks };
+                        }
+                        return p;
+                      });
+                      StorageService.save('huevify_playlists', updated);
+                      return updated;
+                    });
+                  }
+                }
+              } catch (prefErr) {
+                console.warn('Sync user preferences error in initApp:', prefErr);
+              }
+            }
+
             if (remoteMod) {
               setHasModerator(true);
               StorageService.save('huevify_moderator', remoteMod);
@@ -1126,6 +1203,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Load User-Specific Data when currentUser changes ---
   useEffect(() => {
+      // Re-ensure playlists contain current user's liked playlist
+      setPlaylists(prev => {
+          const stored = StorageService.load<Playlist[]>('huevify_playlists', prev);
+          return ensureUserLikedPlaylist(stored);
+      });
+
       if (currentUser) {
           try {
               // Load Settings per user
@@ -1158,6 +1241,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               
               const storedFollowedArtists = StorageService.load<string[]>(`huevify_followed_artists_${currentUser.id}`, []).filter(name => !isTestArtist({ artistName: name }));
               setFollowedArtists(storedFollowedArtists);
+
+              // Also check remote Supabase user preferences
+              if (isSupabaseConfigured()) {
+                SupabaseService.fetchUserPreferences(currentUser.id).then(prefs => {
+                  if (prefs) {
+                    if (prefs.likedAlbumIds && prefs.likedAlbumIds.length > 0) {
+                      setLikedAlbumIds(prev => {
+                        const merged = Array.from(new Set([...prev, ...prefs.likedAlbumIds]));
+                        StorageService.save(`huevify_liked_albums_${currentUser.id}`, merged);
+                        return merged;
+                      });
+                    }
+                    if (prefs.followedArtists && prefs.followedArtists.length > 0) {
+                      setFollowedArtists(prev => {
+                        const merged = Array.from(new Set([...prev, ...prefs.followedArtists]));
+                        StorageService.save(`huevify_followed_artists_${currentUser.id}`, merged);
+                        return merged;
+                      });
+                    }
+                    if (prefs.likedTracks && prefs.likedTracks.length > 0) {
+                      const likedId = `liked_${currentUser.id}`;
+                      setPlaylists(prev => {
+                        const updated = prev.map(p => {
+                          if (p.id === likedId || (p.id.startsWith('liked') && p.ownerId === currentUser.id)) {
+                            const merged = Array.from(new Set([...p.tracks, ...prefs.likedTracks]));
+                            return { ...p, tracks: merged };
+                          }
+                          return p;
+                        });
+                        StorageService.save('huevify_playlists', updated);
+                        return updated;
+                      });
+                    }
+                  }
+                }).catch(e => console.warn('Supabase fetchUserPreferences on user change error:', e));
+              }
           } catch(e) {
               console.error("Failed to load user specific data", e);
           }
@@ -1970,15 +2089,62 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (user) {
         setCurrentUser(user);
         StorageService.save('huevify_current_user', user);
+
+        // Load or ensure user's liked songs playlist
+        const likedId = `liked_${user.id}`;
+        let localPls = StorageService.load<Playlist[]>('huevify_playlists', []);
+        localPls = ensureUserLikedPlaylist(localPls, user);
+        setPlaylists(localPls);
         
         // Restore user preferences if in Supabase
         if (isSupabaseConfigured()) {
           SupabaseService.fetchUserPreferences(user.id).then(prefs => {
             if (prefs) {
-              if (prefs.likedTracks) StorageService.save(`huevify_liked_${user.id}`, prefs.likedTracks);
-              if (prefs.followedArtists) StorageService.save(`huevify_followed_${user.id}`, prefs.followedArtists);
+              if (prefs.likedAlbumIds) {
+                setLikedAlbumIds(prefs.likedAlbumIds);
+                StorageService.save(`huevify_liked_albums_${user.id}`, prefs.likedAlbumIds);
+              }
+              if (prefs.followedArtists) {
+                setFollowedArtists(prefs.followedArtists);
+                StorageService.save(`huevify_followed_artists_${user.id}`, prefs.followedArtists);
+              }
+              if (prefs.likedTracks && prefs.likedTracks.length > 0) {
+                StorageService.save(`huevify_liked_${user.id}`, prefs.likedTracks);
+                setPlaylists(prev => {
+                  const updated = prev.map(p => {
+                    if (p.id === likedId || (p.id.startsWith('liked') && p.ownerId === user!.id)) {
+                      const mergedTracks = Array.from(new Set([...p.tracks, ...prefs.likedTracks]));
+                      return { ...p, tracks: mergedTracks };
+                    }
+                    return p;
+                  });
+                  StorageService.save('huevify_playlists', updated);
+                  return updated;
+                });
+              }
             }
           }).catch(e => console.warn('Restore user prefs error:', e));
+
+          // Also pull playlists from Supabase
+          SupabaseService.fetchPlaylists().then(remotePls => {
+            if (remotePls) {
+              setPlaylists(prev => {
+                const map = new Map<string, Playlist>();
+                prev.forEach(p => map.set(p.id, p));
+                remotePls.forEach(p => {
+                  const existing = map.get(p.id);
+                  if (existing) {
+                    map.set(p.id, { ...p, tracks: Array.from(new Set([...(existing.tracks || []), ...(p.tracks || [])])) });
+                  } else {
+                    map.set(p.id, p);
+                  }
+                });
+                const merged = ensureUserLikedPlaylist(Array.from(map.values()), user);
+                StorageService.save('huevify_playlists', merged);
+                return merged;
+              });
+            }
+          }).catch(e => console.warn('Restore user playlists error:', e));
         }
 
         return true;
@@ -2117,6 +2283,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setFollowedArtists(prev => {
       const updated = prev.includes(artistName) ? prev.filter(a => a !== artistName) : [...prev, artistName];
       if (currentUser) {
+        StorageService.save(`huevify_followed_artists_${currentUser.id}`, updated);
         StorageService.save(`huevify_followed_${currentUser.id}`, updated);
         if (isSupabaseConfigured()) {
           SupabaseService.saveUserPreferences(currentUser.id, { followedArtists: updated }).catch(e => console.warn('Supabase follow sync error:', e));
@@ -2291,24 +2458,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const toggleShuffle = () => setIsShuffle(!isShuffle);
 
-  const syncPlaylists = (newGlobalPlaylists: Playlist[]) => {
+  const syncPlaylists = (newGlobalPlaylists: Playlist[], directlySavedPlaylist?: Playlist) => {
       StorageService.save('huevify_playlists', newGlobalPlaylists);
       setPlaylists(newGlobalPlaylists);
       notifySync('PLAYLISTS_UPDATE');
       if (isSupabaseConfigured()) {
-          newGlobalPlaylists.forEach(pl => SupabaseService.savePlaylist(pl).catch(e => console.warn('Supabase save playlist error:', e)));
+          if (directlySavedPlaylist) {
+              SupabaseService.savePlaylist(directlySavedPlaylist).catch(e => console.warn('Supabase save playlist error:', e));
+          } else {
+              const toSync = newGlobalPlaylists.filter(pl => !currentUser || pl.ownerId === currentUser.id || pl.id === `liked_${currentUser?.id}`);
+              toSync.forEach(pl => SupabaseService.savePlaylist(pl).catch(e => console.warn('Supabase save playlist error:', e)));
+          }
       }
   };
   const createPlaylist = (name: string, description?: string, cover?: string, isPublic: boolean = false) => {
     if (!currentUser) return;
     const newPl: Playlist = { id: `pl_${Date.now()}`, name, description: description || "", customCover: cover, tracks: [], ownerId: currentUser.id, creatorName: currentUser.displayName, creatorAvatar: currentUser.avatar, isPublic: isPublic, savedBy: [] };
     const all = [...playlists]; 
-    syncPlaylists([...all, newPl]);
+    syncPlaylists([...all, newPl], newPl);
   };
   const editPlaylist = (id: string, name: string, description?: string, cover?: string, isPublic?: boolean) => {
     const all = [...playlists];
-    const updated = all.map(p => { if (p.id === id) { return { ...p, name, description, customCover: cover, isPublic: isPublic !== undefined ? isPublic : p.isPublic }; } return p; });
-    syncPlaylists(updated);
+    let updatedPl: Playlist | undefined;
+    const updated = all.map(p => { 
+      if (p.id === id) { 
+        updatedPl = { ...p, name, description: description !== undefined ? description : p.description, customCover: cover !== undefined ? cover : p.customCover, isPublic: isPublic !== undefined ? isPublic : p.isPublic }; 
+        return updatedPl;
+      } 
+      return p; 
+    });
+    syncPlaylists(updated, updatedPl);
   };
   const openDeleteModal = (id: string) => { setPlaylistToDelete(id); setIsDeleteModalOpen(true); };
   const closeDeleteModal = () => { setIsDeleteModalOpen(false); setPlaylistToDelete(null); };
@@ -2326,38 +2505,100 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const deletePlaylist = (id: string) => openDeleteModal(id);
   const addToPlaylist = (playlistId: string, trackId: string) => { 
+      let targetPl: Playlist | undefined;
       const updated = playlists.map(p => { 
           if (p.id === playlistId && !p.tracks.includes(trackId)) {
-              return { ...p, tracks: [...p.tracks, trackId] }; 
-          }
+              targetPl = { ...p, tracks: [...p.tracks, trackId] }; 
+              return targetPl;
+          } 
           return p; 
       }); 
-      syncPlaylists(updated); 
+      syncPlaylists(updated, targetPl); 
   };
   const removeFromPlaylist = (playlistId: string, trackId: string) => { 
+      let targetPl: Playlist | undefined;
       const updated = playlists.map(p => { 
           if (p.id === playlistId) {
-              return { ...p, tracks: p.tracks.filter(id => id !== trackId) }; 
-          }
+              targetPl = { ...p, tracks: p.tracks.filter(id => id !== trackId) }; 
+              return targetPl;
+          } 
           return p; 
       }); 
-      syncPlaylists(updated); 
+      syncPlaylists(updated, targetPl); 
   };
-  const togglePlaylistSave = (playlistId: string) => { if (!currentUser) return; const updated = playlists.map(p => { if (p.id === playlistId) { const saved = p.savedBy || []; const isSaved = saved.includes(currentUser.id); return { ...p, savedBy: isSaved ? saved.filter(id => id !== currentUser.id) : [...saved, currentUser.id] }; } return p; }); syncPlaylists(updated); };
+  const togglePlaylistSave = (playlistId: string) => { 
+    if (!currentUser) return; 
+    let targetPl: Playlist | undefined;
+    const updated = playlists.map(p => { 
+      if (p.id === playlistId) { 
+        const saved = p.savedBy || []; 
+        const isSaved = saved.includes(currentUser.id); 
+        targetPl = { ...p, savedBy: isSaved ? saved.filter(id => id !== currentUser.id) : [...saved, currentUser.id] };
+        return targetPl;
+      } 
+      return p; 
+    }); 
+    syncPlaylists(updated, targetPl); 
+  };
   
   // Account Isolated Likes
   const toggleLike = (trackId: string) => { 
-      if (!currentUser) return;
-      const likedId = `liked_${currentUser.id}`;
-      const likedPl = playlists.find(p => p.id === likedId); 
-      if (!likedPl) return; 
-      if (likedPl.tracks.includes(trackId)) removeFromPlaylist(likedId, trackId); 
-      else addToPlaylist(likedId, trackId); 
+      const likedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+      let currentPlaylists = playlists;
+      if (!currentPlaylists || currentPlaylists.length === 0) {
+          currentPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
+      }
+      currentPlaylists = ensureUserLikedPlaylist(currentPlaylists, currentUser);
+
+      let likedPl = currentPlaylists.find(p => p.id === likedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id)); 
+
+      if (!likedPl) {
+          likedPl = {
+              id: likedId,
+              name: 'Liked Songs',
+              tracks: [],
+              isSystem: true,
+              description: 'Your favorite tracks',
+              ownerId: currentUser?.id
+          };
+          currentPlaylists = [likedPl, ...currentPlaylists];
+      }
+
+      const isAlreadyLiked = likedPl.tracks.includes(trackId);
+      const newTracks = isAlreadyLiked
+          ? likedPl.tracks.filter(id => id !== trackId)
+          : [...likedPl.tracks, trackId];
+
+      const updatedLikedPl: Playlist = { ...likedPl, id: likedId, ownerId: currentUser?.id, tracks: newTracks };
+
+      const finalPlaylists = currentPlaylists.map(p => {
+          if (p.id === likedPl!.id || p.id === likedId) {
+              return updatedLikedPl;
+          }
+          return p;
+      });
+
+      if (!finalPlaylists.some(p => p.id === likedId)) {
+          finalPlaylists.unshift(updatedLikedPl);
+      }
+
+      syncPlaylists(finalPlaylists, updatedLikedPl);
+
+      if (currentUser) {
+          StorageService.save(`huevify_liked_${currentUser.id}`, newTracks);
+          if (isSupabaseConfigured()) {
+              SupabaseService.saveUserPreferences(currentUser.id, { likedTracks: newTracks })
+                  .catch(e => console.warn('Supabase liked tracks sync error:', e));
+          }
+      }
   };
   const isLiked = (trackId: string) => { 
-      if (!currentUser) return false;
-      const likedId = `liked_${currentUser.id}`;
-      const likedPl = playlists.find(p => p.id === likedId); 
+      const likedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+      let likedPl = playlists.find(p => p.id === likedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id)); 
+      if (!likedPl) {
+          const stored = StorageService.load<Playlist[]>('huevify_playlists', []);
+          likedPl = stored.find(p => p.id === likedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id));
+      }
       return likedPl ? likedPl.tracks.includes(trackId) : false; 
   };
   
