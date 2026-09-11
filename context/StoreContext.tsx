@@ -637,6 +637,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return [likedPl, ...list];
   };
 
+  const sanitizeChart = (chartToSanitize: DailyChartTrack[], currentTracks: Track[]): DailyChartTrack[] => {
+    if (!chartToSanitize || !Array.isArray(chartToSanitize)) return [];
+    const tracksMap = new Map(currentTracks.filter(t => !isTestTrack(t)).map(t => [t.id, t]));
+
+    return chartToSanitize
+      .map(item => {
+        const live = tracksMap.get(item.id);
+        if (!live) return null;
+        const totalPlays = Number(live.plays) || 0;
+        // Total plays must be > 0 for a track to appear in daily chart
+        if (totalPlays <= 0) return null;
+        
+        // dailyPlays cannot exceed total plays
+        const rawDaily = Number(item.dailyPlays) || 0;
+        const dailyPlays = Math.min(rawDaily, totalPlays);
+        if (dailyPlays <= 0) return null;
+
+        return {
+          ...live,
+          dailyPlays
+        };
+      })
+      .filter((t): t is DailyChartTrack => t !== null);
+  };
+
   const showNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
       const id = Date.now().toString();
       setNotifications(prev => [...prev, { id, message, type }]);
@@ -948,9 +973,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 StorageService.save('huevify_last_chart_update', remoteDailyChart.lastUpdate);
               }
               if (remoteDailyChart.chart) {
-                const activeTracks = remoteDailyChart.chart.filter(t => (t.dailyPlays || 0) > 0);
-                setDailyChart(activeTracks);
-                StorageService.save('huevify_daily_chart', activeTracks);
+                StorageService.save('huevify_daily_chart', remoteDailyChart.chart);
               }
             }
 
@@ -1088,9 +1111,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } else if (table === 'daily_chart') {
         const freshChartData = await SupabaseService.fetchDailyChart();
-        if (freshChartData && freshChartData.chart && freshChartData.chart.length > 0) {
-          setDailyChart(freshChartData.chart);
-          StorageService.save('huevify_daily_chart', freshChartData.chart);
+        if (freshChartData && freshChartData.chart) {
+          const sanitized = sanitizeChart(freshChartData.chart, tracks);
+          setDailyChart(sanitized);
+          StorageService.save('huevify_daily_chart', sanitized);
         }
       }
     });
@@ -1724,24 +1748,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const cycleEnd = latestPublicationPoint;
         const cycleStart = new Date(latestPublicationPoint.getTime() - 24 * 60 * 60 * 1000);
 
-        let remoteData = null;
-        if (isSupabaseConfigured()) {
-            remoteData = await SupabaseService.fetchDailyChart();
-        }
-
-        const lastUpdateStr = remoteData?.lastUpdate || StorageService.load<string | null>('huevify_last_chart_update', null);
-        const hasUpToDateChart = lastUpdateStr && new Date(lastUpdateStr).getTime() >= latestPublicationPoint.getTime();
-
-        if (hasUpToDateChart) {
-            // Static published chart is already up-to-date for the current 24h window
-            const published = (remoteData?.chart || StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []))
-                .filter(t => (t.dailyPlays || 0) > 0);
-            if (!isSubscribed) return;
-            setDailyChart(published);
-            return;
-        }
-
-        // Time to publish a new static snapshot for completed [cycleStart, cycleEnd] period
+        // Calculate play counts specifically logged during completed [cycleStart, cycleEnd] period
         let dailyPlaysMap: Record<string, number> = {};
         let isFromSupabase = false;
 
@@ -1765,13 +1772,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const liveTracks = tracks.filter(t => !isTestTrack(t));
 
-        // Spotify-style static daily chart: strictly tracks with dailyPlays > 0 during COMPLETED period
+        // Spotify-style static daily chart: strictly tracks with totalPlays > 0 and dailyPlays > 0 during COMPLETED 24h cycle
         const chartData: DailyChartTrack[] = liveTracks
-            .map(t => ({
-                ...t,
-                dailyPlays: dailyPlaysMap[t.id] || 0
-            }))
-            .filter(t => t.dailyPlays > 0);
+            .map(t => {
+                const totalPlays = Number(t.plays) || 0;
+                if (totalPlays <= 0) return null;
+                const rawDaily = dailyPlaysMap[t.id] || 0;
+                const dailyPlays = Math.min(rawDaily, totalPlays);
+                if (dailyPlays <= 0) return null;
+                return {
+                    ...t,
+                    dailyPlays
+                };
+            })
+            .filter((t): t is DailyChartTrack => t !== null);
 
         const sorted = chartData.sort((a, b) => {
             if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;

@@ -700,6 +700,9 @@ export const SupabaseService = {
   async saveDailyChart(chart: DailyChartTrack[], snapshot: Record<string, number>, lastUpdate: string | null): Promise<boolean> {
     if (!supabase) return false;
     try {
+      // Clear out all previous chart rows first to avoid lingering old or phantom records
+      await supabase.from('daily_chart').delete().neq('track_id', '___NEVER_MATCH___');
+
       const rows = chart.map(t => ({
         track_id: t.id,
         track_data: t,
