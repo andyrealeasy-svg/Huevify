@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, ListMusic, User as UserIcon } from '../components/Icons.tsx';
+import { Play, ListMusic, User as UserIcon, Clock } from '../components/Icons.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -124,7 +124,10 @@ export const Home = () => {
       
       <div className="flex flex-col gap-2 mb-8 animate-slide-up">
         {previewCharts.length === 0 ? (
-            <div className="text-secondary text-sm">{t('updating')}</div>
+            <div className="text-secondary text-sm p-4 bg-surface/30 rounded-lg flex items-center gap-2">
+                <Clock size={16} className="text-primary" />
+                <span>{t('chartCyclePendingDesc') || 'Суточный учёт в процессе. Обновление чарта ежедневно в 21:00 UTC+3.'}</span>
+            </div>
         ) : (
             previewCharts.map((track, idx) => {
                 const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));

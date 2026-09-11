@@ -578,7 +578,7 @@ export const SupabaseService = {
     }
   },
 
-  async incrementTrackPlay(trackId: string, incrementBy: number = 1): Promise<number | null> {
+  async incrementTrackPlay(trackId: string, incrementBy: number = 1, currentBasePlays?: number): Promise<number | null> {
     if (!supabase) return null;
     try {
       const { data, error } = await supabase
@@ -587,8 +587,9 @@ export const SupabaseService = {
         .eq('track_id', trackId)
         .maybeSingle();
 
-      const current = (data && data.plays !== null && data.plays !== undefined) ? Number(data.plays) : 0;
-      const nextPlays = current + incrementBy;
+      const currentDb = (data && data.plays !== null && data.plays !== undefined) ? Number(data.plays) : 0;
+      const base = Math.max(currentDb, currentBasePlays || 0);
+      const nextPlays = base + incrementBy;
 
       const { error: upsertErr } = await supabase
         .from('track_plays')
@@ -608,12 +609,12 @@ export const SupabaseService = {
     }
   },
 
-  async recordPlayLog(trackId: string, userId: string = 'anonymous', playsCount: number = 1): Promise<number | null> {
+  async recordPlayLog(trackId: string, userId: string = 'anonymous', playsCount: number = 1, currentBasePlays?: number): Promise<number | null> {
     if (!supabase) return null;
     try {
       const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       
-      // 1. Insert timestamped log entry into track_play_logs
+      // 1. Insert timestamped log entry into track_play_logs with the random playsCount (100..10000)
       const { error: logErr } = await supabase.from('track_play_logs').insert([{
         id: logId,
         track_id: trackId,
@@ -627,7 +628,7 @@ export const SupabaseService = {
       }
 
       // 2. Increment total plays in track_plays table
-      return await this.incrementTrackPlay(trackId, playsCount);
+      return await this.incrementTrackPlay(trackId, playsCount, currentBasePlays);
     } catch (e) {
       console.warn('Supabase recordPlayLog failed:', e);
       return null;

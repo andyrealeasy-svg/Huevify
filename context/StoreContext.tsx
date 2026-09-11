@@ -175,6 +175,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     huevifyDesc: "Millions of songs. Free on Huevify.",
     searchToFind: "Search to find content.",
     chartDesc: "Most played tracks in the last 24h. Updates at 21:00 UTC+3.",
+    chartCyclePendingTitle: "Daily Cycle in Progress",
+    chartCyclePendingDesc: "Listens for the current 24-hour cycle are being tracked. Top 25 updates automatically at 21:00 UTC+3.",
     genre_Pop: "Pop",
     genre_RapHipHop: "Rap/Hip-Hop",
     genre_RnB: "R&B",
@@ -358,6 +360,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     huevifyDesc: "Миллионы треков. Бесплатно на Huevify.",
     searchToFind: "Используйте поиск.",
     chartDesc: "Самые популярные треки за 24 часа. Обновляется в 21:00 UTC+3.",
+    chartCyclePendingTitle: "Суточный учёт в процессе",
+    chartCyclePendingDesc: "Прослушивания за текущие сутки фиксируются. Обновление и публикация Top 25 происходят каждый день ровно в 21:00 UTC+3.",
     genre_Pop: "Поп",
     genre_RapHipHop: "Рэп/Хип-Хоп",
     genre_RnB: "РнБ",
@@ -608,7 +612,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return user ? StorageService.load<string[]>(`huevify_followed_artists_${user.id}`, []) : [];
   });
   
-  const [dailyChart, setDailyChart] = useState<DailyChartTrack[]>([]);
+  const [dailyChart, setDailyChart] = useState<DailyChartTrack[]>(() => {
+    return StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []);
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(isSupabaseConfigured());
   
@@ -654,6 +660,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const audioRef = useRef<HTMLAudioElement>(new Audio());
   const cumulativeTimeRef = useRef(0);
   const lastTimeRef = useRef(0);
+  const tracksRef = useRef<Track[]>(tracks);
+  tracksRef.current = tracks;
   // Real-time Sync Channel
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
@@ -999,9 +1007,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               if (remoteDailyChart.lastUpdate) {
                 StorageService.save('huevify_last_chart_update', remoteDailyChart.lastUpdate);
               }
-              if (remoteDailyChart.chart) {
-                StorageService.save('huevify_daily_chart', remoteDailyChart.chart);
-              }
+              const remoteChart = Array.isArray(remoteDailyChart.chart) ? remoteDailyChart.chart : [];
+              StorageService.save('huevify_daily_chart', remoteChart);
+              setDailyChart(remoteChart);
             }
 
             if (remoteReleases !== null) {
@@ -1868,96 +1876,169 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return tracks.find(t => t.hueq === hueq);
   };
 
-  // --- Daily Top 25 Chart Calculation ---
+  // --- 21:00 UTC+3 (18:00 UTC) Chart Timing Helpers ---
+  // Returns the most recent 21:00 UTC+3 (18:00 UTC) publication point in the past
+  const getLatestPublicationPoint = (now: Date = new Date()): Date => {
+    const pt = new Date(now);
+    pt.setUTCHours(18, 0, 0, 0); // 18:00 UTC is exactly 21:00 UTC+3
+    if (now.getTime() < pt.getTime()) {
+      pt.setUTCDate(pt.getUTCDate() - 1);
+    }
+    return pt;
+  };
+
+  // Returns the upcoming 21:00 UTC+3 (18:00 UTC) publication point in the future
+  const getNextPublicationPoint = (now: Date = new Date()): Date => {
+    const pt = new Date(now);
+    pt.setUTCHours(18, 0, 0, 0); // 18:00 UTC is exactly 21:00 UTC+3
+    if (now.getTime() >= pt.getTime()) {
+      pt.setUTCDate(pt.getUTCDate() + 1);
+    }
+    return pt;
+  };
+
+  // Computes the Daily Top 25 for the completed 24-hour cycle ending at publicationPoint
+  const computeAndPublishDailyChart = async (publicationPoint: Date) => {
+    const cycleEnd = publicationPoint;
+    const cycleStart = new Date(publicationPoint.getTime() - 24 * 60 * 60 * 1000);
+
+    let dailyPlaysMap: Record<string, number> = {};
+    let isFromSupabase = false;
+
+    if (isSupabaseConfigured()) {
+      const rangePlays = await SupabaseService.fetchDailyPlaysRange(cycleStart.toISOString(), cycleEnd.toISOString());
+      if (rangePlays) {
+        dailyPlaysMap = rangePlays;
+        isFromSupabase = true;
+      }
+    }
+
+    if (!isFromSupabase) {
+      const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+      const periodLogs = localLogs.filter(l => l.timestamp >= cycleStart.getTime() && l.timestamp < cycleEnd.getTime());
+      periodLogs.forEach(l => {
+        dailyPlaysMap[l.trackId] = (dailyPlaysMap[l.trackId] || 0) + l.plays;
+      });
+    }
+
+    // If no plays were recorded in the [cycleStart, cycleEnd) interval, dailyPlaysMap remains empty.
+    // Crucially: NEVER synthesize fake daily plays or include plays logged after cycleEnd!
+    const availableTracks = tracksRef.current;
+    if (availableTracks.length === 0) return;
+
+    const liveTracks = availableTracks.filter(t => !isTestTrack(t));
+
+    // Spotify-style static daily chart: strictly tracks with totalPlays > 0 and dailyPlays > 0 during the COMPLETED 24h cycle
+    const chartData: DailyChartTrack[] = liveTracks
+      .map(t => {
+        const totalPlays = Number(t.plays) || 0;
+        if (totalPlays <= 0) return null;
+        const rawDaily = dailyPlaysMap[t.id] || 0;
+        const dailyPlays = Math.min(rawDaily, totalPlays);
+        if (dailyPlays <= 0) return null;
+        return {
+          ...t,
+          dailyPlays
+        };
+      })
+      .filter((t): t is DailyChartTrack => t !== null);
+
+    const sorted = chartData.sort((a, b) => {
+      if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;
+      if ((b.plays || 0) !== (a.plays || 0)) return (b.plays || 0) - (a.plays || 0);
+      return a.title.localeCompare(b.title);
+    }).slice(0, 25);
+
+    setDailyChart(sorted);
+
+    const chartToSave = sorted.map(t => ({
+      ...t,
+      url: t.url && t.url.startsWith('data:') ? '' : t.url
+    }));
+
+    StorageService.save('huevify_daily_chart', chartToSave);
+    StorageService.save('huevify_last_chart_update', publicationPoint.toISOString());
+
+    if (isSupabaseConfigured()) {
+      SupabaseService.saveDailyChart(
+        chartToSave,
+        dailyPlaysMap,
+        publicationPoint.toISOString()
+      ).catch(e => console.warn('Supabase saveDailyChart error:', e));
+    }
+  };
+
+  // --- Daily Top 25 Chart Lifecycle & Automatic 21:00 UTC+3 Scheduler ---
   useEffect(() => {
     if (tracks.length === 0) return;
 
-    let isSubscribed = true;
+    const checkAndInitializeChart = async () => {
+      const latestPt = getLatestPublicationPoint();
+      const savedLastUpdate = StorageService.load<string | null>('huevify_last_chart_update', null);
+      const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []);
 
-    const processDailyChart = async () => {
-        // Calculate the most recent 21:00 UTC+3 (18:00 UTC) publication point in the past
-        const now = new Date();
-        let latestPublicationPoint = new Date();
-        latestPublicationPoint.setUTCHours(18, 0, 0, 0); // 18:00 UTC = 21:00 UTC+3
-        if (now.getTime() < latestPublicationPoint.getTime()) {
-            latestPublicationPoint.setDate(latestPublicationPoint.getDate() - 1);
-        }
+      // If the chart for the current 24-hour cycle is already published, keep it STATIC!
+      if (savedLastUpdate && savedLastUpdate === latestPt.toISOString()) {
+        setDailyChart(savedChart);
+        return;
+      }
 
-        // Interval for the completed 24-hour cycle that ended at latestPublicationPoint
-        const cycleEnd = latestPublicationPoint;
-        const cycleStart = new Date(latestPublicationPoint.getTime() - 24 * 60 * 60 * 1000);
-
-        // Calculate play counts specifically logged during completed [cycleStart, cycleEnd] period
-        let dailyPlaysMap: Record<string, number> = {};
-        let isFromSupabase = false;
-
-        if (isSupabaseConfigured()) {
-            const rangePlays = await SupabaseService.fetchDailyPlaysRange(cycleStart.toISOString(), cycleEnd.toISOString());
-            if (rangePlays) {
-                dailyPlaysMap = rangePlays;
-                isFromSupabase = true;
-            }
-        }
-
-        if (!isFromSupabase) {
-            const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
-            const periodLogs = localLogs.filter(l => l.timestamp >= cycleStart.getTime() && l.timestamp < cycleEnd.getTime());
-            periodLogs.forEach(l => {
-                dailyPlaysMap[l.trackId] = (dailyPlaysMap[l.trackId] || 0) + l.plays;
-            });
-        }
-
-        if (!isSubscribed) return;
-
-        const liveTracks = tracks.filter(t => !isTestTrack(t));
-
-        // Spotify-style static daily chart: strictly tracks with totalPlays > 0 and dailyPlays > 0 during COMPLETED 24h cycle
-        const chartData: DailyChartTrack[] = liveTracks
-            .map(t => {
-                const totalPlays = Number(t.plays) || 0;
-                if (totalPlays <= 0) return null;
-                const rawDaily = dailyPlaysMap[t.id] || 0;
-                const dailyPlays = Math.min(rawDaily, totalPlays);
-                if (dailyPlays <= 0) return null;
-                return {
-                    ...t,
-                    dailyPlays
-                };
-            })
-            .filter((t): t is DailyChartTrack => t !== null);
-
-        const sorted = chartData.sort((a, b) => {
-            if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;
-            if ((b.plays || 0) !== (a.plays || 0)) return (b.plays || 0) - (a.plays || 0);
-            return a.title.localeCompare(b.title);
-        }).slice(0, 25);
-
-        setDailyChart(sorted);
-
-        const chartToSave = sorted.map(t => ({
-            ...t,
-            url: t.url && t.url.startsWith('data:') ? '' : t.url
-        }));
-
-        StorageService.save('huevify_daily_chart', chartToSave);
-        StorageService.save('huevify_last_chart_update', latestPublicationPoint.toISOString());
-
-        if (isSupabaseConfigured()) {
-            SupabaseService.saveDailyChart(
-                chartToSave,
-                dailyPlaysMap,
-                latestPublicationPoint.toISOString()
-            );
-        }
+      // Calculate and publish for the latest valid publication point
+      await computeAndPublishDailyChart(latestPt);
     };
 
-    processDailyChart();
-    const interval = setInterval(processDailyChart, 30000);
+    checkAndInitializeChart();
+
+    // Schedule exact timer for next 21:00 UTC+3 (18:00 UTC)
+    let timeoutId: any = null;
+    const scheduleNextDailyUpdate = () => {
+      const nextPt = getNextPublicationPoint();
+      const msUntilNext = Math.max(1000, nextPt.getTime() - Date.now());
+
+      timeoutId = setTimeout(async () => {
+        const pubPt = getLatestPublicationPoint();
+        await computeAndPublishDailyChart(pubPt);
+        scheduleNextDailyUpdate();
+      }, msUntilNext);
+    };
+
+    scheduleNextDailyUpdate();
+
+    // Periodic check every 30 seconds (handles system clock jumps, wakeup from sleep, idle tabs)
+    const interval = setInterval(() => {
+      const latestPt = getLatestPublicationPoint();
+      const savedLastUpdate = StorageService.load<string | null>('huevify_last_chart_update', null);
+      if (!savedLastUpdate || new Date(savedLastUpdate).getTime() < latestPt.getTime()) {
+        computeAndPublishDailyChart(latestPt);
+      }
+    }, 30000);
+
     return () => {
-        isSubscribed = false;
-        clearInterval(interval);
+      if (timeoutId) clearTimeout(timeoutId);
+      clearInterval(interval);
     };
+  }, [tracks.length > 0]);
 
+  // Keep track metadata (titles, covers) in sync in the daily chart if tracks list changes,
+  // without altering the frozen dailyPlays values or rankings
+  useEffect(() => {
+    if (tracks.length === 0 || dailyChart.length === 0) return;
+    setDailyChart(prev => {
+      let hasChanges = false;
+      const updated = prev.map(chartTrack => {
+        const live = tracks.find(t => t.id === chartTrack.id);
+        if (!live) return chartTrack;
+        if (live.title !== chartTrack.title || live.cover !== chartTrack.cover || live.url !== chartTrack.url) {
+          hasChanges = true;
+          return {
+            ...live,
+            dailyPlays: chartTrack.dailyPlays
+          };
+        }
+        return chartTrack;
+      });
+      return hasChanges ? updated : prev;
+    });
   }, [tracks]);
 
   // --- Album Cover Logic ---
@@ -2369,8 +2450,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track) return;
     setHasCountedListen(true);
 
-    // 1 listen = +1 play
-    const addedPlays = 1;
+    // Random plays multiplier: 1 listen = +100..10000 plays
+    const addedPlays = Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
+    const currentBasePlays = track.plays || 0;
 
     setTracks(prev => {
         const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + addedPlays } : t);
@@ -2387,7 +2469,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     StorageService.save('huevify_play_logs', localLogs.filter(l => l.timestamp >= cutoff));
 
     if (isSupabaseConfigured()) {
-        SupabaseService.recordPlayLog(track.id, currentUser?.id || 'anonymous', addedPlays).then(newCount => {
+        SupabaseService.recordPlayLog(track.id, currentUser?.id || 'anonymous', addedPlays, currentBasePlays).then(newCount => {
             if (newCount !== null) {
                 setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
                 const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});

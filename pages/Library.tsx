@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle } from '../components/Icons.tsx';
+import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock } from '../components/Icons.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -164,7 +164,15 @@ export const Library = () => {
             </div>
             <div className="px-4 md:px-8 py-4 animate-slide-up">
                {dailyChart.length === 0 ? (
-                   <div className="text-secondary text-center py-10">{t('updating')}</div>
+                   <div className="text-center py-16 flex flex-col items-center justify-center gap-3">
+                       <div className="w-12 h-12 rounded-full bg-surface-highlight flex items-center justify-center text-primary">
+                           <Clock size={24} />
+                       </div>
+                       <h3 className="text-lg font-semibold text-white">{t('chartCyclePendingTitle') || 'Суточный учёт в процессе'}</h3>
+                       <p className="text-sm text-secondary max-w-md">
+                           {t('chartCyclePendingDesc') || 'Прослушивания за текущие сутки фиксируются. Обновление и публикация Top 25 происходят каждый день ровно в 21:00 UTC+3.'}
+                       </p>
+                   </div>
                ) : (
                    dailyChart.map((track, idx) => {
                        const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));

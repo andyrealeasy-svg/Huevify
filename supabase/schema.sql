@@ -195,6 +195,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.moderator_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.release_drafts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.track_plays;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.track_play_logs;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_chart;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.profile_edit_requests;
 
 -- ==============================================================================
 -- 9. STORAGE BUCKET CONFIGURATION ('media')
