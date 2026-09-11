@@ -196,7 +196,7 @@ export const Library = () => {
                                 <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
                                     <Heart size={16} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
                                 </button>
-                                <button onClick={() => playTrack(track)} className="text-white"><Play size={20} fill="white"/></button>
+                                <button onClick={() => playTrack(track, dailyChart)} className="text-white"><Play size={20} fill="white"/></button>
                             </div>
                        </div>
                    )})
@@ -251,7 +251,7 @@ export const Library = () => {
 
             <div className="px-4 md:px-8 py-6 animate-slide-up">
                 <div className="flex items-center gap-4 mb-8">
-                    <button onClick={() => topTracks.length && playTrack(topTracks[0])} className="w-14 h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg">
+                    <button onClick={() => topTracks.length && playTrack(topTracks[0], topTracks)} className="w-14 h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg">
                         <Play size={28} fill="black" className="ml-1 text-black" />
                     </button>
                     
@@ -294,7 +294,7 @@ export const Library = () => {
                         <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
                         <div className="flex flex-col gap-1 mb-8">
                             {topTracks.map((track, idx) => (
-                                <div key={track.id} className="grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer" onClick={() => playTrack(track)}>
+                                <div key={track.id} className="grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer" onClick={() => playTrack(track, topTracks)}>
                                     <span className="text-secondary text-sm">{idx + 1}</span>
                                     <div className="flex items-center gap-3">
                                         <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover" alt=""/>
@@ -557,7 +557,7 @@ export const Library = () => {
         {/* Action Bar */}
         <div className="px-6 md:px-8 py-4 md:py-6 bg-background/50 backdrop-blur-sm sticky top-0 z-30 flex items-center gap-6 animate-appear">
           <button 
-             onClick={() => items.length > 0 && playTrack(items[0])}
+             onClick={() => items.length > 0 && playTrack(items[0], items)}
              className="w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg"
           >
             <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
@@ -615,7 +615,7 @@ export const Library = () => {
                
                <div className="w-4 flex justify-center">
                    <span className="text-secondary group-hover:hidden text-sm">{idx + 1}</span>
-                   <button onClick={() => playTrack(track)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
+                   <button onClick={() => playTrack(track, items)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
                </div>
                
                <div className="flex items-center gap-3 overflow-hidden">

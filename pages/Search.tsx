@@ -129,12 +129,12 @@ export const Search = () => {
                              key={track.id} 
                              className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_1fr_100px_60px] items-center gap-4 p-3 rounded hover:bg-surface-highlight group"
                           >
-                             <div className="flex items-center justify-center" onClick={() => playTrack(track)}>
+                             <div className="flex items-center justify-center" onClick={() => playTrack(track, filteredTracks)}>
                                 <div className="text-secondary text-center group-hover:hidden text-sm">{idx + 1}</div>
                                 <div className="hidden group-hover:block cursor-pointer"><Play size={16} fill="white"/></div>
                              </div>
                              
-                             <div className="flex items-center gap-4 overflow-hidden" onClick={() => playTrack(track)}>
+                             <div className="flex items-center gap-4 overflow-hidden" onClick={() => playTrack(track, filteredTracks)}>
                                 <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover flex-shrink-0" />
                                 <div className="flex flex-col overflow-hidden">
                                   <div className="font-semibold text-white flex items-center gap-2 truncate cursor-pointer hover:underline">
@@ -214,7 +214,7 @@ export const Search = () => {
                      key={track.id} 
                      className="flex items-center justify-between p-3 rounded hover:bg-surface-highlight group"
                    >
-                     <div className="flex items-center gap-4 flex-1" onClick={() => playTrack(track)}>
+                     <div className="flex items-center gap-4 flex-1" onClick={() => playTrack(track, filteredTracks)}>
                         <div className="relative w-10 h-10">
                           <img src={getTrackCover(track)} className="w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100">

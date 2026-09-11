@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ReleaseRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft } from '../types';
+import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft } from '../types';
 
 const metaEnv = (import.meta as any).env || {};
 const supabaseUrl = (metaEnv.VITE_SUPABASE_URL || 'https://kzcxbokjnbafaozcmjjg.supabase.co') as string | undefined;
@@ -758,6 +758,68 @@ export const SupabaseService = {
     }
   },
 
+  // --- PROFILE EDIT REQUESTS ---
+  async fetchProfileEditRequests(): Promise<ProfileEditRequest[] | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('profile_edit_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.warn('Supabase fetchProfileEditRequests error:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        artistId: row.artist_id,
+        artistName: row.artist_name,
+        newAvatar: row.new_avatar || undefined,
+        newBio: row.new_bio || undefined,
+        newArtistPick: row.new_artist_pick || undefined,
+        status: row.status as 'PENDING' | 'APPROVED' | 'REJECTED'
+      }));
+    } catch (e) {
+      console.warn('Supabase fetchProfileEditRequests failed:', e);
+      return null;
+    }
+  },
+
+  async saveProfileEditRequest(req: ProfileEditRequest): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const row = {
+        id: req.id,
+        artist_id: req.artistId,
+        artist_name: req.artistName,
+        new_avatar: req.newAvatar || null,
+        new_bio: req.newBio || null,
+        new_artist_pick: req.newArtistPick || null,
+        status: req.status
+      };
+      const { error } = await supabase.from('profile_edit_requests').upsert(row, { onConflict: 'id' });
+      if (error) {
+        console.warn('Supabase saveProfileEditRequest error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveProfileEditRequest failed:', e);
+      return false;
+    }
+  },
+
+  async deleteProfileEditRequest(id: string): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase.from('profile_edit_requests').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      console.warn('Supabase deleteProfileEditRequest failed:', e);
+      return false;
+    }
+  },
+
   // --- REALTIME SUBSCRIPTION ---
   subscribeToChanges(onUpdate: (table: string) => void): (() => void) | null {
     if (!supabase) return null;
@@ -772,6 +834,7 @@ export const SupabaseService = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'track_plays' }, () => onUpdate('track_plays'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_chart' }, () => onUpdate('daily_chart'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'track_play_logs' }, () => onUpdate('track_play_logs'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profile_edit_requests' }, () => onUpdate('profile_edit_requests'))
         .subscribe();
 
       return () => {

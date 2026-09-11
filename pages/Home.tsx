@@ -90,7 +90,7 @@ export const Home = () => {
                return (
                <div 
                  key={track.id} 
-                 onClick={() => playTrack(track)}
+                 onClick={() => playTrack(track, recommendations)}
                  className="w-[140px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-col flex-shrink-0 hover-scale"
                >
                  <div className="relative mb-3 md:mb-4 w-full aspect-square">
@@ -132,7 +132,7 @@ export const Home = () => {
                 <div 
                     key={track.id} 
                     className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_1fr_80px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer"
-                    onClick={() => playTrack(track)}
+                    onClick={() => playTrack(track, previewCharts)}
                 >
                     <div className="w-4 text-center">
                         <span className="text-secondary font-mono block group-hover:hidden text-sm">{idx + 1}</span>

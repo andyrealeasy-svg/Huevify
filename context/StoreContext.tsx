@@ -493,7 +493,8 @@ interface StoreContextType {
   toggleFollowArtist: (artistName: string) => void;
   isArtistFollowed: (artistName: string) => boolean;
   goBack: () => void;
-  playTrack: (track: Track) => void;
+  playTrack: (track: Track, newQueue?: Track[]) => void;
+  currentQueue: Track[];
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
@@ -625,6 +626,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Player State ---
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [currentQueue, setCurrentQueue] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playMode, setPlayMode] = useState<PlayMode>(PlayMode.OFF);
   const [isShuffle, setIsShuffle] = useState(false);
@@ -969,14 +971,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
-            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays, remoteDailyChart] = await Promise.all([
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays, remoteDailyChart, remoteProfileRequests] = await Promise.all([
               SupabaseService.fetchReleases(),
               SupabaseService.fetchArtistAccounts(),
               SupabaseService.fetchPlaylists(),
               SupabaseService.fetchModeratorAccount(),
               SupabaseService.fetchUsers(),
               SupabaseService.fetchTrackPlays(),
-              SupabaseService.fetchDailyChart()
+              SupabaseService.fetchDailyChart(),
+              SupabaseService.fetchProfileEditRequests()
             ]);
 
             // Sync track plays across all devices
@@ -1014,6 +1017,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const filtered = remoteArtists.filter(a => !isTestArtist(a));
               setArtistAccounts(filtered);
               StorageService.save('huevify_artist_accounts', filtered);
+            }
+            if (remoteProfileRequests !== null) {
+              const localReqs = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []);
+              const reqsMap = new Map<string, ProfileEditRequest>();
+              localReqs.forEach(r => reqsMap.set(r.id, r));
+              remoteProfileRequests.forEach(r => reqsMap.set(r.id, r));
+              const merged = Array.from(reqsMap.values());
+              setProfileEditRequests(merged);
+              StorageService.save('huevify_profile_requests', merged);
             }
             if (remotePlaylists !== null) {
               const localPls = StorageService.load<Playlist[]>('huevify_playlists', initialPlaylists);
@@ -1697,6 +1709,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setProfileEditRequests(updated);
       StorageService.save('huevify_profile_requests', updated);
       notifySync('ARTIST_DATA_UPDATE');
+      if (isSupabaseConfigured()) {
+          SupabaseService.saveProfileEditRequest(newReq).catch(e => console.warn('Supabase save profile edit request error:', e));
+      }
   };
 
   const approveArtist = (id: string) => {
@@ -1835,13 +1850,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (updatedArtist) {
           SupabaseService.saveArtistAccount(updatedArtist).catch(e => console.warn('Supabase save artist profile edit error:', e));
         }
+        SupabaseService.saveProfileEditRequest({ ...req, status: 'APPROVED' }).catch(e => console.warn('Supabase approve profile edit error:', e));
       }
   };
   const rejectProfileEdit = (id: string) => {
+      const req = profileEditRequests.find(r => r.id === id);
       const updatedReqs = profileEditRequests.map(r => r.id === id ? { ...r, status: 'REJECTED' as const } : r);
       setProfileEditRequests(updatedReqs);
       StorageService.save('huevify_profile_requests', updatedReqs);
       notifySync('ARTIST_DATA_UPDATE');
+      if (req && isSupabaseConfigured()) {
+          SupabaseService.saveProfileEditRequest({ ...req, status: 'REJECTED' }).catch(e => console.warn('Supabase reject profile edit error:', e));
+      }
   };
   
   const getTrackByHueq = (hueq: string): Track | undefined => {
@@ -2349,8 +2369,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track) return;
     setHasCountedListen(true);
 
-    // Random plays multiplier: 1 listen = +100..10000 plays
-    const addedPlays = Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
+    // 1 listen = +1 play
+    const addedPlays = 1;
 
     setTracks(prev => {
         const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + addedPlays } : t);
@@ -2378,7 +2398,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const playTrack = (track: Track) => {
+  const getViewQueue = (): Track[] => {
+      let q: Track[] = [];
+      if (view.type === 'PLAYLIST') {
+          const id = (view as any).id;
+          if (id === 'history') {
+              q = recentlyPlayed;
+          } else {
+              const currentLikedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+              let pl = playlists.find(p => p.id === id || (id.startsWith('liked') && (p.id === currentLikedId || p.ownerId === currentUser?.id)));
+              if (!pl && (id === 'liked' || id.startsWith('liked'))) {
+                  pl = playlists.find(p => p.id === 'liked');
+              }
+              if (pl) {
+                  q = (pl.tracks || []).map(tid => tracks.find(t => t.id === tid)).filter((t): t is Track => !!t);
+              }
+          }
+      } else if (view.type === 'ALBUM') {
+          const id = (view as any).id;
+          const alb = albums.find(a => a.id === id);
+          if (alb) {
+              q = (alb.trackIds || []).map((tid: string) => tracks.find((t: Track) => t.id === tid)).filter((t): t is Track => !!t);
+          }
+      } else if (view.type === 'ARTIST') {
+          const name = (view as any).name;
+          q = tracks.filter(t => t.artist === name || (t.mainArtists && t.mainArtists.includes(name)));
+      } else if (view.type === 'CHARTS') {
+          q = dailyChart.map(ct => tracks.find(t => t.id === ct.id)).filter((t): t is Track => !!t);
+      }
+      return q.length > 0 ? q : tracks;
+  };
+
+  const getQueue = (): Track[] => {
+      let q = currentQueue.length > 0 ? currentQueue : getViewQueue();
+      if (!appSettings.allowExplicitContent) {
+          q = q.filter(t => !t.explicit);
+      }
+      return q.filter(t => tracks.some(live => live.id === t.id));
+  };
+
+  const playTrack = (track: Track, newQueue?: Track[]) => {
     if (!track) return;
     // 1. Check if track is Explicit and allowed
     if (track.explicit && !appSettings.allowExplicitContent) {
@@ -2391,6 +2450,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!isLive) {
         showNotification("This track is no longer available.", "error");
         return;
+    }
+
+    // Set or preserve active playback queue
+    if (newQueue && newQueue.length > 0) {
+        setCurrentQueue(newQueue);
+    } else {
+        if (!currentQueue.some(t => t.id === track.id)) {
+            const contextQueue = getViewQueue();
+            if (contextQueue.some(t => t.id === track.id)) {
+                setCurrentQueue(contextQueue);
+            } else {
+                setCurrentQueue(tracks);
+            }
+        }
     }
 
     // Save to User Specific Recent
@@ -2425,31 +2498,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setVolume = (vol: number) => { setVolumeState(vol); audioRef.current.volume = vol; };
   const seek = (time: number) => { audioRef.current.currentTime = time; lastTimeRef.current = time; setProgress(time); };
   
-  const getQueue = (): Track[] => {
-    if (view.type === 'PLAYLIST' && (view as any).id === 'history') {
-        if (!appSettings.allowExplicitContent) {
-            return recentlyPlayed.filter(t => !t.explicit);
-        }
-        return recentlyPlayed;
-    }
-    if (!appSettings.allowExplicitContent) {
-        return tracks.filter(t => !t.explicit);
-    }
-    return tracks; 
-  };
   const nextTrack = () => {
     const queue = getQueue();
-    if (isShuffle) { playTrack(queue[Math.floor(Math.random() * queue.length)]); return; }
+    if (queue.length === 0) {
+        setIsPlaying(false);
+        audioRef.current.pause();
+        return;
+    }
+    if (isShuffle) {
+        const randomTrack = queue[Math.floor(Math.random() * queue.length)];
+        playTrack(randomTrack, queue);
+        return;
+    }
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
-    if (idx !== -1 && idx < queue.length - 1) playTrack(queue[idx + 1]);
-    else if (playMode === PlayMode.CONTEXT) playTrack(queue[0]);
-    else { setIsPlaying(false); audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    if (idx !== -1 && idx < queue.length - 1) {
+        playTrack(queue[idx + 1], queue);
+    } else if (playMode === PlayMode.CONTEXT) {
+        playTrack(queue[0], queue);
+    } else {
+        setIsPlaying(false);
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+    }
   };
   const prevTrack = () => {
     if (audioRef.current.currentTime > 3) { audioRef.current.currentTime = 0; lastTimeRef.current = 0; return; }
     const queue = getQueue();
+    if (queue.length === 0) return;
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
-    if (idx > 0) playTrack(queue[idx - 1]); else playTrack(queue[queue.length - 1]);
+    if (idx > 0) {
+        playTrack(queue[idx - 1], queue);
+    } else {
+        playTrack(queue[queue.length - 1], queue);
+    }
   };
   const toggleRepeat = () => {
     if (playMode === PlayMode.OFF) setPlayMode(PlayMode.CONTEXT);
@@ -2685,7 +2766,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
       approveArtist, rejectArtist, approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
       releaseRequests, profileEditRequests, hasModerator, existingArtists, getTrackByHueq,
-      tracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, isPlaying, playMode, isShuffle, volume, progress, duration, view,
+      tracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, currentQueue, isPlaying, playMode, isShuffle, volume, progress, duration, view,
       isCreatePlaylistOpen, setCreatePlaylistOpen, playlistIdToEdit, setPlaylistIdToEdit,
       isMobilePlayerOpen, setMobilePlayerOpen,
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
