@@ -720,6 +720,8 @@ export const SupabaseService = {
         }
       });
 
+      chart.sort((a, b) => (b.dailyPlays || 0) - (a.dailyPlays || 0));
+
       return { chart, snapshot, lastUpdate };
     } catch (e) {
       console.warn('Supabase fetchDailyChart failed:', e);

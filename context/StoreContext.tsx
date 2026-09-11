@@ -665,31 +665,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Real-time Sync Channel
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
-  const sanitizeChart = (chartToSanitize: DailyChartTrack[], currentTracks: Track[]): DailyChartTrack[] => {
-    if (!chartToSanitize || !Array.isArray(chartToSanitize)) return [];
-    const tracksMap = new Map(currentTracks.filter(t => !isTestTrack(t)).map(t => [t.id, t]));
-
-    return chartToSanitize
-      .map(item => {
-        const live = tracksMap.get(item.id);
-        if (!live) return null;
-        const totalPlays = Number(live.plays) || 0;
-        // Total plays must be > 0 for a track to appear in daily chart
-        if (totalPlays <= 0) return null;
-        
-        // dailyPlays cannot exceed total plays
-        const rawDaily = Number(item.dailyPlays) || 0;
-        const dailyPlays = Math.min(rawDaily, totalPlays);
-        if (dailyPlays <= 0) return null;
-
-        return {
-          ...live,
-          dailyPlays
-        };
-      })
-      .filter((t): t is DailyChartTrack => t !== null);
-  };
-
   const showNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
       const id = Date.now().toString();
       setNotifications(prev => [...prev, { id, message, type }]);
@@ -1000,16 +975,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               StorageService.save('huevify_plays', mergedPlays);
             }
 
-            if (remoteDailyChart) {
+            if (remoteDailyChart && Array.isArray(remoteDailyChart.chart) && remoteDailyChart.chart.length > 0) {
               if (remoteDailyChart.snapshot) {
                 StorageService.save('huevify_chart_snapshot', remoteDailyChart.snapshot);
               }
               if (remoteDailyChart.lastUpdate) {
                 StorageService.save('huevify_last_chart_update', remoteDailyChart.lastUpdate);
               }
-              const remoteChart = Array.isArray(remoteDailyChart.chart) ? remoteDailyChart.chart : [];
-              StorageService.save('huevify_daily_chart', remoteChart);
-              setDailyChart(remoteChart);
+              StorageService.save('huevify_daily_chart', remoteDailyChart.chart);
+              setDailyChart(remoteDailyChart.chart);
             }
 
             if (remoteReleases !== null) {
@@ -1208,10 +1182,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } else if (table === 'daily_chart') {
         const freshChartData = await SupabaseService.fetchDailyChart();
-        if (freshChartData && freshChartData.chart) {
-          const sanitized = sanitizeChart(freshChartData.chart, tracks);
-          setDailyChart(sanitized);
-          StorageService.save('huevify_daily_chart', sanitized);
+        if (freshChartData && freshChartData.chart && freshChartData.chart.length > 0) {
+          setDailyChart(freshChartData.chart);
+          StorageService.save('huevify_daily_chart', freshChartData.chart);
+          if (freshChartData.lastUpdate) {
+            StorageService.save('huevify_last_chart_update', freshChartData.lastUpdate);
+          }
         }
       }
     });
@@ -1899,6 +1875,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Computes the Daily Top 25 for the completed 24-hour cycle ending at publicationPoint
   const computeAndPublishDailyChart = async (publicationPoint: Date) => {
+    // 1. If Supabase already has a complete published chart for this publication point, DO NOT RECALCULATE!
+    // Simply fetch and adopt it. This guarantees no client ever overwrites the published chart with partial local data!
+    if (isSupabaseConfigured()) {
+      const existing = await SupabaseService.fetchDailyChart();
+      if (existing && existing.lastUpdate === publicationPoint.toISOString() && Array.isArray(existing.chart) && existing.chart.length > 0) {
+        setDailyChart(existing.chart);
+        StorageService.save('huevify_daily_chart', existing.chart);
+        StorageService.save('huevify_last_chart_update', existing.lastUpdate);
+        return;
+      }
+    }
+
     const cycleEnd = publicationPoint;
     const cycleStart = new Date(publicationPoint.getTime() - 24 * 60 * 60 * 1000);
 
@@ -1921,27 +1909,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     }
 
-    // If no plays were recorded in the [cycleStart, cycleEnd) interval, dailyPlaysMap remains empty.
-    // Crucially: NEVER synthesize fake daily plays or include plays logged after cycleEnd!
+    // Safety guard: only calculate if track catalog is populated in memory
     const availableTracks = tracksRef.current;
     if (availableTracks.length === 0) return;
 
     const liveTracks = availableTracks.filter(t => !isTestTrack(t));
 
-    // Spotify-style static daily chart: strictly tracks with totalPlays > 0 and dailyPlays > 0 during the COMPLETED 24h cycle
+    // Spotify-style static daily chart: strictly tracks with dailyPlays > 0 during the COMPLETED 24h cycle
     const chartData: DailyChartTrack[] = liveTracks
       .map(t => {
-        const totalPlays = Number(t.plays) || 0;
-        if (totalPlays <= 0) return null;
         const rawDaily = dailyPlaysMap[t.id] || 0;
-        const dailyPlays = Math.min(rawDaily, totalPlays);
-        if (dailyPlays <= 0) return null;
+        if (rawDaily <= 0) return null;
         return {
           ...t,
-          dailyPlays
+          dailyPlays: rawDaily,
+          plays: Math.max(t.plays || 0, rawDaily)
         };
       })
       .filter((t): t is DailyChartTrack => t !== null);
+
+    // If plays were recorded in the cycle but we haven't loaded enough tracks yet, abort to prevent saving a partial chart
+    if (Object.keys(dailyPlaysMap).length > 0 && chartData.length === 0) {
+      console.warn('Tracks catalog not fully loaded to match daily plays, skipping chart publication');
+      return;
+    }
 
     const sorted = chartData.sort((a, b) => {
       if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;
@@ -1977,14 +1968,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const savedLastUpdate = StorageService.load<string | null>('huevify_last_chart_update', null);
       const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []);
 
-      // If the chart for the current 24-hour cycle is already published, keep it STATIC!
-      if (savedLastUpdate && savedLastUpdate === latestPt.toISOString()) {
+      // 1. If local storage already has valid, full static chart for latestPt, keep it!
+      if (savedLastUpdate && savedLastUpdate === latestPt.toISOString() && savedChart.length > 0) {
         setDailyChart(savedChart);
         return;
       }
 
-      // Calculate and publish for the latest valid publication point
-      await computeAndPublishDailyChart(latestPt);
+      // 2. Check Supabase! If Supabase has published chart for latestPt, adopt it directly!
+      if (isSupabaseConfigured()) {
+        const remoteData = await SupabaseService.fetchDailyChart();
+        if (remoteData && remoteData.lastUpdate === latestPt.toISOString() && Array.isArray(remoteData.chart) && remoteData.chart.length > 0) {
+          setDailyChart(remoteData.chart);
+          StorageService.save('huevify_daily_chart', remoteData.chart);
+          StorageService.save('huevify_last_chart_update', remoteData.lastUpdate);
+          return;
+        }
+      }
+
+      // 3. Only if neither has it and tracks are populated, compute and publish
+      if (tracksRef.current.length >= 5) {
+        await computeAndPublishDailyChart(latestPt);
+      }
     };
 
     checkAndInitializeChart();
@@ -2005,11 +2009,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     scheduleNextDailyUpdate();
 
     // Periodic check every 30 seconds (handles system clock jumps, wakeup from sleep, idle tabs)
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const latestPt = getLatestPublicationPoint();
       const savedLastUpdate = StorageService.load<string | null>('huevify_last_chart_update', null);
       if (!savedLastUpdate || new Date(savedLastUpdate).getTime() < latestPt.getTime()) {
-        computeAndPublishDailyChart(latestPt);
+        if (isSupabaseConfigured()) {
+          const remoteData = await SupabaseService.fetchDailyChart();
+          if (remoteData && remoteData.lastUpdate === latestPt.toISOString() && Array.isArray(remoteData.chart) && remoteData.chart.length > 0) {
+            setDailyChart(remoteData.chart);
+            StorageService.save('huevify_daily_chart', remoteData.chart);
+            StorageService.save('huevify_last_chart_update', remoteData.lastUpdate);
+            return;
+          }
+        }
+        if (tracksRef.current.length >= 5) {
+          computeAndPublishDailyChart(latestPt);
+        }
       }
     }, 30000);
 
