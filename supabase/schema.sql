@@ -126,6 +126,15 @@ CREATE TABLE IF NOT EXISTS public.release_drafts (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 11. Track Play Logs (Detailed play event log for real-time daily chart analytics)
+CREATE TABLE IF NOT EXISTS public.track_play_logs (
+    id TEXT PRIMARY KEY,
+    track_id TEXT NOT NULL,
+    user_id TEXT DEFAULT 'anonymous',
+    plays BIGINT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.artist_accounts ENABLE ROW LEVEL SECURITY;
@@ -137,6 +146,7 @@ ALTER TABLE public.track_plays ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_chart ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profile_edit_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.release_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.track_play_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read & write for app prototype clients with anon key
 DO $$ 
@@ -170,6 +180,9 @@ BEGIN
 
     DROP POLICY IF EXISTS "Public access release_drafts" ON public.release_drafts;
     CREATE POLICY "Public access release_drafts" ON public.release_drafts FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Public access track_play_logs" ON public.track_play_logs;
+    CREATE POLICY "Public access track_play_logs" ON public.track_play_logs FOR ALL USING (true) WITH CHECK (true);
 END $$;
 
 -- Enable Realtime publication for tables
@@ -179,6 +192,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.artist_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.moderator_accounts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.release_drafts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.track_plays;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.track_play_logs;
 
 -- ==============================================================================
 -- 9. STORAGE BUCKET CONFIGURATION ('media')

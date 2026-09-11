@@ -366,7 +366,18 @@ export const Library = () => {
          if (recentlyPlayed.length > 0) cover = getTrackCover(recentlyPlayed[0]);
          releaseType = t('playlist');
       } else {
-          const pl = playlists.find(p => p.id === id);
+          let pl = playlists.find(p => p.id === id || (isLikedSongs && (p.id === `liked_${currentUser?.id}` || p.id === 'liked')));
+          if (!pl && isLikedSongs) {
+              const likedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+              pl = {
+                  id: likedId,
+                  name: t('likedSongs'),
+                  tracks: [],
+                  isSystem: true,
+                  description: 'Your favorite tracks',
+                  ownerId: currentUser?.id
+              };
+          }
           if (!pl) {
              return (
                  <div className="flex flex-col items-center justify-center h-full pb-32">

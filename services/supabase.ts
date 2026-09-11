@@ -579,6 +579,153 @@ export const SupabaseService = {
     }
   },
 
+  async recordPlayLog(trackId: string, userId: string = 'anonymous', playsCount: number = 1): Promise<number | null> {
+    if (!supabase) return null;
+    try {
+      const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
+      // 1. Insert timestamped log entry into track_play_logs
+      const { error: logErr } = await supabase.from('track_play_logs').insert([{
+        id: logId,
+        track_id: trackId,
+        user_id: userId || 'anonymous',
+        plays: playsCount,
+        created_at: new Date().toISOString()
+      }]);
+
+      if (logErr) {
+        console.warn('Supabase recordPlayLog insert error:', logErr.message);
+      }
+
+      // 2. Increment total plays in track_plays table
+      return await this.incrementTrackPlay(trackId, playsCount);
+    } catch (e) {
+      console.warn('Supabase recordPlayLog failed:', e);
+      return null;
+    }
+  },
+
+  async fetchDailyPlaysRange(fromISO: string, toISO: string): Promise<Record<string, number> | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('track_play_logs')
+        .select('track_id, plays')
+        .gte('created_at', fromISO)
+        .lt('created_at', toISO);
+
+      if (error) {
+        console.warn('Supabase fetchDailyPlaysRange error:', error.message);
+        return null;
+      }
+
+      const map: Record<string, number> = {};
+      (data || []).forEach((row: any) => {
+        if (row.track_id) {
+          map[row.track_id] = (map[row.track_id] || 0) + (Number(row.plays) || 0);
+        }
+      });
+      return map;
+    } catch (e) {
+      console.warn('Supabase fetchDailyPlaysRange failed:', e);
+      return null;
+    }
+  },
+
+  async fetchDailyPlaysSince(sinceISO: string): Promise<Record<string, number> | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('track_play_logs')
+        .select('track_id, plays')
+        .gte('created_at', sinceISO);
+
+      if (error) {
+        console.warn('Supabase fetchDailyPlaysSince error:', error.message);
+        return null;
+      }
+
+      const map: Record<string, number> = {};
+      (data || []).forEach((row: any) => {
+        if (row.track_id) {
+          map[row.track_id] = (map[row.track_id] || 0) + (Number(row.plays) || 0);
+        }
+      });
+      return map;
+    } catch (e) {
+      console.warn('Supabase fetchDailyPlaysSince failed:', e);
+      return null;
+    }
+  },
+
+  async fetchDailyPlays24h(): Promise<Record<string, number> | null> {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    return this.fetchDailyPlaysSince(twentyFourHoursAgo);
+  },
+
+  // --- DAILY CHART & SNAPSHOTS ---
+  async fetchDailyChart(): Promise<{ chart: DailyChartTrack[]; snapshot: Record<string, number>; lastUpdate: string | null } | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.from('daily_chart').select('*');
+      if (error) {
+        console.warn('Supabase fetchDailyChart error:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return null;
+
+      const chart: DailyChartTrack[] = [];
+      let snapshot: Record<string, number> = {};
+      let lastUpdate: string | null = null;
+
+      data.forEach((row: any) => {
+        if (row.track_id === '__META__') {
+          snapshot = row.track_data?.snapshot || {};
+          lastUpdate = row.track_data?.lastUpdate || null;
+        } else if (row.track_data) {
+          chart.push({
+            ...row.track_data,
+            dailyPlays: Number(row.daily_plays) || Number(row.track_data?.dailyPlays) || 0
+          });
+        }
+      });
+
+      return { chart, snapshot, lastUpdate };
+    } catch (e) {
+      console.warn('Supabase fetchDailyChart failed:', e);
+      return null;
+    }
+  },
+
+  async saveDailyChart(chart: DailyChartTrack[], snapshot: Record<string, number>, lastUpdate: string | null): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const rows = chart.map(t => ({
+        track_id: t.id,
+        track_data: t,
+        daily_plays: Number(t.dailyPlays) || 0,
+        updated_at: new Date().toISOString()
+      }));
+
+      rows.push({
+        track_id: '__META__',
+        track_data: { snapshot, lastUpdate } as any,
+        daily_plays: 0,
+        updated_at: new Date().toISOString()
+      });
+
+      const { error } = await supabase.from('daily_chart').upsert(rows, { onConflict: 'track_id' });
+      if (error) {
+        console.warn('Supabase saveDailyChart error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveDailyChart failed:', e);
+      return false;
+    }
+  },
+
   // --- REALTIME SUBSCRIPTION ---
   subscribeToChanges(onUpdate: (table: string) => void): (() => void) | null {
     if (!supabase) return null;
@@ -591,6 +738,8 @@ export const SupabaseService = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'moderator_accounts' }, () => onUpdate('moderator_accounts'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'release_drafts' }, () => onUpdate('release_drafts'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'track_plays' }, () => onUpdate('track_plays'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_chart' }, () => onUpdate('daily_chart'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'track_play_logs' }, () => onUpdate('track_play_logs'))
         .subscribe();
 
       return () => {

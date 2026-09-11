@@ -617,6 +617,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Helper ID
   const likedPlaylistId = currentUser ? `liked_${currentUser.id}` : 'liked';
 
+  const ensureUserLikedPlaylist = (list: Playlist[]): Playlist[] => {
+      if (!currentUser) return list;
+      const likedId = `liked_${currentUser.id}`;
+      if (list.some(p => p.id === likedId)) return list;
+
+      const localPlaylists = StorageService.load<Playlist[]>('huevify_playlists', []);
+      const existingLocal = localPlaylists.find(p => p.id === likedId || (p.id === 'liked' && p.ownerId === currentUser.id));
+
+      const likedPl: Playlist = existingLocal ? { ...existingLocal, id: likedId, ownerId: currentUser.id } : {
+          id: likedId,
+          name: 'Liked Songs',
+          tracks: [],
+          isSystem: true,
+          description: 'Your favorite tracks',
+          ownerId: currentUser.id
+      };
+
+      return [likedPl, ...list];
+  };
+
   const showNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
       const id = Date.now().toString();
       setNotifications(prev => [...prev, { id, message, type }]);
@@ -900,13 +920,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
-            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays] = await Promise.all([
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays, remoteDailyChart] = await Promise.all([
               SupabaseService.fetchReleases(),
               SupabaseService.fetchArtistAccounts(),
               SupabaseService.fetchPlaylists(),
               SupabaseService.fetchModeratorAccount(),
               SupabaseService.fetchUsers(),
-              SupabaseService.fetchTrackPlays()
+              SupabaseService.fetchTrackPlays(),
+              SupabaseService.fetchDailyChart()
             ]);
 
             // Sync track plays across all devices
@@ -917,6 +938,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 mergedPlays[tid] = Math.max(mergedPlays[tid] || 0, count);
               });
               StorageService.save('huevify_plays', mergedPlays);
+            }
+
+            if (remoteDailyChart) {
+              if (remoteDailyChart.snapshot) {
+                StorageService.save('huevify_chart_snapshot', remoteDailyChart.snapshot);
+              }
+              if (remoteDailyChart.lastUpdate) {
+                StorageService.save('huevify_last_chart_update', remoteDailyChart.lastUpdate);
+              }
+              if (remoteDailyChart.chart) {
+                const activeTracks = remoteDailyChart.chart.filter(t => (t.dailyPlays || 0) > 0);
+                setDailyChart(activeTracks);
+                StorageService.save('huevify_daily_chart', activeTracks);
+              }
             }
 
             if (remoteReleases !== null) {
@@ -934,8 +969,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               StorageService.save('huevify_artist_accounts', filtered);
             }
             if (remotePlaylists !== null) {
-              setPlaylists(remotePlaylists);
-              StorageService.save('huevify_playlists', remotePlaylists);
+              const mergedPls = ensureUserLikedPlaylist(remotePlaylists);
+              setPlaylists(mergedPls);
+              StorageService.save('huevify_playlists', mergedPls);
             }
             if (remoteUsers !== null) {
               const localUsers = StorageService.load<User[]>('huevify_users', []);
@@ -1019,7 +1055,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else if (table === 'playlists') {
         const freshPlaylists = await SupabaseService.fetchPlaylists();
         if (freshPlaylists) {
-          setPlaylists(freshPlaylists);
+          const mergedPls = ensureUserLikedPlaylist(freshPlaylists);
+          setPlaylists(mergedPls);
+          StorageService.save('huevify_playlists', mergedPls);
         }
       } else if (table === 'users') {
         const freshUsers = await SupabaseService.fetchUsers();
@@ -1039,6 +1077,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else {
           setHasModerator(false);
           StorageService.save('huevify_moderator', null);
+        }
+      } else if (table === 'track_plays' || table === 'track_play_logs') {
+        const freshPlays = await SupabaseService.fetchTrackPlays();
+        if (freshPlays) {
+          const localPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+          const mergedPlays = { ...localPlays, ...freshPlays };
+          StorageService.save('huevify_plays', mergedPlays);
+          setTracks(prev => prev.map(t => ({ ...t, plays: mergedPlays[t.id] ?? t.plays ?? 0 })));
+        }
+      } else if (table === 'daily_chart') {
+        const freshChartData = await SupabaseService.fetchDailyChart();
+        if (freshChartData && freshChartData.chart && freshChartData.chart.length > 0) {
+          setDailyChart(freshChartData.chart);
+          StorageService.save('huevify_daily_chart', freshChartData.chart);
         }
       }
     });
@@ -1653,56 +1705,105 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return tracks.find(t => t.hueq === hueq);
   };
 
-  // --- Existing Logic (Daily Chart, etc.) ---
+  // --- Daily Top 25 Chart Calculation ---
   useEffect(() => {
     if (tracks.length === 0) return;
 
-    const processDailyChart = () => {
-        const now = new Date();
-        const lastUpdateStr = StorageService.load<string | null>('huevify_last_chart_update', null);
-        const playSnapshot = StorageService.load<Record<string, number>>('huevify_chart_snapshot', {});
+    let isSubscribed = true;
 
-        let threshold = new Date();
-        threshold.setUTCHours(18, 0, 0, 0); 
-        
-        if (now.getTime() < threshold.getTime()) {
-            threshold.setDate(threshold.getDate() - 1);
+    const processDailyChart = async () => {
+        // Calculate the most recent 21:00 UTC+3 (18:00 UTC) publication point in the past
+        const now = new Date();
+        let latestPublicationPoint = new Date();
+        latestPublicationPoint.setUTCHours(18, 0, 0, 0); // 18:00 UTC = 21:00 UTC+3
+        if (now.getTime() < latestPublicationPoint.getTime()) {
+            latestPublicationPoint.setDate(latestPublicationPoint.getDate() - 1);
         }
 
-        const lastUpdateDate = lastUpdateStr ? new Date(lastUpdateStr) : new Date(0);
+        // Interval for the completed 24-hour cycle that ended at latestPublicationPoint
+        const cycleEnd = latestPublicationPoint;
+        const cycleStart = new Date(latestPublicationPoint.getTime() - 24 * 60 * 60 * 1000);
 
-        if (lastUpdateDate.getTime() < threshold.getTime()) {
-            const currentPlaysMap = tracks.reduce((acc, t) => ({...acc, [t.id]: t.plays}), {});
-            
-            const chartData: DailyChartTrack[] = tracks.map(t => {
-                const prevPlays = playSnapshot[t.id] || 0;
-                const dailyDelta = Math.max(0, t.plays - prevPlays);
-                return { ...t, dailyPlays: dailyDelta };
+        let remoteData = null;
+        if (isSupabaseConfigured()) {
+            remoteData = await SupabaseService.fetchDailyChart();
+        }
+
+        const lastUpdateStr = remoteData?.lastUpdate || StorageService.load<string | null>('huevify_last_chart_update', null);
+        const hasUpToDateChart = lastUpdateStr && new Date(lastUpdateStr).getTime() >= latestPublicationPoint.getTime();
+
+        if (hasUpToDateChart) {
+            // Static published chart is already up-to-date for the current 24h window
+            const published = (remoteData?.chart || StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []))
+                .filter(t => (t.dailyPlays || 0) > 0);
+            if (!isSubscribed) return;
+            setDailyChart(published);
+            return;
+        }
+
+        // Time to publish a new static snapshot for completed [cycleStart, cycleEnd] period
+        let dailyPlaysMap: Record<string, number> = {};
+        let isFromSupabase = false;
+
+        if (isSupabaseConfigured()) {
+            const rangePlays = await SupabaseService.fetchDailyPlaysRange(cycleStart.toISOString(), cycleEnd.toISOString());
+            if (rangePlays) {
+                dailyPlaysMap = rangePlays;
+                isFromSupabase = true;
+            }
+        }
+
+        if (!isFromSupabase) {
+            const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+            const periodLogs = localLogs.filter(l => l.timestamp >= cycleStart.getTime() && l.timestamp < cycleEnd.getTime());
+            periodLogs.forEach(l => {
+                dailyPlaysMap[l.trackId] = (dailyPlaysMap[l.trackId] || 0) + l.plays;
             });
+        }
 
-            const sorted = chartData.sort((a, b) => b.dailyPlays - a.dailyPlays).slice(0, 25);
-            setDailyChart(sorted);
-            const chartToSave = sorted.map(t => ({
+        if (!isSubscribed) return;
+
+        const liveTracks = tracks.filter(t => !isTestTrack(t));
+
+        // Spotify-style static daily chart: strictly tracks with dailyPlays > 0 during COMPLETED period
+        const chartData: DailyChartTrack[] = liveTracks
+            .map(t => ({
                 ...t,
-                url: t.url && t.url.startsWith('data:') ? '' : t.url
-            }));
-            StorageService.save('huevify_daily_chart', chartToSave);
+                dailyPlays: dailyPlaysMap[t.id] || 0
+            }))
+            .filter(t => t.dailyPlays > 0);
 
-            StorageService.save('huevify_chart_snapshot', currentPlaysMap);
-            StorageService.save('huevify_last_chart_update', now.toISOString());
-        } else {
-            const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []).filter(t => !isTestTrack(t));
-            const hydratedChart = savedChart.map(ct => {
-                const live = tracks.find(t => t.id === ct.id);
-                return live ? { ...live, dailyPlays: ct.dailyPlays } : ct;
-            }).filter(t => !isTestTrack(t));
-            setDailyChart(hydratedChart);
+        const sorted = chartData.sort((a, b) => {
+            if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;
+            if ((b.plays || 0) !== (a.plays || 0)) return (b.plays || 0) - (a.plays || 0);
+            return a.title.localeCompare(b.title);
+        }).slice(0, 25);
+
+        setDailyChart(sorted);
+
+        const chartToSave = sorted.map(t => ({
+            ...t,
+            url: t.url && t.url.startsWith('data:') ? '' : t.url
+        }));
+
+        StorageService.save('huevify_daily_chart', chartToSave);
+        StorageService.save('huevify_last_chart_update', latestPublicationPoint.toISOString());
+
+        if (isSupabaseConfigured()) {
+            SupabaseService.saveDailyChart(
+                chartToSave,
+                dailyPlaysMap,
+                latestPublicationPoint.toISOString()
+            );
         }
     };
 
     processDailyChart();
-    const interval = setInterval(processDailyChart, 60000);
-    return () => clearInterval(interval);
+    const interval = setInterval(processDailyChart, 30000);
+    return () => {
+        isSubscribed = false;
+        clearInterval(interval);
+    };
 
   }, [tracks]);
 
@@ -2078,15 +2179,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return updated;
     });
 
+    // Save local log for offline/fallback chart calculation
+    const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+    localLogs.push({ trackId: track.id, plays: addedPlays, timestamp: Date.now() });
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    StorageService.save('huevify_play_logs', localLogs.filter(l => l.timestamp >= cutoff));
+
     if (isSupabaseConfigured()) {
-        SupabaseService.incrementTrackPlay(track.id, addedPlays).then(newCount => {
+        SupabaseService.recordPlayLog(track.id, currentUser?.id || 'anonymous', addedPlays).then(newCount => {
             if (newCount !== null) {
                 setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
                 const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
                 currentPlays[track.id] = newCount;
                 StorageService.save('huevify_plays', currentPlays);
             }
-        }).catch(e => console.warn('Increment track play error:', e));
+        }).catch(e => console.warn('Record play log error:', e));
     }
   };
 
@@ -2274,7 +2381,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         setReleaseRequests(cleanReleases);
         setArtistAccounts(cleanArtists);
-        setPlaylists(cleanPlaylists);
+        setPlaylists(ensureUserLikedPlaylist(cleanPlaylists));
         refreshLibrary(cleanReleases);
         if (remoteMod) {
           setHasModerator(true);
