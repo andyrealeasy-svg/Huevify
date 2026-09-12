@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock } from '../components/Icons.tsx';
+import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -214,12 +215,55 @@ export const Library = () => {
       );
   }
 
+  // --- ARTIST DISCOGRAPHY VIEW ---
+  if (view.type === 'ARTIST_DISCOGRAPHY') {
+      return <ArtistDiscography artistName={(view as any).id} />;
+  }
+
   // --- ARTIST VIEW ---
   if (view.type === 'ARTIST') {
       const artistName = (view as any).id;
       const artistTracks = tracks.filter(t => t.artist === artistName || t.mainArtists?.includes(artistName));
       const topTracks = [...artistTracks].sort((a, b) => b.plays - a.plays).slice(0, 5);
-      const artistAlbums = albums.filter(a => a.artist === artistName);
+      
+      // Собственные релизы артиста
+      const ownAlbums = albums.filter(a => a.artist === artistName || a.mainArtists?.includes(artistName));
+
+      const getAlbumReleaseTime = (album: any): number => {
+        if (album.releaseDate) {
+          const time = new Date(album.releaseDate).getTime();
+          if (!isNaN(time)) return time;
+        }
+        if (album.year) {
+          return new Date(`${album.year}-01-01`).getTime();
+        }
+        return 0;
+      };
+
+      const getAlbumPlays = (album: any): number => {
+        return (album.trackIds || []).reduce((sum: number, tid: string) => {
+          const tr = tracks.find(t => t.id === tid);
+          return sum + (tr?.plays || 0);
+        }, 0);
+      };
+
+      // Сортировка по дате (новейший первый)
+      const sortedByDate = [...ownAlbums].sort((a, b) => {
+        const diff = getAlbumReleaseTime(b) - getAlbumReleaseTime(a);
+        if (diff !== 0) return diff;
+        return (b.year || 0) - (a.year || 0);
+      });
+
+      // 1-й релиз: последний
+      const latestRelease = sortedByDate[0] || null;
+
+      // Ещё 3 — самые прослушиваемые за месяц
+      const otherReleasesByPlays = latestRelease
+        ? sortedByDate.filter(a => a.id !== latestRelease.id).sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a)).slice(0, 3)
+        : [];
+
+      // Итоговые релизы для отображения в карточке: 1 последний, ещё 3 самых прослушиваемых
+      const discographyPreview = latestRelease ? [latestRelease, ...otherReleasesByPlays] : [];
       
       const { monthlyPlays, globalRank } = getArtistStats(artistName);
       
@@ -320,15 +364,60 @@ export const Library = () => {
                             ))}
                         </div>
 
-                        <h2 className="text-2xl font-bold mb-4">{t('discography')}</h2>
-                        <div className="flex overflow-x-auto gap-4 pb-4 md:grid md:grid-cols-4 lg:grid-cols-5">
-                            {artistAlbums.map(album => (
-                                <div key={album.id} onClick={() => setView({type: 'ALBUM', id: album.id})} className="min-w-[140px] md:min-w-0 p-3 bg-surface hover:bg-surface-highlight rounded-md cursor-pointer hover:scale-[1.02] transition flex-col">
-                                    <img src={getAlbumCover(album.id)} className="w-full aspect-square object-cover rounded mb-2 shadow-lg" />
-                                    <div className="font-bold truncate text-sm">{album.title}</div>
-                                    <div className="text-xs text-secondary">{album.year} • {album.type || 'Album'}</div>
+                        {/* Дискография: вертикальный блок сверху вниз */}
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-2xl font-bold">{t('discography')}</h2>
+                                <button 
+                                    onClick={() => setView({ type: 'ARTIST_DISCOGRAPHY', id: artistName })}
+                                    className="text-xs md:text-sm font-bold text-secondary hover:text-white transition hover:underline"
+                                >
+                                    {t('seeAllDiscography', 'Показать все')}
+                                </button>
+                            </div>
+
+                            {discographyPreview.length === 0 ? (
+                                <p className="text-secondary text-sm">{t('noReleases', 'Релизов пока нет')}</p>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    {discographyPreview.map((album, idx) => {
+                                        const isLatest = idx === 0 && latestRelease?.id === album.id;
+                                        const playsCount = getAlbumPlays(album);
+                                        const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом');
+                                        return (
+                                            <div 
+                                                key={album.id} 
+                                                onClick={() => setView({ type: 'ALBUM', id: album.id })} 
+                                                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-surface-highlight bg-surface/40 border border-white/5 group cursor-pointer transition"
+                                            >
+                                                <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
+                                                    <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                                                        <img 
+                                                            src={getAlbumCover(album.id)} 
+                                                            alt={album.title}
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                            <Play size={20} fill="white" className="text-white ml-0.5" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col overflow-hidden min-w-0">
+                                                        <span className="font-semibold text-white truncate text-base group-hover:underline">
+                                                            {album.title}
+                                                        </span>
+                                                        <span className="text-xs text-secondary truncate mt-0.5">
+                                                            {album.year} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 text-secondary group-hover:text-white shrink-0 pl-2">
+                                                    <ChevronRight size={18} className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </div>
 
@@ -502,8 +591,16 @@ export const Library = () => {
           <div className="flex flex-col items-center text-center md:flex-row md:items-end md:text-left gap-6 mt-8 md:mt-8">
             {/* Cover Art Logic */}
             <div 
-                className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden rounded-md animate-appear relative group ${hasMultipleCovers ? 'cursor-pointer' : ''}`}
-                onClick={() => { if(hasMultipleCovers) setCoverPickerOpen(true); }}
+                className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden rounded-md animate-appear relative group ${
+                  hasMultipleCovers || (isPlaylist && isOwner && !isSystem) ? 'cursor-pointer' : ''
+                }`}
+                onClick={(e) => { 
+                  if (hasMultipleCovers) {
+                    setCoverPickerOpen(true); 
+                  } else if (isPlaylist && isOwner && !isSystem) {
+                    handleEditPlaylist(id, e);
+                  }
+                }}
             >
                 {isLikedSongs ? (
                     <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
@@ -523,9 +620,24 @@ export const Library = () => {
                                  <span className="text-xs font-bold border border-white px-2 py-1 rounded">{t('changeCover')}</span>
                              </div>
                         )}
+                        {/* Overlay for owner playlist photo change */}
+                        {isPlaylist && isOwner && !isSystem && (
+                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
+                                 <Edit size={28} className="text-white" />
+                                 <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
+                             </div>
+                        )}
                     </>
                 ) : (
-                    <ListMusic size={64} className="text-secondary" />
+                    <>
+                      <ListMusic size={64} className="text-secondary" />
+                      {isPlaylist && isOwner && !isSystem && (
+                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
+                             <Edit size={28} className="text-white" />
+                             <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
+                         </div>
+                      )}
+                    </>
                 )}
             </div>
 
@@ -615,7 +727,6 @@ export const Library = () => {
                const displayCover = !isPlaylist ? cover : getTrackCover(track);
 
                const albumArtist = !isPlaylist ? (subtitle.split(' • ')[1] || "") : "";
-               const showFeatOnMobile = track.artist !== albumArtist;
                const allTrackArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
 
                return (
@@ -632,14 +743,16 @@ export const Library = () => {
                    <span className="text-white font-medium truncate flex items-center gap-2">
                       {track.title} 
                       {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">{t('explicitShort')}</span>}
-                      <span className="md:hidden text-secondary font-normal">
-                          {showFeatOnMobile && track.feat ? ` (feat. ${track.feat})` : ''}
-                      </span>
+                      {track.feat && (
+                          <span className="md:hidden text-secondary font-normal">
+                              {` (feat. ${track.feat})`}
+                          </span>
+                      )}
                    </span>
                    
                    {/* Mobile Artist & Plays Display */}
                    <div className="md:hidden text-xs text-secondary truncate mt-0.5 flex items-center gap-1">
-                      <span className="truncate">{showFeatOnMobile ? track.artist : (allTrackArtists.join(', '))}</span>
+                      <span className="truncate">{allTrackArtists.join(', ')}</span>
                       <span>•</span>
                       <span>{formatPlays(track.plays)}</span>
                    </div>

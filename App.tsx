@@ -98,6 +98,7 @@ const MainView = () => {
       case 'PLAYLIST': return <Library />;
       case 'ALBUM': return <Library />;
       case 'ARTIST': return <Library />;
+      case 'ARTIST_DISCOGRAPHY': return <Library />;
       case 'CHARTS': return <Library />;
       default: return <Home />;
     }

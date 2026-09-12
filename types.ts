@@ -72,6 +72,7 @@ export type ViewState =
   | { type: 'PLAYLIST'; id: string }
   | { type: 'ALBUM'; id: string }
   | { type: 'ARTIST'; id: string }
+  | { type: 'ARTIST_DISCOGRAPHY'; id: string }
   | { type: 'CHARTS' }
   | { type: 'GENRE'; id: string };
 

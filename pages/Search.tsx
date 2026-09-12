@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Search as SearchIcon, Play, Heart, ListMusic, User, ArrowLeft } from '../components/Icons.tsx';
+import { Search as SearchIcon, Play, Heart, ListMusic, User, ArrowLeft, Music2 } from '../components/Icons.tsx';
 
 const formatDuration = (seconds: number) => {
     // Ensure seconds is an integer to avoid float residuals like .123 showing up in modulo
@@ -19,9 +19,12 @@ export const Search = () => {
   const [query, setQuery] = useState("");
 
   const filteredTracks = tracks.filter(t => {
-    const matchesQuery = t.title.toLowerCase().includes(query.toLowerCase()) || 
-    t.artist.toLowerCase().includes(query.toLowerCase()) ||
-    t.album.toLowerCase().includes(query.toLowerCase());
+    const q = query.toLowerCase();
+    const matchesQuery = t.title.toLowerCase().includes(q) || 
+      t.artist.toLowerCase().includes(q) ||
+      t.album.toLowerCase().includes(q) ||
+      (t.mainArtists && t.mainArtists.some(a => a.toLowerCase().includes(q))) ||
+      (t.feat && t.feat.toLowerCase().includes(q));
     
     if (!appSettings.allowExplicitContent && t.explicit) return false;
     
@@ -37,6 +40,25 @@ export const Search = () => {
 
   // Filter Artists
   const filteredArtists = existingArtists.filter(a => a.toLowerCase().includes(query.toLowerCase()));
+
+  // Filter Albums
+  const filteredAlbums = albums.filter(a => {
+    const q = query.toLowerCase();
+    const allAlbumArtists = [a.artist, ...(a.mainArtists || [])];
+    const matchesTitle = a.title.toLowerCase().includes(q);
+    const matchesArtist = allAlbumArtists.some(artist => artist.toLowerCase().includes(q));
+    const matchesRecordLabel = a.recordLabel ? a.recordLabel.toLowerCase().includes(q) : false;
+
+    if (!matchesTitle && !matchesArtist && !matchesRecordLabel) return false;
+
+    if (!appSettings.allowExplicitContent) {
+      const albumTracks = tracks.filter(t => a.trackIds.includes(t.id));
+      const hasOnlyExplicit = albumTracks.length > 0 && albumTracks.every(t => t.explicit);
+      if (hasOnlyExplicit) return false;
+    }
+
+    return true;
+  });
 
   // Restricted Genres with translation keys
   const genres = [
@@ -124,7 +146,9 @@ export const Search = () => {
                   <h2 className="text-2xl font-bold mb-4">{t('allTracks')}</h2>
                   <div className="flex flex-col gap-2">
                       {genreTracks.length === 0 && <div className="text-secondary">No tracks found in this genre.</div>}
-                      {genreTracks.map((track, idx) => (
+                      {genreTracks.map((track, idx) => {
+                          const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+                          return (
                           <div 
                              key={track.id} 
                              className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_1fr_100px_60px] items-center gap-4 p-3 rounded hover:bg-surface-highlight group"
@@ -142,7 +166,7 @@ export const Search = () => {
                                       {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
                                   </div>
                                   <div className="text-sm text-secondary truncate flex items-center gap-1">
-                                      <span>{track.artist}</span>
+                                      <span>{allArtists.join(', ')}</span>
                                       <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
                                   </div>
                                 </div>
@@ -157,7 +181,8 @@ export const Search = () => {
                                 </button>
                              </div>
                           </div>
-                      ))}
+                          );
+                      })}
                   </div>
               </div>
           </div>
@@ -227,7 +252,7 @@ export const Search = () => {
                               {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
                           </div>
                           <div className="text-sm text-secondary flex items-center gap-1">
-                              <span>{track.artist}</span>
+                              <span>{[track.artist, ...(track.mainArtists || [])].filter((v, i, a) => a.indexOf(v) === i).join(', ')}</span>
                               <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
                           </div>
                         </div>
@@ -242,6 +267,52 @@ export const Search = () => {
                  ))}
                 </div>
              </div>
+           )}
+
+           {/* Albums Section */}
+           {filteredAlbums.length > 0 && (
+               <div>
+                   <h2 className="text-xl font-bold mb-4">{t('albums')}</h2>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                       {filteredAlbums.map(album => {
+                           const cover = album.covers?.[0];
+                           const allAlbumArtists = Array.from(new Set([album.artist, ...(album.mainArtists || [])]));
+                           const albumTracks = tracks.filter(t => album.trackIds.includes(t.id));
+
+                           return (
+                               <div 
+                                   key={album.id} 
+                                   onClick={() => setView({ type: 'ALBUM', id: album.id })}
+                                   className="p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer transition group hover-scale"
+                               >
+                                   <div className="aspect-square mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative">
+                                       {cover ? (
+                                           <img src={cover} alt={album.title} className="w-full h-full object-cover" />
+                                       ) : (
+                                           <Music2 size={32} className="text-secondary" />
+                                       )}
+                                       {/* Overlay Play Button */}
+                                       <div 
+                                           onClick={(e) => {
+                                               e.stopPropagation();
+                                               if (albumTracks.length > 0) {
+                                                   playTrack(albumTracks[0], albumTracks);
+                                               }
+                                           }}
+                                           className="absolute bottom-2 right-2 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300"
+                                       >
+                                           <Play fill="black" size={20} className="text-black ml-1" />
+                                       </div>
+                                   </div>
+                                   <h3 className="font-bold truncate text-white">{album.title}</h3>
+                                   <p className="text-sm text-secondary truncate">
+                                       {album.year ? `${album.year} • ` : ''}{album.type || t('album')} • {allAlbumArtists.join(', ')}
+                                   </p>
+                               </div>
+                           );
+                       })}
+                   </div>
+               </div>
            )}
 
            {/* Public Playlists Section */}
@@ -281,7 +352,7 @@ export const Search = () => {
                </div>
            )}
 
-           {filteredTracks.length === 0 && filteredPlaylists.length === 0 && filteredArtists.length === 0 && (
+           {filteredTracks.length === 0 && filteredPlaylists.length === 0 && filteredArtists.length === 0 && filteredAlbums.length === 0 && (
                 <div className="text-secondary text-lg text-center mt-10">{t('noResults')} "{query}"</div>
            )}
         </div>

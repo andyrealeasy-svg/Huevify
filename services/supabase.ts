@@ -320,14 +320,14 @@ export const SupabaseService = {
         id: row.id,
         name: row.name,
         description: row.description,
-        customCover: row.custom_cover,
+        customCover: row.custom_cover || row.customCover || row.cover || undefined,
         tracks: row.tracks || [],
-        isSystem: row.is_system,
-        ownerId: row.owner_id,
-        isPublic: row.is_public,
-        creatorName: row.creator_name,
-        creatorAvatar: row.creator_avatar,
-        savedBy: row.saved_by || []
+        isSystem: row.is_system ?? row.isSystem ?? false,
+        ownerId: row.owner_id || row.ownerId || undefined,
+        isPublic: row.is_public ?? row.isPublic ?? false,
+        creatorName: row.creator_name || row.creatorName || undefined,
+        creatorAvatar: row.creator_avatar || row.creatorAvatar || undefined,
+        savedBy: row.saved_by || row.savedBy || []
       }));
     } catch (e) {
       console.warn('Supabase fetchPlaylists failed:', e);
@@ -338,22 +338,29 @@ export const SupabaseService = {
   async savePlaylist(playlist: Playlist): Promise<boolean> {
     if (!supabase) return false;
     try {
-      const row = {
+      const row: any = {
         id: playlist.id,
         name: playlist.name,
         description: playlist.description || null,
-        custom_cover: playlist.customCover || null,
+        custom_cover: playlist.customCover || (playlist as any).custom_cover || null,
         tracks: playlist.tracks || [],
         is_system: playlist.isSystem || false,
-        owner_id: playlist.ownerId || null,
+        owner_id: playlist.ownerId || (playlist as any).owner_id || null,
         is_public: playlist.isPublic || false,
-        creator_name: playlist.creatorName || null,
-        creator_avatar: playlist.creatorAvatar || null,
+        creator_name: playlist.creatorName || (playlist as any).creator_name || null,
+        creator_avatar: playlist.creatorAvatar || (playlist as any).creator_avatar || null,
         saved_by: playlist.savedBy || []
       };
-      const { error } = await supabase.from('playlists').upsert(row, { onConflict: 'id' });
+      let { error } = await supabase.from('playlists').upsert(row, { onConflict: 'id' });
       if (error) {
         console.warn('Supabase savePlaylist error:', error.message);
+        // If custom_cover column does not exist in the database table yet, retry without custom_cover
+        if (error.message && (error.message.includes('custom_cover') || error.message.includes('column'))) {
+          console.warn('Retrying savePlaylist without custom_cover column...');
+          delete row.custom_cover;
+          const retry = await supabase.from('playlists').upsert(row, { onConflict: 'id' });
+          if (!retry.error) return true;
+        }
         return false;
       }
       return true;
@@ -941,11 +948,12 @@ export const SupabaseService = {
       else if (mimeType.includes('gif')) ext = '.gif';
     }
 
-    // Clean base name
+    // Clean base name and ensure valid safe ASCII characters
     const rawName = fileNameHint ? fileNameHint.replace(/\.[^/.]+$/, "") : 'file';
-    const cleanName = rawName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 32);
+    const cleanName = rawName.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '').substring(0, 24);
     const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const filePath = `${folder}/${cleanName || 'item'}_${uniqueId}${ext}`;
+    const safeExt = ext || '.jpg';
+    const filePath = `${folder}/${cleanName || 'item'}_${uniqueId}${safeExt}`;
 
     const bucketName = 'media';
     let { data, error } = await supabase.storage.from(bucketName).upload(filePath, blob, {

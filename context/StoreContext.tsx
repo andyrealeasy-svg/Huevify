@@ -31,6 +31,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     artist: "Artist",
     artists: "Artists",
     songs: "Songs",
+    albums: "Albums",
+    album: "Album",
     publicPlaylists: "Public Playlists",
     noResults: "No results found for",
     popularReleases: "Popular Releases",
@@ -47,6 +49,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     changeCover: "CHANGE COVER",
     editPlaylist: "Edit Playlist",
     deletePlaylist: "Delete Playlist",
+    deletePhoto: "Remove photo",
+    uploading: "Uploading...",
     removeFromLibrary: "Remove from Library",
     addToLibrary: "Add to Library",
     emptyLiked: "Songs you like will appear here",
@@ -58,6 +62,15 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     latestRelease: "Latest Release",
     popular: "Popular",
     discography: "Discography",
+    seeAllDiscography: "Show all",
+    allReleases: "All",
+    single: "Single",
+    singles: "Singles",
+    singlesAndEPs: "Singles & EPs",
+    appearsOn: "Appears On",
+    trackOne: "track",
+    tracksCount: "tracks",
+    noAppearsOn: "No appearances found",
     about: "About",
     inTheWorld: "in the world",
     verifiedArtist: "Verified Artist",
@@ -216,6 +229,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     artist: "Артист",
     artists: "Артисты",
     songs: "Треки",
+    albums: "Альбомы",
+    album: "Альбом",
     publicPlaylists: "Плейлисты пользователей",
     noResults: "Ничего не найдено по запросу",
     popularReleases: "Популярные релизы",
@@ -232,6 +247,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     changeCover: "ИЗМЕНИТЬ",
     editPlaylist: "Изменить плейлист",
     deletePlaylist: "Удалить плейлист",
+    deletePhoto: "Удалить фото",
+    uploading: "Загрузка...",
     removeFromLibrary: "Удалить из медиатеки",
     addToLibrary: "Добавить в медиатеку",
     emptyLiked: "Здесь будут ваши любимые треки",
@@ -243,6 +260,15 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     latestRelease: "Последний релиз",
     popular: "Популярное",
     discography: "Дискография",
+    seeAllDiscography: "Показать все",
+    allReleases: "Все",
+    single: "Сингл",
+    singles: "Синглы",
+    singlesAndEPs: "Синглы и мини-альбомы",
+    appearsOn: "Участие в релизах",
+    trackOne: "трек",
+    tracksCount: "треков",
+    noAppearsOn: "Участий в релизах пока нет",
     about: "Об исполнителе",
     inTheWorld: "в мире",
     verifiedArtist: "Подтвержденный артист",
@@ -380,6 +406,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     resume: "Продолжить",
     discardDraft: "Сбросить черновик"
   }
+};
+
+// Perceptual volume converter: human hearing perceives sound pressure logarithmically.
+// Using a quadratic power curve (x²) maps linear slider movement to perceptually uniform loudness,
+// eliminating the abrupt jump between 0% and 5% while ensuring distinct volume shifts above 70%.
+export const toAudioVolume = (sliderVal: number): number => {
+  const v = Math.max(0, Math.min(1, sliderVal));
+  return Math.round(Math.pow(v, 2) * 10000) / 10000;
 };
 
 interface StoreContextType {
@@ -636,7 +670,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isPlaying, setIsPlaying] = useState(false);
   const [playMode, setPlayMode] = useState<PlayMode>(PlayMode.OFF);
   const [isShuffle, setIsShuffle] = useState(false);
-  const [volume, setVolumeState] = useState(0.5);
+  const [volume, setVolumeState] = useState(() => StorageService.load<number>('huevify_volume', 1));
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [hasCountedListen, setHasCountedListen] = useState(false);
@@ -1091,7 +1125,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         }
 
-        audioRef.current.volume = 0.5;
+        const initialVolume = StorageService.load<number>('huevify_volume', 1);
+        audioRef.current.volume = toAudioVolume(initialVolume);
       } catch (e) {
         console.error("Initialization failed", e);
       } finally {
@@ -2410,6 +2445,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const isArtistFollowed = (artistName: string) => followedArtists.includes(artistName);
 
+  // Safe playback wrapper to prevent AbortError when switching tracks or toggling play
+  const playAudioSafe = (audio: HTMLAudioElement) => {
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((err: any) => {
+          // AbortError is thrown when a play() request is interrupted by a new load request (switching tracks)
+          // or by a call to pause(). This is expected browser lifecycle behavior and should not trigger errors.
+          if (err?.name === 'AbortError' || (typeof err?.message === 'string' && err.message.includes('interrupted'))) {
+            return;
+          }
+          if (err?.name === 'NotAllowedError') {
+            console.warn('Playback prevented by browser autoplay policy until user interaction:', err);
+            setIsPlaying(false);
+            return;
+          }
+          console.warn('Audio playback error:', err);
+          setIsPlaying(false);
+        });
+    }
+  };
+
   // --- Player Logic ---
   useEffect(() => {
     cumulativeTimeRef.current = 0;
@@ -2445,7 +2505,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Logic: If user repeats ONE, it counts as a new listen for the next loop
           cumulativeTimeRef.current = 0; 
           setHasCountedListen(false);
-          audio.play(); 
+          playAudioSafe(audio); 
       }
       else if (appSettings.autoPlay) { nextTrack(); } 
       else { setIsPlaying(false); audioRef.current.pause(); }
@@ -2517,8 +2577,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (alb) {
               q = (alb.trackIds || []).map((tid: string) => tracks.find((t: Track) => t.id === tid)).filter((t): t is Track => !!t);
           }
-      } else if (view.type === 'ARTIST') {
-          const name = (view as any).name;
+      } else if (view.type === 'ARTIST' || (view as any).type === 'ARTIST_DISCOGRAPHY') {
+          const name = (view as any).id || (view as any).name;
           q = tracks.filter(t => t.artist === name || (t.mainArtists && t.mainArtists.includes(name)));
       } else if (view.type === 'CHARTS') {
           q = dailyChart.map(ct => tracks.find(t => t.id === ct.id)).filter((t): t is Track => !!t);
@@ -2584,15 +2644,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setHasCountedListen(false); // Reset listen count for new track
     cumulativeTimeRef.current = 0; // Reset time accumulator
     
+    try {
+      audioRef.current.pause();
+    } catch {
+      // ignore
+    }
     audioRef.current.src = track.url;
-    audioRef.current.play().then(() => setIsPlaying(true)).catch(e => console.error("Audio play failed", e));
+    audioRef.current.volume = toAudioVolume(volume);
+    audioRef.current.load();
+    playAudioSafe(audioRef.current);
   };
 
   const togglePlay = () => {
-    if (audioRef.current.paused) { audioRef.current.play(); setIsPlaying(true); }
-    else { audioRef.current.pause(); setIsPlaying(false); }
+    if (audioRef.current.paused) { 
+      playAudioSafe(audioRef.current); 
+    } else { 
+      audioRef.current.pause(); 
+      setIsPlaying(false); 
+    }
   };
-  const setVolume = (vol: number) => { setVolumeState(vol); audioRef.current.volume = vol; };
+  const setVolume = (vol: number) => { 
+    const clamped = Math.max(0, Math.min(1, vol));
+    setVolumeState(clamped); 
+    audioRef.current.volume = toAudioVolume(clamped); 
+    StorageService.save('huevify_volume', clamped);
+  };
   const seek = (time: number) => { audioRef.current.currentTime = time; lastTimeRef.current = time; setProgress(time); };
   
   const nextTrack = () => {
@@ -2650,8 +2726,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
   };
   const createPlaylist = (name: string, description?: string, cover?: string, isPublic: boolean = false) => {
-    if (!currentUser) return;
-    const newPl: Playlist = { id: `pl_${Date.now()}`, name, description: description || "", customCover: cover, tracks: [], ownerId: currentUser.id, creatorName: currentUser.displayName, creatorAvatar: currentUser.avatar, isPublic: isPublic, savedBy: [] };
+    const ownerId = currentUser ? currentUser.id : 'guest';
+    const creatorName = currentUser ? currentUser.displayName : 'User';
+    const creatorAvatar = currentUser?.avatar;
+    const newPl: Playlist = { 
+      id: `pl_${Date.now()}`, 
+      name: name.trim(), 
+      description: (description || "").trim(), 
+      customCover: cover || undefined, 
+      tracks: [], 
+      ownerId, 
+      creatorName, 
+      creatorAvatar, 
+      isPublic: isPublic, 
+      savedBy: [] 
+    };
     const all = [...playlists]; 
     syncPlaylists([...all, newPl], newPl);
   };
@@ -2660,7 +2749,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let updatedPl: Playlist | undefined;
     const updated = all.map(p => { 
       if (p.id === id) { 
-        updatedPl = { ...p, name, description: description !== undefined ? description : p.description, customCover: cover !== undefined ? cover : p.customCover, isPublic: isPublic !== undefined ? isPublic : p.isPublic }; 
+        updatedPl = { 
+          ...p, 
+          name: name.trim(), 
+          description: description !== undefined ? description.trim() : p.description, 
+          customCover: cover !== undefined ? (cover || undefined) : p.customCover, 
+          isPublic: isPublic !== undefined ? isPublic : p.isPublic 
+        }; 
         return updatedPl;
       } 
       return p; 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { X, Image } from './Icons.tsx';
+import { X, Image, Loader2, Trash2 } from './Icons.tsx';
 import { compressImage } from '../utils/imageCompressor.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
@@ -14,56 +14,113 @@ export const CreatePlaylistModal = () => {
   const [description, setDescription] = useState("");
   const [cover, setCover] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track modal open transitions to avoid wiping user edits on background playlist updates
+  const prevOpenRef = useRef(false);
+  const prevEditIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isCreatePlaylistOpen) {
-      if (playlistIdToEdit) {
-        const pl = playlists.find(p => p.id === playlistIdToEdit);
-        if (pl) {
-            setName(pl.name);
+      const isJustOpened = !prevOpenRef.current;
+      const isDifferentPlaylist = prevEditIdRef.current !== playlistIdToEdit;
+
+      if (isJustOpened || isDifferentPlaylist) {
+        if (playlistIdToEdit) {
+          const pl = playlists.find(p => p.id === playlistIdToEdit);
+          if (pl) {
+            setName(pl.name || "");
             setDescription(pl.description || "");
             setCover(pl.customCover || null);
             setIsPublic(!!pl.isPublic);
+          }
+        } else {
+          setName("");
+          setDescription("");
+          setCover(null);
+          setIsPublic(false);
         }
-      } else {
-        // Reset for Create mode
-        setName("");
-        setDescription("");
-        setCover(null);
-        setIsPublic(false);
       }
     }
-  }, [isCreatePlaylistOpen, playlistIdToEdit, playlists]);
+    prevOpenRef.current = isCreatePlaylistOpen;
+    prevEditIdRef.current = playlistIdToEdit;
+  }, [isCreatePlaylistOpen, playlistIdToEdit]);
 
   if (!isCreatePlaylistOpen) return null;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const compressed = await compressImage(file, 600, 600, 0.85);
-      if (compressed) {
-        let finalCover = compressed;
+    if (!file) return;
+
+    setIsUploading(true);
+
+    // Instant client-side preview so user immediately sees their photo
+    try {
+      const tempUrl = URL.createObjectURL(file);
+      setCover(tempUrl);
+    } catch {
+      // fallback if createObjectURL fails
+    }
+
+    try {
+      // Compress image for optimal performance and size
+      let processedImage = await compressImage(file, 600, 600, 0.85);
+
+      // Fallback to FileReader base64 if compression canvas failed
+      if (!processedImage) {
+        processedImage = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string) || "");
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+      }
+
+      if (processedImage) {
+        let finalCover = processedImage;
+
+        // Upload to Supabase Storage if configured
         if (isSupabaseConfigured()) {
           try {
-            const url = await SupabaseService.uploadMedia(compressed, 'playlists', file.name);
-            if (url) finalCover = url;
+            const url = await SupabaseService.uploadMedia(processedImage, 'playlists', file.name);
+            if (url) {
+              finalCover = url;
+            }
           } catch (err) {
-            console.warn('Playlist cover storage upload fallback:', err);
+            console.warn('Playlist cover storage upload error, using local base64 fallback:', err);
           }
         }
+
         setCover(finalCover);
       }
+    } catch (err) {
+      console.error('Error handling playlist cover file:', err);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveCover = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCover(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
   const handleSave = () => {
     if (!name.trim()) return alert("Name is required");
+    if (isUploading) return;
     
+    const finalCover = cover ? cover : "";
     if (playlistIdToEdit) {
-        editPlaylist(playlistIdToEdit, name, description, cover || undefined, isPublic);
+      editPlaylist(playlistIdToEdit, name.trim(), description.trim(), finalCover, isPublic);
     } else {
-        createPlaylist(name, description, cover || undefined, isPublic);
+      createPlaylist(name.trim(), description.trim(), finalCover || undefined, isPublic);
     }
     
     setCreatePlaylistOpen(false);
@@ -83,25 +140,48 @@ export const CreatePlaylistModal = () => {
 
         <div className="flex flex-col gap-6">
           {/* Cover Upload Area */}
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
             <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="w-40 h-40 bg-surface-highlight rounded shadow-inner flex flex-col items-center justify-center cursor-pointer hover:bg-[#333] transition relative overflow-hidden group"
+              onClick={() => {
+                if (!isUploading) fileInputRef.current?.click();
+              }}
+              className="w-44 h-44 bg-surface-highlight rounded shadow-inner flex flex-col items-center justify-center cursor-pointer hover:bg-[#333] transition relative overflow-hidden group"
+              title={t('choosePhoto')}
             >
               {cover ? (
                 <img src={cover} alt="Preview" className="w-full h-full object-cover" />
               ) : (
                 <>
                   <Image size={48} className="text-secondary mb-2" />
-                  <span className="text-xs text-secondary font-bold">{t('choosePhoto')}</span>
+                  <span className="text-xs text-secondary font-bold text-center px-2">{t('choosePhoto')}</span>
                 </>
               )}
               
-              {/* Hover overlay */}
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                 <span className="text-white font-bold">{t('edit')}</span>
-              </div>
+              {/* Uploading Spinner Overlay */}
+              {isUploading ? (
+                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                  <span className="text-xs text-white font-medium">{t('uploading') || 'Загрузка...'}</span>
+                </div>
+              ) : (
+                /* Hover overlay */
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                  <span className="text-white font-bold text-sm bg-black/60 px-3 py-1.5 rounded">{t('edit')}</span>
+                </div>
+              )}
             </div>
+
+            {cover && !isUploading && (
+              <button 
+                type="button"
+                onClick={handleRemoveCover}
+                className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-medium transition py-1 px-2 rounded hover:bg-white/5"
+              >
+                <Trash2 size={13} />
+                <span>{t('deletePhoto') || 'Удалить фото'}</span>
+              </button>
+            )}
+
             <input 
               type="file" 
               ref={fileInputRef} 
@@ -144,9 +224,15 @@ export const CreatePlaylistModal = () => {
           <div className="flex justify-end">
             <button 
               onClick={handleSave}
-              className="bg-white text-black font-bold py-3 px-8 rounded-full hover:scale-105 transition"
+              disabled={isUploading}
+              className={`font-bold py-3 px-8 rounded-full transition flex items-center gap-2 ${
+                isUploading 
+                  ? 'bg-neutral-600 text-neutral-400 cursor-not-allowed' 
+                  : 'bg-white text-black hover:scale-105'
+              }`}
             >
-              {t('save')}
+              {isUploading && <Loader2 size={16} className="animate-spin" />}
+              <span>{isUploading ? (t('uploading') || 'Загрузка...') : t('save')}</span>
             </button>
           </div>
         </div>

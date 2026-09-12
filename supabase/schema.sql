@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS public.playlists (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Migration for existing playlists tables if columns are missing
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS custom_cover TEXT;
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS creator_name TEXT;
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS creator_avatar TEXT;
+ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS saved_by JSONB DEFAULT '[]'::jsonb;
+
 -- 5. User Preferences Table (Likes, Follows, History, Settings)
 CREATE TABLE IF NOT EXISTS public.user_preferences (
     user_id TEXT PRIMARY KEY,

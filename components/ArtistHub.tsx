@@ -1620,23 +1620,23 @@ export const ArtistHub = () => {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-8 shrink-0">
-                <div className="bg-surface border border-surface-highlight p-4 rounded-xl flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
-                        <BarChart2 size={24} className="text-primary"/>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8 shrink-0">
+                <div className="bg-surface border border-surface-highlight p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/20 rounded-full flex items-center justify-center shrink-0 aspect-square">
+                        <BarChart2 size={20} className="text-primary sm:w-6 sm:h-6"/>
                     </div>
-                    <div>
-                        <div className="text-2xl font-bold">{stats.monthlyPlays.toLocaleString()}</div>
-                        <div className="text-xs text-secondary uppercase font-bold">{t('monthlyPlays')}</div>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="text-lg sm:text-2xl font-bold truncate leading-tight tracking-tight">{stats.monthlyPlays.toLocaleString()}</div>
+                        <div className="text-[10px] sm:text-xs text-secondary uppercase font-bold leading-tight line-clamp-2 break-words mt-0.5">{t('monthlyPlays')}</div>
                     </div>
                 </div>
-                <div className="bg-surface border border-surface-highlight p-4 rounded-xl flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
-                        <Globe size={24} className="text-primary"/>
+                <div className="bg-surface border border-surface-highlight p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/20 rounded-full flex items-center justify-center shrink-0 aspect-square">
+                        <Globe size={20} className="text-primary sm:w-6 sm:h-6"/>
                     </div>
-                    <div>
-                        <div className="text-2xl font-bold">#{stats.globalRank}</div>
-                        <div className="text-xs text-secondary uppercase font-bold">{t('inTheWorld')}</div>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="text-lg sm:text-2xl font-bold truncate leading-tight tracking-tight">#{stats.globalRank}</div>
+                        <div className="text-[10px] sm:text-xs text-secondary uppercase font-bold leading-tight line-clamp-2 break-words mt-0.5">{t('inTheWorld')}</div>
                     </div>
                 </div>
             </div>
