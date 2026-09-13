@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore, generateHUEQ } from '../context/StoreContext.tsx';
 import { compressImage } from '../utils/imageCompressor.ts';
-import { 
-  X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio, 
+import {
+  X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
   Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save
 } from './Icons.tsx';
 import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
+import { CustomSelect } from './CustomSelect.tsx';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { StorageService } from '../services/storage.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
@@ -20,8 +21,8 @@ const formatDuration = (seconds: number) => {
 };
 
 export const ArtistHub = () => {
-  const { 
-    isArtistHubOpen, setArtistHubOpen, currentArtist, currentModerator, 
+  const {
+    isArtistHubOpen, setArtistHubOpen, currentArtist, currentModerator,
     loginArtistOrMod, registerArtist, registerModerator, logoutArtistHub, artistAccounts,
     releaseRequests, profileEditRequests, approveArtist, rejectArtist,
     approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
@@ -31,18 +32,18 @@ export const ArtistHub = () => {
   } = useStore();
 
   const [view, setView] = useState<HubView>('AUTH');
-  
+
   // Auth State
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [role, setRole] = useState<'ARTIST' | 'MODERATOR'>('ARTIST');
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  
+
   // Artist Registration Logic
   const [artistNameSelection, setArtistNameSelection] = useState("");
   const [isCreatingNewArtist, setIsCreatingNewArtist] = useState(false);
   const [newArtistAlias, setNewArtistAlias] = useState("");
-  
+
   const [message, setMessage] = useState("");
 
   // Distribution State
@@ -61,7 +62,7 @@ export const ArtistHub = () => {
   const [drafts, setDrafts] = useState<ReleaseDraft[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-  
+
   // Editing Mode
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -306,7 +307,7 @@ export const ArtistHub = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
-      
+
       if (role === 'MODERATOR') {
           if (hasModerator) {
               setMessage(t('modExists'));
@@ -321,7 +322,7 @@ export const ArtistHub = () => {
           }
           return;
       }
-      
+
       // Artist Registration
       const finalArtistName = isCreatingNewArtist ? newArtistAlias : artistNameSelection;
 
@@ -331,12 +332,12 @@ export const ArtistHub = () => {
       }
 
       const res = await registerArtist({
-          artistName: finalArtistName, 
-          username, 
+          artistName: finalArtistName,
+          username,
           password,
           artistPick: undefined
       });
-      
+
       if (res.success) {
           setMessage(t('regSent'));
           setAuthMode('LOGIN');
@@ -358,7 +359,7 @@ export const ArtistHub = () => {
 
           const audio = new Audio();
           let cleaned = false;
-          
+
           const cleanup = () => {
               if (cleaned) return;
               cleaned = true;
@@ -477,17 +478,17 @@ export const ArtistHub = () => {
   const addTrackArtist = (trackIdx: number) => {
       const name = trackArtistInputs[trackIdx];
       if (!name) return;
-      
+
       setDistTracks(prev => {
           const newTracks = [...prev];
           const currentArtists = newTracks[trackIdx].mainArtists || [];
-          newTracks[trackIdx] = { 
-              ...newTracks[trackIdx], 
-              mainArtists: [...currentArtists, name] 
+          newTracks[trackIdx] = {
+              ...newTracks[trackIdx],
+              mainArtists: [...currentArtists, name]
           };
           return newTracks;
       });
-      
+
       setTrackArtistInputs(prev => ({ ...prev, [trackIdx]: "" }));
   };
 
@@ -495,9 +496,9 @@ export const ArtistHub = () => {
       setDistTracks(prev => {
           const newTracks = [...prev];
           const currentArtists = newTracks[trackIdx].mainArtists || [];
-          newTracks[trackIdx] = { 
-              ...newTracks[trackIdx], 
-              mainArtists: currentArtists.filter(a => a !== artistToRemove) 
+          newTracks[trackIdx] = {
+              ...newTracks[trackIdx],
+              mainArtists: currentArtists.filter(a => a !== artistToRemove)
           };
           return newTracks;
       });
@@ -555,7 +556,7 @@ export const ArtistHub = () => {
 
       const finalHueq = targetTrack.hueq || code;
 
-      const alreadyExists = distTracks.some(dt => 
+      const alreadyExists = distTracks.some(dt =>
           (dt.existingHueq && dt.existingHueq.toUpperCase() === finalHueq.toUpperCase()) ||
           (dt.generatedHueq && dt.generatedHueq.toUpperCase() === finalHueq.toUpperCase()) ||
           (dt.fileUrl && dt.fileUrl === targetTrack?.url && dt.title.toLowerCase() === targetTrack?.title.toLowerCase())
@@ -590,7 +591,7 @@ export const ArtistHub = () => {
       if (!hueq) return;
       const clean = hueq.trim().toUpperCase();
       const existing = getTrackByHueq(clean);
-      
+
       if (existing) {
           setDistTracks(prev => {
               const newTracks = [...prev];
@@ -638,13 +639,13 @@ export const ArtistHub = () => {
           showNotification(t('specifyDate'), "error");
           return;
       }
-      
+
       const dateTime = new Date(`${distDate}T${distTime}:00+03:00`);
-      
+
       // Determine Artist Identity
-      const overrideArtist = currentModerator ? { 
+      const overrideArtist = currentModerator ? {
           artistId: isEditing && editingId && !editingId.startsWith('a') ? (releaseRequests.find(r => r.id === editingId)?.artistId || `va_${Date.now()}`) : `va_${Date.now()}`,
-          artistName: distArtistName || "Various Artists" 
+          artistName: distArtistName || "Various Artists"
       } : undefined;
 
       // Ensure any tracks or covers still in data: format are uploaded to Supabase Storage if connected
@@ -682,7 +683,7 @@ export const ArtistHub = () => {
           type: distType,
           genre: distGenre,
           label: distLabel || (currentArtist?.artistName || distArtistName || "Independent"),
-          covers: finalCovers, 
+          covers: finalCovers,
           additionalMainArtists: distMainArtists,
           tracks: finalTracks,
           releaseDate: dateTime.toISOString(),
@@ -700,7 +701,7 @@ export const ArtistHub = () => {
           submitRelease(payload, overrideArtist);
           showNotification(t('releaseSubmitted'), "success");
       }
-      
+
       // Clear active draft if this release was from a draft
       if (activeDraftId) {
           const key = getDraftsKey();
@@ -714,32 +715,32 @@ export const ArtistHub = () => {
               });
           }
       }
-      
+
       // Navigate back
       if (currentModerator) {
           setView('MOD_ALL_RELEASES');
       } else {
           setView('ARTIST_DASH');
       }
-      
+
       resetDistForm();
   };
 
   const resetDistForm = () => {
-      setDistStep(1); 
-      setDistTitle(""); 
+      setDistStep(1);
+      setDistTitle("");
       setDistArtistName("");
-      setDistTracks([]); 
-      setDistCovers([]); 
-      setDistMsg(""); 
-      setDistMainArtists([]); 
+      setDistTracks([]);
+      setDistCovers([]);
+      setDistMsg("");
+      setDistMainArtists([]);
       setTrackArtistInputs({});
       setIsEditing(false);
       setEditingId(null);
       setActiveDraftId(null);
       setLastSavedTime(null);
   };
-  
+
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) {
@@ -783,11 +784,11 @@ export const ArtistHub = () => {
   const handleProfileUpdate = () => {
       if (!currentArtist) return;
       submitProfileEdit({ newBio: editBio, newAvatar: editAvatar });
-      
+
       if (editNewPassword) {
           changeArtistPassword(editNewPassword);
       }
-      
+
       showNotification(t('profileUpdateSent'), "success");
       setView('ARTIST_DASH');
   };
@@ -804,7 +805,7 @@ export const ArtistHub = () => {
   const handleEditRelease = (release: any) => {
       setIsEditing(true);
       setEditingId(release.id);
-      
+
       setDistTitle(release.title);
       setDistType(release.type);
       setDistGenre(release.genre);
@@ -812,7 +813,7 @@ export const ArtistHub = () => {
       setDistCovers(release.covers);
       setDistMainArtists(release.additionalMainArtists || release.mainArtists || []);
       setDistTracks(release.tracks || []);
-      
+
       // If mod, allow editing artist name
       if (currentModerator) {
           setDistArtistName(release.artistName || release.artist);
@@ -826,7 +827,7 @@ export const ArtistHub = () => {
       setDistTime(dateObj.toTimeString().slice(0, 5));
 
       setDistMsg(release.releaseMessage || "");
-      
+
       setDistStep(1);
       setView('DISTRIBUTION');
   };
@@ -842,23 +843,23 @@ export const ArtistHub = () => {
                   </div>
               </div>
               <h2 className="text-2xl font-bold text-center mb-6">
-                  {role === 'MODERATOR' 
+                  {role === 'MODERATOR'
                       ? (hasModerator ? "Вход для модератора" : `${authMode === 'LOGIN' ? t('login') : t('signup')} Huevify For Moderators`)
                       : `${authMode === 'LOGIN' ? t('login') : t('signup')} Huevify For ${t('artists')}`}
               </h2>
-              
+
               {/* Only show role toggle if no moderator exists yet */}
               {!hasModerator && (
                   <div className="flex bg-surface-highlight p-1 rounded-full mb-6">
-                      <button 
+                      <button
                           type="button"
-                          onClick={() => { setRole('ARTIST'); setMessage(""); }} 
+                          onClick={() => { setRole('ARTIST'); setMessage(""); }}
                           className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'ARTIST' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
                       >
                           {t('artist')}
                       </button>
-                      
-                      <button 
+
+                      <button
                           type="button"
                           onClick={() => { setRole('MODERATOR'); setMessage(""); }}
                           className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'MODERATOR' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
@@ -871,34 +872,29 @@ export const ArtistHub = () => {
               {message && <div className="bg-red-500/20 text-red-500 p-3 rounded mb-4 text-center text-sm animate-pulse">{message}</div>}
 
               <form onSubmit={authMode === 'LOGIN' ? handleLogin : handleRegister} className="flex flex-col gap-4">
-                  
+
                   {authMode === 'REGISTER' && role === 'ARTIST' && (
                       <div className="flex flex-col gap-2 animate-slide-up">
                           {!isCreatingNewArtist ? (
-                              <div className="relative">
-                                  <select 
-                                      value={artistNameSelection}
-                                      onChange={(e) => setArtistNameSelection(e.target.value)}
-                                      className="w-full bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none appearance-none transition-colors"
-                                  >
-                                      <option value="">{t('select')} {t('artist')}...</option>
-                                      {existingArtists.map(a => <option key={a} value={a}>{a}</option>)}
-                                  </select>
-                                  <ChevronDown className="absolute right-3 top-3 text-secondary pointer-events-none" size={20}/>
-                              </div>
+                              <CustomSelect
+                                  value={artistNameSelection}
+                                  onChange={(val) => setArtistNameSelection(val)}
+                                  placeholder={`${t('select')} ${t('artist')}...`}
+                                  options={existingArtists.map(a => ({ value: a, label: a }))}
+                              />
                           ) : (
-                              <input 
-                                  type="text" 
-                                  placeholder="New Artist Alias" 
-                                  value={newArtistAlias} 
+                              <input
+                                  type="text"
+                                  placeholder="New Artist Alias"
+                                  value={newArtistAlias}
                                   onChange={e => setNewArtistAlias(e.target.value)}
                                   className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
                               />
                           )}
-                          
+
                           <label className="flex items-center gap-2 cursor-pointer mt-1">
-                              <input 
-                                  type="checkbox" 
+                              <input
+                                  type="checkbox"
                                   checked={isCreatingNewArtist}
                                   onChange={e => setIsCreatingNewArtist(e.target.checked)}
                               />
@@ -907,15 +903,15 @@ export const ArtistHub = () => {
                       </div>
                   )}
 
-                  <input 
+                  <input
                       type="text" placeholder={t('username')} value={username} onChange={e => setUsername(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
                   />
-                  <input 
+                  <input
                       type="password" placeholder={t('password')} value={password} onChange={e => setPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
                   />
-                  
+
                   <button type="submit" className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition-transform mt-2 shadow-lg hover:shadow-primary/20">
                       {authMode === 'LOGIN' ? (role === 'MODERATOR' ? "Войти как модератор" : t('login')) : (role === 'MODERATOR' ? "Зарегистрировать модератора" : 'Submit Application')}
                   </button>
@@ -923,7 +919,7 @@ export const ArtistHub = () => {
 
               {role === 'ARTIST' ? (
                   <p className="text-center text-secondary text-sm mt-4">
-                      {authMode === 'LOGIN' ? "Don't have an account?" : "Already have an account?"} 
+                      {authMode === 'LOGIN' ? "Don't have an account?" : "Already have an account?"}
                       <button type="button" onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
                           {authMode === 'LOGIN' ? t('signup') : t('login')}
                       </button>
@@ -931,7 +927,7 @@ export const ArtistHub = () => {
               ) : (
                   !hasModerator && (
                       <p className="text-center text-secondary text-sm mt-4">
-                          {authMode === 'LOGIN' ? "Нет аккаунта модератора?" : "Уже зарегистрирован?"} 
+                          {authMode === 'LOGIN' ? "Нет аккаунта модератора?" : "Уже зарегистрирован?"}
                           <button type="button" onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setMessage(""); }} className="text-white font-bold ml-1 hover:underline">
                               {authMode === 'LOGIN' ? t('signup') : t('login')}
                           </button>
@@ -944,9 +940,9 @@ export const ArtistHub = () => {
                   role === 'ARTIST' ? (
                       authMode === 'LOGIN' && (
                           <div className="mt-4 pt-3 border-t border-white/5 text-center">
-                              <button 
-                                  type="button" 
-                                  onClick={() => { setRole('MODERATOR'); setAuthMode('LOGIN'); setMessage(""); }} 
+                              <button
+                                  type="button"
+                                  onClick={() => { setRole('MODERATOR'); setAuthMode('LOGIN'); setMessage(""); }}
                                   className="text-xs text-secondary/60 hover:text-white transition-colors inline-flex items-center gap-1.5"
                               >
                                   <Shield size={13} />
@@ -956,9 +952,9 @@ export const ArtistHub = () => {
                       )
                   ) : (
                       <div className="mt-4 pt-3 border-t border-white/5 text-center">
-                          <button 
-                              type="button" 
-                              onClick={() => { setRole('ARTIST'); setMessage(""); }} 
+                          <button
+                              type="button"
+                              onClick={() => { setRole('ARTIST'); setMessage(""); }}
                               className="text-xs text-secondary hover:text-white transition-colors inline-flex items-center gap-1.5"
                           >
                               <ArrowLeft size={13} />
@@ -977,7 +973,7 @@ export const ArtistHub = () => {
                <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
                <h1 className="text-3xl font-bold flex items-center gap-3"><Key className="text-primary"/> {t('artistCreds')}</h1>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
               <table className="w-full text-left border-collapse">
                   <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
@@ -1105,7 +1101,7 @@ export const ArtistHub = () => {
                <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
                <h1 className="text-3xl font-bold flex items-center gap-3"><ListMusic className="text-primary"/> {t('manageTracks')}</h1>
           </div>
-          
+
           <div className="bg-surface-highlight/20 p-4 rounded-lg mb-4 text-sm text-secondary">
               Only automatically generated test tracks (ID starts with 't') can be deleted individually here. User uploaded tracks must be managed via Releases.
           </div>
@@ -1161,20 +1157,20 @@ export const ArtistHub = () => {
       <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative">
           <button onClick={() => setView('MOD_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
           <h2 className="text-2xl font-bold mb-6 text-center">Moderator Settings</h2>
-          
+
           <div className="flex flex-col gap-6">
               <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-secondary uppercase">{t('changePass')}</label>
-                  <input 
-                      type="password" 
-                      value={modNewPassword} 
+                  <input
+                      type="password"
+                      value={modNewPassword}
                       onChange={e => setModNewPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
                       placeholder={t('newPass')}
                   />
               </div>
-              
-              <button 
+
+              <button
                   onClick={handleModPasswordChange}
                   className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
               >
@@ -1223,7 +1219,7 @@ export const ArtistHub = () => {
                       </h2>
                       <span className="text-xs text-secondary">{t('draftsDesc')}</span>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {drafts.map(d => (
                           <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
@@ -1248,9 +1244,9 @@ export const ArtistHub = () => {
                                       </div>
                                   </div>
                               </div>
-                              
+
                               <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
-                                  <button 
+                                  <button
                                       onClick={(e) => handleDeleteDraft(d.id, e)}
                                       className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
                                       title={t('deleteDraft')}
@@ -1258,7 +1254,7 @@ export const ArtistHub = () => {
                                       <Trash2 size={14} />
                                       <span>{t('deleteDraft')}</span>
                                   </button>
-                                  <button 
+                                  <button
                                       onClick={() => handleResumeDraft(d)}
                                       className="text-xs font-bold bg-primary text-black px-3.5 py-1.5 rounded-full hover:scale-105 transition flex items-center gap-1.5 shadow-sm"
                                   >
@@ -1325,7 +1321,7 @@ export const ArtistHub = () => {
                       ))}
                   </div>
               </div>
-              
+
               {/* Profile Edits */}
               <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><Edit size={18}/> {t('profileEdits')}</h3>
@@ -1348,8 +1344,8 @@ export const ArtistHub = () => {
           </div>
 
           <div className="mt-auto">
-              <button 
-                  onClick={() => { logoutArtistHub(); setView('AUTH'); }} 
+              <button
+                  onClick={() => { logoutArtistHub(); setView('AUTH'); }}
                   className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
               >
                   <LogOut size={18} />
@@ -1368,7 +1364,7 @@ export const ArtistHub = () => {
               </button>
 
               <div className="flex items-center gap-3">
-                  <button 
+                  <button
                       onClick={() => saveCurrentDraft(true)}
                       className="flex items-center gap-2 px-3 py-1.5 bg-surface-highlight hover:bg-zinc-700 text-xs font-semibold rounded-full text-secondary hover:text-white transition border border-white/5"
                       title={t('saveDraft')}
@@ -1381,7 +1377,7 @@ export const ArtistHub = () => {
           </div>
 
           <h2 className="text-3xl font-bold text-center mb-8">{isEditing ? t('updateRelease') : t('uploadNew')}</h2>
-          
+
           <div className="flex justify-center gap-4 mb-8">
               {[1, 2, 3].map(s => (
                   <div key={s} className={`w-3 h-3 rounded-full ${distStep >= s ? 'bg-primary' : 'bg-surface-highlight'}`} />
@@ -1394,29 +1390,27 @@ export const ArtistHub = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col gap-4">
                           <input type="text" placeholder={`${t('releaseTitle')} *`} value={distTitle} onChange={e => setDistTitle(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
-                          
+
                           {currentModerator && (
-                              <input 
-                                  type="text" 
-                                  placeholder={`${t('primaryArtist')} *`} 
-                                  value={distArtistName} 
-                                  onChange={e => setDistArtistName(e.target.value)} 
-                                  className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none border-l-4 border-l-primary" 
+                              <input
+                                  type="text"
+                                  placeholder={`${t('primaryArtist')} *`}
+                                  value={distArtistName}
+                                  onChange={e => setDistArtistName(e.target.value)}
+                                  className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none border-l-4 border-l-primary"
                               />
                           )}
 
-                          <select value={distType} onChange={e => setDistType(e.target.value as any)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none">
-                              <option value="Single">Single</option>
-                              <option value="EP">EP</option>
-                              <option value="Album">Album</option>
-                              <option value="Mixtape">Mixtape</option>
-                          </select>
-                          <select value={distGenre} onChange={e => setDistGenre(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none">
-                              <option value="Pop">Pop</option>
-                              <option value="Rap/Hip-Hop">Rap/Hip-Hop</option>
-                              <option value="R&B">R&B</option>
-                              <option value="Electronic/Dance">Electronic/Dance</option>
-                          </select>
+                          <CustomSelect
+                              value={distType}
+                              onChange={val => setDistType(val as any)}
+                              options={['Single', 'EP', 'Album', 'Mixtape']}
+                          />
+                          <CustomSelect
+                              value={distGenre}
+                              onChange={val => setDistGenre(val)}
+                              options={['Pop', 'Rap/Hip-Hop', 'R&B', 'Electronic/Dance']}
+                          />
                           <input type="text" placeholder={t('recordLabel')} value={distLabel} onChange={e => setDistLabel(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
                       </div>
                       <div className="flex flex-col gap-4">
@@ -1438,7 +1432,7 @@ export const ArtistHub = () => {
                               )}
                               <input type="file" multiple ref={coverInputRef} className="hidden" accept="image/*" onChange={handleCoverUpload} />
                           </div>
-                          
+
                           {/* Main Artists */}
                           <div>
                               <label className="text-xs text-secondary font-bold uppercase mb-2 block">{t('trackLevelArtist')}</label>
@@ -1463,9 +1457,9 @@ export const ArtistHub = () => {
               <div className="flex flex-col gap-6 animate-slide-in-right">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <h3 className="text-xl font-bold">{t('step2')}</h3>
-                      
+
                       <div className="flex items-center gap-2.5">
-                          <button 
+                          <button
                               type="button"
                               onClick={() => {
                                   setHueqInput("");
@@ -1477,9 +1471,9 @@ export const ArtistHub = () => {
                           >
                               <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
                           </button>
-                          <button 
+                          <button
                               type="button"
-                              onClick={() => fileInputRef.current?.click()} 
+                              onClick={() => fileInputRef.current?.click()}
                               className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
                           >
                               <Plus size={16}/> {t('addTrack')}
@@ -1507,9 +1501,9 @@ export const ArtistHub = () => {
                                       </div>
                                       <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center text-xs font-bold text-secondary">{i+1}</div>
                                       <div className="flex flex-col w-full">
-                                          <input 
-                                              type="text" 
-                                              value={track.title} 
+                                          <input
+                                              type="text"
+                                              value={track.title}
                                               onChange={e => updateTrack(i, 'title', e.target.value)}
                                               className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
                                               placeholder={t('trackTitle')}
@@ -1527,10 +1521,10 @@ export const ArtistHub = () => {
                                   </div>
                                   <button onClick={() => setDistTracks(distTracks.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-400"><Trash2 size={20}/></button>
                               </div>
-                              
+
                               {currentModerator && (
-                                  <input 
-                                      type="text" 
+                                  <input
+                                      type="text"
                                       value={track.artist || ""}
                                       onChange={e => updateTrack(i, 'artist', e.target.value)}
                                       className="bg-black/40 p-2 rounded text-sm text-primary font-bold focus:outline-none border border-transparent focus:border-primary"
@@ -1540,9 +1534,9 @@ export const ArtistHub = () => {
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div className="flex flex-col gap-2">
-                                      <input 
-                                          type="text" 
-                                          value={track.existingHueq || ""} 
+                                      <input
+                                          type="text"
+                                          value={track.existingHueq || ""}
                                           onChange={e => updateTrack(i, 'existingHueq', e.target.value)}
                                           onBlur={e => handleHueqBlur(i, e.target.value)}
                                           placeholder="HUEQ Code (Optional)"
@@ -1556,25 +1550,21 @@ export const ArtistHub = () => {
                                           <div className="text-xs text-secondary bg-black/20 px-2 py-1 rounded">{formatDuration(track.duration)}</div>
                                       </div>
                                   </div>
-                                  
+
                                   <div className="flex flex-col gap-2">
-                                      <select 
-                                        value={track.genre} 
-                                        onChange={e => updateTrack(i, 'genre', e.target.value)}
-                                        className="bg-black p-2 rounded text-sm text-white focus:outline-none border border-transparent focus:border-primary"
-                                      >
-                                          <option value="Pop">Pop</option>
-                                          <option value="Rap/Hip-Hop">Rap/Hip-Hop</option>
-                                          <option value="R&B">R&B</option>
-                                          <option value="Electronic/Dance">Electronic/Dance</option>
-                                      </select>
-                                      
+                                      <CustomSelect
+                                        value={track.genre || 'Pop'}
+                                        onChange={val => updateTrack(i, 'genre', val)}
+                                        options={['Pop', 'Rap/Hip-Hop', 'R&B', 'Electronic/Dance']}
+                                        buttonClassName="bg-black text-sm p-2"
+                                      />
+
                                       <div className="flex flex-col">
                                           <label className="text-[10px] uppercase font-bold text-secondary mb-1">{t('trackLevelArtist')}</label>
                                           <div className="flex gap-2 mb-1">
-                                              <input 
-                                                  type="text" 
-                                                  value={trackArtistInputs[i] || ""} 
+                                              <input
+                                                  type="text"
+                                                  value={trackArtistInputs[i] || ""}
                                                   onChange={e => setTrackArtistInputs({...trackArtistInputs, [i]: e.target.value})}
                                                   placeholder={t('artist')}
                                                   className="flex-1 bg-black/20 p-2 rounded text-sm text-secondary focus:text-white focus:outline-none border border-transparent focus:border-primary"
@@ -1605,21 +1595,21 @@ export const ArtistHub = () => {
                                   {t('searchByHueqDesc') || "Загрузите аудиофайл с устройства или используйте HUEQ-код существующего трека без повторной загрузки аудио."}
                               </p>
                               <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
-                                  <button 
-                                      type="button" 
-                                      onClick={() => fileInputRef.current?.click()} 
+                                  <button
+                                      type="button"
+                                      onClick={() => fileInputRef.current?.click()}
                                       className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
                                   >
                                       <Plus size={16}/> {t('addTrack')}
                                   </button>
-                                  <button 
-                                      type="button" 
+                                  <button
+                                      type="button"
                                       onClick={() => {
                                           setHueqInput("");
                                           setHueqLookupError("");
                                           setPreviewTrackFromHueq(null);
                                           setIsHueqModalOpen(true);
-                                      }} 
+                                      }}
                                       className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
                                   >
                                       <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
@@ -1654,14 +1644,14 @@ export const ArtistHub = () => {
                               <Bookmark size={15} className="text-primary"/>
                               <span>{lastSavedTime ? `${t('draftSaved')} (${lastSavedTime})` : t('draftAutoSaved')}</span>
                           </div>
-                          <button 
+                          <button
                               onClick={() => saveCurrentDraft(true)}
                               className="text-primary hover:text-primary/80 font-bold px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition"
                           >
                               {t('saveDraft')}
                           </button>
                       </div>
-                      
+
                       <div className="mt-2 border-t border-surface-highlight pt-4">
                           <h4 className="text-sm font-bold text-secondary uppercase mb-2">Release Preview</h4>
                           <div className="flex flex-col gap-2">
@@ -1683,10 +1673,10 @@ export const ArtistHub = () => {
               {distStep > 1 ? (
                   <button onClick={() => setDistStep(distStep - 1)} className="px-6 py-2 rounded-full font-bold text-white hover:bg-white/10 transition">{t('back')}</button>
               ) : <div></div>}
-              
+
               <div className="flex items-center gap-3">
                   {/* Save to Draft button available on Step 3 or anywhere */}
-                  <button 
+                  <button
                       onClick={() => {
                           saveCurrentDraft(true);
                           if (currentModerator) setView('MOD_DASH');
@@ -1713,10 +1703,10 @@ export const ArtistHub = () => {
 
   const renderArtistDash = () => {
     if (!currentArtist) return null;
-    
+
     // Filter pending releases (exclude those that are LIVE to avoid duplication with liveAlbums)
     const pendingReleases = releaseRequests.filter(r => r.artistId === currentArtist.id && r.status !== 'LIVE');
-    
+
     // Convert static albums to "Live" release format for display
     const liveAlbums = albums
         .filter(a => a.artist === currentArtist.artistName)
@@ -1812,7 +1802,7 @@ export const ArtistHub = () => {
                         </h2>
                         <span className="text-xs text-secondary">{t('draftsDesc')}</span>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {drafts.map(d => (
                             <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
@@ -1837,9 +1827,9 @@ export const ArtistHub = () => {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
-                                    <button 
+                                    <button
                                         onClick={(e) => handleDeleteDraft(d.id, e)}
                                         className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
                                         title={t('deleteDraft')}
@@ -1847,7 +1837,7 @@ export const ArtistHub = () => {
                                         <Trash2 size={14} />
                                         <span>{t('deleteDraft')}</span>
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleResumeDraft(d)}
                                         className="text-xs font-bold bg-primary text-black px-3.5 py-1.5 rounded-full hover:scale-105 transition flex items-center gap-1.5 shadow-sm"
                                     >
@@ -1862,7 +1852,7 @@ export const ArtistHub = () => {
             )}
 
             <h2 className="text-2xl font-bold mb-4 shrink-0">{t('myReleases')}</h2>
-            
+
             {/* Desktop Table - removed max-h to allow full page scroll growth */}
             <div className="hidden md:block flex-1 bg-surface rounded-xl border border-surface-highlight">
                 <table className="w-full text-left border-collapse">
@@ -1904,7 +1894,7 @@ export const ArtistHub = () => {
                                         <button onClick={() => handleEditRelease(r)} className="text-secondary hover:text-white transition hover:scale-110">
                                             <Edit size={18}/>
                                         </button>
-                                        
+
                                         {/* Only allow deletion for non-legacy tracks for simplicity in prototype, or requests */}
                                         {r.id.startsWith('rel_') && (
                                             <button onClick={() => deleteRelease(r.id)} className="text-secondary hover:text-red-500 transition hover:scale-110">
@@ -1953,8 +1943,8 @@ export const ArtistHub = () => {
 
              {/* Log Out Button */}
             <div className="mt-auto pt-8">
-                <button 
-                    onClick={() => { logoutArtistHub(); setView('AUTH'); }} 
+                <button
+                    onClick={() => { logoutArtistHub(); setView('AUTH'); }}
                     className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
                 >
                     <LogOut size={18} />
@@ -1969,10 +1959,10 @@ export const ArtistHub = () => {
       <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[85vh] overflow-y-auto custom-scrollbar">
           <button onClick={() => setView('ARTIST_DASH')} className="absolute top-4 left-4 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
           <h2 className="text-2xl font-bold text-center mb-6">{t('editProfile')}</h2>
-          
+
           <div className="flex flex-col gap-6">
               <div className="flex justify-center">
-                  <div 
+                  <div
                       onClick={() => avatarInputRef.current?.click()}
                       className="w-32 h-32 rounded-full bg-surface-highlight flex items-center justify-center cursor-pointer hover:opacity-80 transition relative overflow-hidden group border-2 border-transparent hover:border-primary"
                   >
@@ -1990,8 +1980,8 @@ export const ArtistHub = () => {
 
               <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold text-secondary uppercase">{t('bio')}</label>
-                  <textarea 
-                      value={editBio} 
+                  <textarea
+                      value={editBio}
                       onChange={e => setEditBio(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none resize-none h-32 text-white"
                       placeholder="Tell fans about yourself..."
@@ -2000,16 +1990,16 @@ export const ArtistHub = () => {
 
               <div className="flex flex-col gap-2 border-t border-surface-highlight pt-4">
                   <label className="text-xs font-bold text-secondary uppercase">{t('changePass')}</label>
-                  <input 
-                      type="password" 
-                      value={editNewPassword} 
+                  <input
+                      type="password"
+                      value={editNewPassword}
                       onChange={e => setEditNewPassword(e.target.value)}
                       className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
                       placeholder={t('newPass')}
                   />
               </div>
 
-              <button 
+              <button
                   onClick={handleProfileUpdate}
                   className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
               >
@@ -2038,11 +2028,11 @@ export const ArtistHub = () => {
         <div className="w-full max-w-2xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative h-[80vh] flex flex-col">
             <button onClick={() => setView('ARTIST_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
             <h2 className="text-2xl font-bold text-center mb-6">{t('artistPick')}</h2>
-            
+
             <div className="relative mb-6">
                 <Search className="absolute left-4 top-3.5 text-secondary" size={20} />
-                <input 
-                    type="text" 
+                <input
+                    type="text"
                     placeholder={t('searchTrackAlbum')}
                     className="w-full bg-background py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary"
                     value={pickSearch}
@@ -2054,7 +2044,7 @@ export const ArtistHub = () => {
             <div className="flex-1 overflow-y-auto flex flex-col gap-2">
                 {pickSearch && searchResults.length === 0 && <div className="text-center text-secondary">{t('noResults')}</div>}
                 {!pickSearch && <div className="text-center text-secondary">{t('searchToFind')}</div>}
-                
+
                 {searchResults.map((item: any) => {
                    let image = "";
                    try {
@@ -2063,9 +2053,9 @@ export const ArtistHub = () => {
                        console.error("Error getting cover", e);
                    }
                    const subtitle = item.type === 'TRACK' ? item.artist : (item.year ? `Album • ${item.year}` : 'Album');
-                   
+
                    return (
-                       <div 
+                       <div
                            key={`${item.type}_${item.id}`}
                            onClick={() => {
                                submitProfileEdit({
@@ -2087,7 +2077,7 @@ export const ArtistHub = () => {
                                <span className="text-xs text-secondary">{subtitle}</span>
                            </div>
                        </div>
-                   ) 
+                   )
                 })}
             </div>
         </div>
@@ -2104,7 +2094,7 @@ export const ArtistHub = () => {
                       <h2 className="text-2xl font-bold">{t('releaseTitle')}</h2>
                       <button onClick={() => setSelectedRelease(null)} className="text-secondary hover:text-white"><X size={24}/></button>
                   </div>
-                  
+
                   <div className="overflow-y-auto flex-1 pr-2">
                       {/* Album Info */}
                       <div className="flex gap-6 mb-6">
@@ -2116,7 +2106,7 @@ export const ArtistHub = () => {
                               <div className="text-sm text-secondary">Label: {selectedRelease.label}</div>
                               <div className="text-sm text-secondary">{t('released')}: {new Date(selectedRelease.releaseDate).toLocaleString()}</div>
                               <div className={`text-xs font-bold uppercase inline-block px-2 py-1 rounded w-fit ${
-                                  selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' : 
+                                  selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
                                   selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-500' :
                                   selectedRelease.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
                                   'bg-yellow-500/20 text-yellow-500'
@@ -2179,8 +2169,8 @@ export const ArtistHub = () => {
 
       return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsHueqModalOpen(false)}>
-              <div 
-                  className="bg-surface border border-surface-highlight rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-up" 
+              <div
+                  className="bg-surface border border-surface-highlight rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-up"
                   onClick={e => e.stopPropagation()}
               >
                   {/* Header */}
@@ -2196,9 +2186,9 @@ export const ArtistHub = () => {
                               </p>
                           </div>
                       </div>
-                      <button 
+                      <button
                           type="button"
-                          onClick={() => setIsHueqModalOpen(false)} 
+                          onClick={() => setIsHueqModalOpen(false)}
                           className="text-secondary hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition"
                       >
                           <X size={20} />
@@ -2214,9 +2204,9 @@ export const ArtistHub = () => {
                           </label>
                           <div className="flex gap-2">
                               <div className="relative flex-1">
-                                  <input 
-                                      type="text" 
-                                      value={hueqInput} 
+                                  <input
+                                      type="text"
+                                      value={hueqInput}
                                       onChange={e => handleHueqInputChange(e.target.value)}
                                       onKeyDown={e => {
                                           if (e.key === 'Enter') {
@@ -2233,8 +2223,8 @@ export const ArtistHub = () => {
                                       className="w-full bg-background border border-surface-highlight focus:border-primary rounded-xl px-4 py-3 font-mono text-sm uppercase text-white placeholder:normal-case placeholder:text-secondary/60 focus:outline-none transition"
                                   />
                                   {hueqInput && (
-                                      <button 
-                                          type="button" 
+                                      <button
+                                          type="button"
                                           onClick={() => { setHueqInput(""); setPreviewTrackFromHueq(null); setHueqLookupError(""); }}
                                           className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-white"
                                       >
@@ -2242,8 +2232,8 @@ export const ArtistHub = () => {
                                       </button>
                                   )}
                               </div>
-                              <button 
-                                  type="button" 
+                              <button
+                                  type="button"
                                   onClick={handleHueqSearchClick}
                                   className="bg-primary text-black font-bold px-4 py-3 rounded-xl hover:scale-105 transition text-sm shrink-0"
                               >
@@ -2271,9 +2261,9 @@ export const ArtistHub = () => {
                               </div>
                               <div className="flex items-center gap-3">
                                   {previewTrackFromHueq.cover ? (
-                                      <img 
-                                          src={previewTrackFromHueq.cover} 
-                                          alt={previewTrackFromHueq.title} 
+                                      <img
+                                          src={previewTrackFromHueq.cover}
+                                          alt={previewTrackFromHueq.title}
                                           className="w-14 h-14 rounded-lg object-cover bg-surface-highlight shrink-0 shadow"
                                       />
                                   ) : (
@@ -2296,8 +2286,8 @@ export const ArtistHub = () => {
                                       </div>
                                   </div>
                               </div>
-                              <button 
-                                  type="button" 
+                              <button
+                                  type="button"
                                   onClick={() => handleAddTrackByHueq()}
                                   className="w-full bg-white text-black font-bold py-2.5 rounded-xl hover:scale-[1.02] transition text-sm flex items-center justify-center gap-2 shadow"
                               >
@@ -2314,16 +2304,16 @@ export const ArtistHub = () => {
                               </div>
                               <div className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1">
                                   {artistOwnTracks.map(trk => {
-                                      const isAdded = distTracks.some(dt => 
+                                      const isAdded = distTracks.some(dt =>
                                           (dt.existingHueq && dt.existingHueq.toUpperCase() === trk.hueq?.toUpperCase()) ||
                                           (dt.fileUrl && dt.fileUrl === trk.url && dt.title.toLowerCase() === trk.title.toLowerCase())
                                       );
                                       return (
-                                          <div 
-                                              key={trk.id} 
+                                          <div
+                                              key={trk.id}
                                               className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
-                                                  isAdded 
-                                                      ? 'bg-surface-highlight/20 border-transparent opacity-60' 
+                                                  isAdded
+                                                      ? 'bg-surface-highlight/20 border-transparent opacity-60'
                                                       : 'bg-background hover:bg-surface-highlight/40 border-surface-highlight/60'
                                               }`}
                                           >
@@ -2345,13 +2335,13 @@ export const ArtistHub = () => {
                                                       </div>
                                                   </div>
                                               </div>
-                                              <button 
-                                                  type="button" 
+                                              <button
+                                                  type="button"
                                                   disabled={isAdded}
                                                   onClick={() => handleAddTrackByHueq(trk)}
                                                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 ${
-                                                      isAdded 
-                                                          ? 'bg-transparent text-secondary cursor-not-allowed' 
+                                                      isAdded
+                                                          ? 'bg-transparent text-secondary cursor-not-allowed'
                                                           : 'bg-surface-highlight hover:bg-white hover:text-black text-white'
                                                   }`}
                                               >
@@ -2367,7 +2357,7 @@ export const ArtistHub = () => {
 
                   {/* Footer */}
                   <div className="p-4 border-t border-surface-highlight bg-surface-highlight/20 flex justify-end">
-                      <button 
+                      <button
                           type="button"
                           onClick={() => setIsHueqModalOpen(false)}
                           className="px-4 py-2 text-sm text-secondary hover:text-white transition font-medium"
@@ -2382,8 +2372,8 @@ export const ArtistHub = () => {
 
   return (
     <div className="fixed inset-0 bg-black z-[200] animate-fade-in flex flex-col">
-        <button 
-            onClick={() => setArtistHubOpen(false)} 
+        <button
+            onClick={() => setArtistHubOpen(false)}
             className="absolute top-4 right-4 text-secondary hover:text-white z-[60]"
         >
             <X size={24} />
@@ -2415,7 +2405,7 @@ export const ArtistHub = () => {
                 {renderModSettings()}
             </div>
         )}
-        
+
         {/* Overlays */}
         {selectedRelease && renderReleaseDetailModal()}
         {isHueqModalOpen && renderHueqImportModal()}

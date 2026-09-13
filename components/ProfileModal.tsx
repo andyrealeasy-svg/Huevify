@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2, SlidersHorizontal, Activity } from './Icons.tsx';
+import { CustomSelect } from './CustomSelect.tsx';
 import { AppSettings } from '../types.ts';
 import { compressImage } from '../utils/imageCompressor.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
@@ -49,7 +50,7 @@ export const ProfileModal = () => {
           setEditPass(currentUser.password);
           setEditAvatar(currentUser.avatar || "");
           setEditMessage(null);
-          
+
           if (isSupabaseConfigured()) {
               SupabaseService.checkStorageBucket().then(ok => setIsStorageReady(ok));
           }
@@ -88,7 +89,7 @@ export const ProfileModal = () => {
           setEditMessage({ type: 'error', text: t('fillAll') });
           return;
       }
-      
+
       const result = updateUserProfile({
           displayName: editName,
           username: editUsername,
@@ -121,7 +122,7 @@ export const ProfileModal = () => {
         </div>
 
         <div className="flex flex-col gap-3">
-            <button 
+            <button
                 onClick={() => setView('PROFILE_EDIT')}
                 className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
             >
@@ -132,7 +133,7 @@ export const ProfileModal = () => {
                 <ChevronRight size={16} className="text-secondary" />
             </button>
 
-            <button 
+            <button
                 onClick={() => setView('APP_SETTINGS')}
                 className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
             >
@@ -144,7 +145,7 @@ export const ProfileModal = () => {
             </button>
 
             {/* Huevify For Artists Button */}
-            <button 
+            <button
                 onClick={handleOpenArtistHub}
                 className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
             >
@@ -154,10 +155,10 @@ export const ProfileModal = () => {
                 </div>
                 <ChevronRight size={16} className="text-secondary" />
             </button>
-            
+
             <div className="h-px bg-surface-highlight my-2" />
 
-            <button 
+            <button
                 onClick={logout}
                 className="flex items-center gap-3 w-full p-4 rounded hover:bg-red-500/10 transition text-left text-white group"
             >
@@ -185,7 +186,7 @@ export const ProfileModal = () => {
              )}
 
              <div className="flex justify-center mb-2">
-                <div 
+                <div
                     onClick={() => fileInputRef.current?.click()}
                     className="w-24 h-24 rounded-full bg-surface-highlight flex items-center justify-center cursor-pointer hover:opacity-80 transition relative overflow-hidden group border-2 border-transparent hover:border-primary"
                 >
@@ -203,9 +204,9 @@ export const ProfileModal = () => {
 
             <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-secondary uppercase">{t('displayName')}</label>
-                <input 
-                    type="text" 
-                    value={editName} 
+                <input
+                    type="text"
+                    value={editName}
                     onChange={e => setEditName(e.target.value)}
                     className="bg-surface-highlight p-3 rounded text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -213,9 +214,9 @@ export const ProfileModal = () => {
 
             <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-secondary uppercase">{t('username')}</label>
-                <input 
-                    type="text" 
-                    value={editUsername} 
+                <input
+                    type="text"
+                    value={editUsername}
                     onChange={e => setEditUsername(e.target.value)}
                     className="bg-surface-highlight p-3 rounded text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -223,9 +224,9 @@ export const ProfileModal = () => {
 
             <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-secondary uppercase">{t('password')}</label>
-                <input 
-                    type="password" 
-                    value={editPass} 
+                <input
+                    type="password"
+                    value={editPass}
                     onChange={e => setEditPass(e.target.value)}
                     className="bg-surface-highlight p-3 rounded text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -248,7 +249,7 @@ export const ProfileModal = () => {
         </div>
 
         <div className="flex flex-col gap-6 overflow-y-auto max-h-[60vh] px-1 pr-2">
-            
+
             {/* Accent Color */}
             <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -273,14 +274,14 @@ export const ProfileModal = () => {
                     <Globe size={18} className="text-primary" />
                     <h3 className="font-bold">{t('language')}</h3>
                 </div>
-                <select 
+                <CustomSelect
                     value={appSettings.language}
-                    onChange={(e) => updateSettings({ language: e.target.value as any })}
-                    className="w-full bg-surface-highlight text-white p-3 rounded focus:outline-none"
-                >
-                    <option value="English">English</option>
-                    <option value="Russian">Russian (Русский)</option>
-                </select>
+                    onChange={(val) => updateSettings({ language: val as any })}
+                    options={[
+                        { value: 'English', label: 'English' },
+                        { value: 'Russian', label: 'Russian (Русский)' }
+                    ]}
+                />
             </div>
 
             {/* Features */}
@@ -289,7 +290,7 @@ export const ProfileModal = () => {
                     <Zap size={18} className="text-primary" />
                     <h3 className="font-bold">{t('playbackContent')}</h3>
                 </div>
-                
+
                 <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between p-3 bg-surface-highlight rounded">
                         <div className="flex items-center gap-3">
@@ -300,9 +301,9 @@ export const ProfileModal = () => {
                             </div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
                                 checked={appSettings.allowExplicitContent}
                                 onChange={e => updateSettings({ allowExplicitContent: e.target.checked })}
                             />
@@ -316,9 +317,9 @@ export const ProfileModal = () => {
                             <span className="font-medium">{t('autoPlay')}</span>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
                                 checked={appSettings.autoPlay}
                                 onChange={e => updateSettings({ autoPlay: e.target.checked })}
                             />
@@ -334,7 +335,7 @@ export const ProfileModal = () => {
                     <SlidersHorizontal size={18} className="text-primary" />
                     <h3 className="font-bold">{t('crossfade')}</h3>
                 </div>
-                
+
                 <div className="p-3.5 bg-surface-highlight rounded-lg flex flex-col gap-3.5 border border-white/5">
                     {/* Crossfade Toggle */}
                     <div className="flex items-center justify-between">
@@ -346,13 +347,13 @@ export const ProfileModal = () => {
                             </div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
-                            <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
                                 checked={!!appSettings.crossfadeEnabled}
                                 onChange={e => {
                                     const enabled = e.target.checked;
-                                    updateSettings({ 
+                                    updateSettings({
                                         crossfadeEnabled: enabled,
                                         crossfade: enabled && (!appSettings.crossfade || appSettings.crossfade === 0) ? 4 : appSettings.crossfade
                                     });
@@ -377,14 +378,14 @@ export const ProfileModal = () => {
                                 {/* Track Background */}
                                 <div className="w-full h-2 bg-zinc-700/80 rounded-full overflow-hidden relative">
                                     {/* Active Filled Progress Bar */}
-                                    <div 
+                                    <div
                                         className="h-full bg-primary rounded-full transition-all duration-75"
                                         style={{ width: `${((appSettings.crossfade || 0) / 12) * 100}%` }}
                                     />
                                 </div>
 
                                 {/* Always Visible Custom Thumb Handle */}
-                                <div 
+                                <div
                                     className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-white rounded-full shadow-md border border-black/10 pointer-events-none transition-transform group-hover/slider:scale-125 flex items-center justify-center"
                                     style={{ left: `${((appSettings.crossfade || 0) / 12) * 100}%` }}
                                 >
@@ -392,10 +393,10 @@ export const ProfileModal = () => {
                                 </div>
 
                                 {/* Native Range Input overlay for full drag and touch support */}
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max="12" 
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="12"
                                     step="1"
                                     value={appSettings.crossfade || 0}
                                     onChange={e => updateSettings({ crossfade: parseInt(e.target.value, 10) })}
@@ -414,8 +415,8 @@ export const ProfileModal = () => {
                                     type="button"
                                     onClick={() => updateSettings({ crossfade: sec, crossfadeEnabled: sec > 0 ? true : appSettings.crossfadeEnabled })}
                                     className={`py-1 text-xs rounded transition font-mono ${
-                                        (appSettings.crossfade || 0) === sec 
-                                            ? 'bg-primary text-black font-bold shadow-sm' 
+                                        (appSettings.crossfade || 0) === sec
+                                            ? 'bg-primary text-black font-bold shadow-sm'
                                             : 'bg-black/30 text-secondary hover:text-white hover:bg-black/50'
                                     }`}
                                 >
@@ -520,8 +521,8 @@ export const ProfileModal = () => {
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
       <div className="bg-surface w-full max-w-sm rounded-lg p-6 relative shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-200">
-        
-        <button 
+
+        <button
             onClick={() => setProfileModalOpen(false)}
             className="absolute top-4 right-4 text-secondary hover:text-white z-10"
         >
