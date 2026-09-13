@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Search as SearchIcon, Play, Heart, ListMusic, User, ArrowLeft, Music2 } from '../components/Icons.tsx';
+import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
+import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 
 const formatDuration = (seconds: number) => {
     // Ensure seconds is an integer to avoid float residuals like .123 showing up in modulo
@@ -15,8 +17,9 @@ const formatPlays = (plays: number) => {
 };
 
 export const Search = () => {
-  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, t } = useStore();
+  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, getAlbumCover, releaseRequests, currentTrack, isPlaying, t } = useStore();
   const [query, setQuery] = useState("");
+  const [selectedGenreYear, setSelectedGenreYear] = useState<string>("all");
 
   const filteredTracks = tracks.filter(t => {
     const q = query.toLowerCase();
@@ -75,11 +78,99 @@ export const Search = () => {
       return track ? getTrackCover(track) : null;
   };
 
+  const normalizeGenre = (g?: string): string => {
+      if (!g) return '';
+      const s = g.trim().toLowerCase();
+      if (s === 'r&b' || s === 'rnb' || s === 'рнб') return 'r&b';
+      if (s === 'pop' || s === 'поп') return 'pop';
+      if (s === 'rap/hip-hop' || s === 'rap' || s === 'hip-hop' || s === 'рэп/хип-хоп' || s === 'рэп' || s === 'хип-хоп') return 'rap/hip-hop';
+      if (s === 'electronic/dance' || s === 'electronic' || s === 'dance' || s === 'электроника') return 'electronic/dance';
+      return s;
+  };
+
+  // Calculate total plays for an album across all its tracks
+  const getAlbumPlays = (album: any): number => {
+      return (album.trackIds || []).reduce((sum: number, tid: string) => {
+          const tr = tracks.find(t => t.id === tid);
+          return sum + (tr?.plays || 0);
+      }, 0);
+  };
+
+  // Get album's primary/main genre
+  const getAlbumMainGenre = (album: any): string => {
+      // 1. Direct genre assigned to album
+      if (album.genre) return album.genre;
+      
+      // 2. Look up matching release request (from which album was published)
+      const req = releaseRequests?.find(r => 
+          r.id === album.id || 
+          `dist_alb_${r.id}` === album.id || 
+          (r.title && album.title && r.title.trim().toLowerCase() === album.title.trim().toLowerCase() && 
+           r.artistName && album.artist && r.artistName.trim().toLowerCase() === album.artist.trim().toLowerCase())
+      );
+      if (req?.genre) return req.genre;
+
+      // 3. Fallback: Determine majority genre among tracks in the album, or first track
+      const albumTracks = tracks.filter(t => album.trackIds?.includes(t.id));
+      if (albumTracks.length > 0) {
+          const genreCounts: Record<string, number> = {};
+          for (const tr of albumTracks) {
+              const g = tr.genre;
+              if (g) {
+                  genreCounts[g] = (genreCounts[g] || 0) + 1;
+              }
+          }
+          let bestGenre = '';
+          let maxCount = 0;
+          for (const [g, count] of Object.entries(genreCounts)) {
+              if (count > maxCount) {
+                  maxCount = count;
+                  bestGenre = g;
+              }
+          }
+          if (bestGenre) return bestGenre;
+          if (albumTracks[0]?.genre) return albumTracks[0].genre;
+      }
+      return '';
+  };
+
   const getGenreImage = (genreName: string) => {
-      // Find top track in this genre to show as tile background
-      const genreTracks = tracks.filter(t => t.genre === genreName || t.genre?.includes(genreName));
-      if(genreTracks.length === 0) return null;
-      const topTrack = genreTracks.sort((a,b) => b.plays - a.plays)[0];
+      const targetKey = normalizeGenre(genreName);
+
+      // Find albums whose primary genre matches this genre, sorted by total plays descending
+      const genreAlbums = albums
+          .filter(a => {
+              if (a.type === 'Single') return false;
+              const mainGenre = getAlbumMainGenre(a);
+              if (!mainGenre) return false;
+              return normalizeGenre(mainGenre) === targetKey;
+          })
+          .sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a));
+
+      if (genreAlbums.length > 0) {
+          const topAlbum = genreAlbums[0];
+          const cover = getAlbumCover ? getAlbumCover(topAlbum.id) : (topAlbum.covers?.[0] || null);
+          if (cover) return cover;
+      }
+
+      // If no full album, check any release in this genre
+      const anyGenreReleases = albums
+          .filter(a => {
+              const mainGenre = getAlbumMainGenre(a);
+              return mainGenre && normalizeGenre(mainGenre) === targetKey;
+          })
+          .sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a));
+
+      if (anyGenreReleases.length > 0) {
+          const topRelease = anyGenreReleases[0];
+          const cover = getAlbumCover ? getAlbumCover(topRelease.id) : (topRelease.covers?.[0] || null);
+          if (cover) return cover;
+      }
+
+      // Fallback: If no albums exist at all for this genre, use top track in this genre
+      const genreTracks = tracks.filter(t => normalizeGenre(t.genre) === targetKey || t.genre === genreName || (t.genre && t.genre.includes(genreName)));
+      if (genreTracks.length === 0) return null;
+      const topTrack = [...genreTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0))[0];
       return getTrackCover(topTrack);
   };
 
@@ -90,18 +181,112 @@ export const Search = () => {
       const genreObj = genres.find(g => g.id === genreId);
       const genreDisplayName = genreObj ? t(genreObj.key) : genreId;
 
-      const genreTracks = tracks.filter(t => {
-          const match = t.genre === genreId || (t.genre && t.genre.includes(genreId));
-          if (!appSettings.allowExplicitContent && t.explicit) return false;
-          return match;
+      const targetGenreKey = normalizeGenre(genreId);
+
+      // Filter tracks by genre and explicit settings, sorted by popularity (plays descending)
+      const genreTracks = tracks
+          .filter(t => {
+              const match = normalizeGenre(t.genre) === targetGenreKey || t.genre === genreId || (t.genre && t.genre.includes(genreId));
+              if (!appSettings.allowExplicitContent && t.explicit) return false;
+              return match;
+          })
+          .sort((a, b) => (b.plays || 0) - (a.plays || 0));
+
+      // Filter albums: Must match the page's genre as its MAIN genre AND NOT be a Single,
+      // sorted by total album plays descending (popularity)
+      const genreAlbums = albums
+          .filter(a => {
+              if (a.type === 'Single') return false; 
+              const mainGenre = getAlbumMainGenre(a);
+              if (!mainGenre) return false;
+              if (normalizeGenre(mainGenre) !== targetGenreKey) return false;
+
+              const albumTracks = tracks.filter(t => a.trackIds?.includes(t.id));
+              if (albumTracks.length === 0) return false;
+              if (!appSettings.allowExplicitContent && albumTracks.every(t => t.explicit)) return false;
+              return true;
+          })
+          .sort((a, b) => {
+              const diff = getAlbumPlays(b) - getAlbumPlays(a);
+              if (diff !== 0) return diff;
+              return (b.year || 0) - (a.year || 0);
+          });
+
+      // Get track release year
+      const getTrackYear = (track: any): number | null => {
+          const alb = albums.find(a => a.trackIds && a.trackIds.includes(track.id));
+          if (alb?.year) return alb.year;
+          if (alb?.releaseDate) {
+              const y = new Date(alb.releaseDate).getFullYear();
+              if (!isNaN(y)) return y;
+          }
+
+          if (track.id && typeof track.id === 'string' && track.id.startsWith('dist_trk_')) {
+              const parts = track.id.split('_');
+              const reqId = parts.slice(2, -1).join('_');
+              const matchedReq = releaseRequests?.find(r => r.id === reqId);
+              if (matchedReq?.releaseDate) {
+                  const y = new Date(matchedReq.releaseDate).getFullYear();
+                  if (!isNaN(y)) return y;
+              }
+          }
+
+          if (track.album) {
+              const albByTitle = albums.find(a => a.title && a.title.trim().toLowerCase() === track.album.trim().toLowerCase());
+              if (albByTitle?.year) return albByTitle.year;
+              if (albByTitle?.releaseDate) {
+                  const y = new Date(albByTitle.releaseDate).getFullYear();
+                  if (!isNaN(y)) return y;
+              }
+          }
+
+          const req = releaseRequests?.find(r => 
+              r.tracks?.some(t => (t as any).id === track.id || (t.title && track.title && t.title.trim().toLowerCase() === track.title.trim().toLowerCase())) ||
+              (r.title && track.album && r.title.trim().toLowerCase() === track.album.trim().toLowerCase())
+          );
+          if (req?.releaseDate) {
+              const y = new Date(req.releaseDate).getFullYear();
+              if (!isNaN(y)) return y;
+          }
+
+          if (track.year && typeof track.year === 'number') {
+              return track.year;
+          }
+
+          return null;
+      };
+
+      // Group genre tracks by year
+      const yearMap: Record<string, typeof genreTracks> = {};
+      for (const track of genreTracks) {
+          const yr = getTrackYear(track);
+          const key = yr ? String(yr) : 'other';
+          if (!yearMap[key]) yearMap[key] = [];
+          yearMap[key].push(track);
+      }
+
+      // Sort each year's tracks by popularity (plays descending)
+      for (const key of Object.keys(yearMap)) {
+          yearMap[key].sort((a, b) => (b.plays || 0) - (a.plays || 0));
+      }
+
+      // Sort years descending (e.g. 2026, 2025, 2024, ..., 'other' at end)
+      const sortedYearKeys = Object.keys(yearMap).sort((a, b) => {
+          if (a === 'other') return 1;
+          if (b === 'other') return -1;
+          return Number(b) - Number(a);
       });
-      
-      // Filter albums: Must match genre AND NOT be a Single
-      const genreAlbums = albums.filter(a => {
-          if (a.type === 'Single') return false; 
-          const track = tracks.find(t => t.id === a.trackIds[0]);
-          return track && (track.genre === genreId || track.genre?.includes(genreId));
-      });
+
+      const tracksByYear = sortedYearKeys.map(k => ({
+          yearKey: k,
+          yearLabel: k === 'other' ? (t('otherYears') || 'Другие') : k,
+          tracks: yearMap[k]
+      }));
+
+      const activeYearKey = tracksByYear.some(g => g.yearKey === selectedGenreYear) ? selectedGenreYear : 'all';
+      const displayYearGroups = activeYearKey === 'all'
+          ? tracksByYear
+          : tracksByYear.filter(g => g.yearKey === activeYearKey);
       
       const genreColor = genres.find(g => g.id === genreId)?.color || 'bg-gray-600';
 
@@ -129,61 +314,116 @@ export const Search = () => {
                                     className="w-[150px] md:w-[180px] p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
                                   >
                                       <div className="relative mb-3 md:mb-4 w-full aspect-square">
-                                          <img src={album.covers[0]} className="w-full h-full object-cover rounded shadow-lg" />
+                                          <img src={getAlbumCover ? getAlbumCover(album.id) : (album.covers?.[0] || '')} className="w-full h-full object-cover rounded shadow-lg" alt="" />
                                           <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                                               <Play fill="black" size={24} className="text-black ml-1" />
                                           </div>
                                       </div>
                                       <div className="font-bold truncate text-sm md:text-base">{album.title}</div>
-                                      <div className="text-xs md:text-sm text-secondary truncate">{album.artist}</div>
+                                      <div className="text-xs md:text-sm text-secondary truncate">{album.artist}{album.year ? ` • ${album.year}` : ''}</div>
+                                      <div className="text-[11px] text-secondary/70 truncate mt-0.5">{formatPlays(getAlbumPlays(album))} {t('plays')}</div>
                                   </div>
                               ))}
                           </div>
                       </div>
                   )}
 
-                  {/* Genre Tracks */}
-                  <h2 className="text-2xl font-bold mb-4">{t('allTracks')}</h2>
-                  <div className="flex flex-col gap-2">
-                      {genreTracks.length === 0 && <div className="text-secondary">No tracks found in this genre.</div>}
-                      {genreTracks.map((track, idx) => {
-                          const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
-                          return (
-                          <div 
-                             key={track.id} 
-                             className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_1fr_100px_60px] items-center gap-4 p-3 rounded hover:bg-surface-highlight group"
-                          >
-                             <div className="flex items-center justify-center" onClick={() => playTrack(track, filteredTracks)}>
-                                <div className="text-secondary text-center group-hover:hidden text-sm">{idx + 1}</div>
-                                <div className="hidden group-hover:block cursor-pointer"><Play size={16} fill="white"/></div>
-                             </div>
-                             
-                             <div className="flex items-center gap-4 overflow-hidden" onClick={() => playTrack(track, filteredTracks)}>
-                                <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                                <div className="flex flex-col overflow-hidden">
-                                  <div className="font-semibold text-white flex items-center gap-2 truncate cursor-pointer hover:underline">
-                                      {track.title}
-                                      {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
-                                  </div>
-                                  <div className="text-sm text-secondary truncate flex items-center gap-1">
-                                      <span>{allArtists.join(', ')}</span>
-                                      <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
-                                  </div>
-                                </div>
-                             </div>
-
-                             <div className="text-secondary text-sm hidden md:block text-right">{formatPlays(track.plays)}</div>
-                             
-                             <div className="flex items-center gap-4 justify-end">
-                                <span className="text-sm text-secondary hidden md:block">{formatDuration(track.duration)}</span>
-                                <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
-                                  <Heart size={18} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
-                                </button>
-                             </div>
-                          </div>
-                          );
-                      })}
+                  {/* Genre Tracks Divided by Year */}
+                  <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-2xl font-bold">{t('allTracks')}</h2>
                   </div>
+
+                  {/* Year Filter Pills if multiple years */}
+                  {tracksByYear.length > 1 && (
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
+                          <button
+                              onClick={() => setSelectedGenreYear('all')}
+                              className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap ${
+                                  activeYearKey === 'all'
+                                      ? 'bg-white text-black shadow-md'
+                                      : 'bg-surface hover:bg-surface-highlight text-white'
+                              }`}
+                          >
+                              {t('allReleases') || 'Все'}
+                          </button>
+                          {tracksByYear.map(g => (
+                              <button
+                                  key={g.yearKey}
+                                  onClick={() => setSelectedGenreYear(g.yearKey)}
+                                  className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap ${
+                                      activeYearKey === g.yearKey
+                                          ? 'bg-white text-black shadow-md'
+                                          : 'bg-surface hover:bg-surface-highlight text-white'
+                                  }`}
+                              >
+                                  {g.yearLabel}
+                              </button>
+                          ))}
+                      </div>
+                  )}
+
+                  {genreTracks.length === 0 ? (
+                      <div className="text-secondary">No tracks found in this genre.</div>
+                  ) : (
+                      <div className="flex flex-col gap-8">
+                          {displayYearGroups.map(group => (
+                              <div key={group.yearKey} className="flex flex-col">
+                                  <div className="flex items-baseline justify-between border-b border-surface-highlight/30 pb-2 mb-3">
+                                      <div className="flex items-baseline gap-2.5">
+                                          <h3 className="text-xl md:text-2xl font-bold text-white tracking-tight">{group.yearLabel}</h3>
+                                          <span className="text-xs text-secondary font-medium">
+                                              {group.tracks.length} {group.tracks.length === 1 ? t('trackOne') : t('tracksCount')}
+                                          </span>
+                                      </div>
+                                  </div>
+
+                                  <div className="flex flex-col gap-2">
+                                      {group.tracks.map((track, idx) => {
+                                          const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+                                          const isCurrent = currentTrack?.id === track.id;
+                                          return (
+                                          <div 
+                                             key={track.id} 
+                                             className="grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_minmax(0,1fr)_100px_60px] items-center gap-4 p-3 rounded hover:bg-surface-highlight group"
+                                          >
+                                             <div className="flex items-center justify-center" onClick={() => playTrack(track, group.tracks)}>
+                                                <div className="text-secondary text-center group-hover:hidden text-sm">{idx + 1}</div>
+                                                <div className="hidden group-hover:block cursor-pointer"><Play size={16} fill="white"/></div>
+                                             </div>
+                                             
+                                             <div className="flex items-center gap-4 overflow-hidden min-w-0" onClick={() => playTrack(track, group.tracks)}>
+                                                <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover flex-shrink-0" alt="" />
+                                                <div className="flex flex-col overflow-hidden min-w-0 flex-1">
+                                                  <div className="flex items-center gap-1.5 min-w-0 cursor-pointer">
+                                                      {isCurrent && (
+                                                          <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
+                                                      )}
+                                                      <span className={`font-semibold truncate hover:underline ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>{track.title}</span>
+                                                      {track.explicit && <ExplicitBadge />}
+                                                  </div>
+                                                  <div className="text-sm text-secondary truncate flex items-center gap-1">
+                                                      <span>{allArtists.join(', ')}</span>
+                                                      <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
+                                                  </div>
+                                                </div>
+                                             </div>
+
+                                             <div className="text-secondary text-sm hidden md:block text-right">{formatPlays(track.plays)}</div>
+                                             
+                                             <div className="flex items-center gap-4 justify-end">
+                                                <span className="text-sm text-secondary hidden md:block">{formatDuration(track.duration)}</span>
+                                                <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
+                                                  <Heart size={18} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
+                                                </button>
+                                             </div>
+                                          </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
               </div>
           </div>
       );
@@ -234,22 +474,27 @@ export const Search = () => {
              <div>
                 <h2 className="text-xl font-bold mb-4">{t('songs')}</h2>
                 <div className="flex flex-col gap-2">
-                 {filteredTracks.map(track => (
+                 {filteredTracks.map(track => {
+                   const isCurrent = currentTrack?.id === track.id;
+                   return (
                    <div 
                      key={track.id} 
                      className="flex items-center justify-between p-3 rounded hover:bg-surface-highlight group"
                    >
                      <div className="flex items-center gap-4 flex-1" onClick={() => playTrack(track, filteredTracks)}>
-                        <div className="relative w-10 h-10">
-                          <img src={getTrackCover(track)} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <div className="relative w-10 h-10 shrink-0">
+                          <img src={getTrackCover(track)} className="w-full h-full object-cover rounded" />
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded opacity-0 group-hover:opacity-100">
                             <Play size={16} fill="white" />
                           </div>
                         </div>
-                        <div>
-                          <div className="font-semibold text-white flex items-center gap-2">
-                              {track.title}
-                              {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0 cursor-pointer">
+                              {isCurrent && (
+                                  <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
+                              )}
+                              <span className={`font-semibold truncate ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>{track.title}</span>
+                              {track.explicit && <ExplicitBadge />}
                           </div>
                           <div className="text-sm text-secondary flex items-center gap-1">
                               <span>{[track.artist, ...(track.mainArtists || [])].filter((v, i, a) => a.indexOf(v) === i).join(', ')}</span>
@@ -264,7 +509,7 @@ export const Search = () => {
                         </button>
                      </div>
                    </div>
-                 ))}
+                 );})}
                 </div>
              </div>
            )}

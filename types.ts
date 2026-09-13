@@ -46,6 +46,7 @@ export interface Album {
   recordLabel?: string;
   type?: ReleaseType;
   mainArtists?: string[]; // Added at album level for better display
+  genre?: string; // Primary genre of the release
 }
 
 export interface User {
@@ -61,7 +62,8 @@ export interface AppSettings {
   language: 'English' | 'Russian';
   allowExplicitContent: boolean; // Replaced High Quality Audio
   autoPlay: boolean;
-  crossfade: number; // seconds
+  crossfade: number; // seconds (0-12)
+  crossfadeEnabled?: boolean; // toggle for crossfade
   albumCoverIndexes: Record<string, number>; // Stores user preference for album covers
 }
 
@@ -179,4 +181,11 @@ export interface AppNotification {
   id: string;
   message: string;
   type: 'error' | 'success' | 'info';
+}
+
+export interface UserStreamRecord {
+  trackId: string;
+  userId?: string;
+  deviceId?: string;
+  timestamp: number;
 }

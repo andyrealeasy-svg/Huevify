@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume, Volume1, Volume2, VolumeX, Heart, Plus } from './Icons';
 import { PlayMode } from '../types';
 import { extractColorFromImage } from '../utils/colorExtractor';
+import { ExplicitBadge } from './ExplicitBadge';
 
 const formatTime = (seconds: number) => {
   if (!seconds) return "0:00";
@@ -62,9 +63,12 @@ export const Player = () => {
           className="h-10 w-10 md:h-14 md:w-14 rounded md:rounded-md shadow-md mr-2.5 md:mr-4 flex-shrink-0 object-cover" 
         />
         <div className="flex flex-col overflow-hidden min-w-0 mr-2 md:mr-4 flex-1">
-          <span className="text-xs md:text-sm font-semibold text-white truncate hover:underline cursor-pointer leading-tight">
-            {currentTrack.title}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs md:text-sm font-semibold text-white truncate hover:underline cursor-pointer leading-tight">
+              {currentTrack.title}
+            </span>
+            {currentTrack.explicit && <ExplicitBadge />}
+          </div>
           <div className="text-[11px] md:text-xs text-white/70 md:text-secondary truncate mt-0.5 leading-tight">
               {allArtists.map((a, i) => (
                   <span key={a}>

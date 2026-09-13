@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock } from '../components/Icons.tsx';
 import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
+import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
+import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -19,7 +21,8 @@ export const Library = () => {
     removeFromPlaylist, goBack, setCreatePlaylistOpen, setPlaylistIdToEdit, setView, 
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
-    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover, t
+    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover,
+    currentTrack, isPlaying, t
   } = useStore();
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
@@ -60,93 +63,169 @@ export const Library = () => {
           (currentUser && pl.savedBy?.includes(currentUser.id));
       });
       
-      const myPlaylists = [userLikedPl, ...otherPlaylists];
-      
       const likedAlbums = albums.filter(a => isAlbumLiked(a.id));
 
+      const likedTracksCount = userLikedPl.tracks.length;
+
       return (
-          <div className="h-full overflow-y-auto pb-32 relative w-full page-enter px-4 md:px-8 py-8">
-              <h1 className="text-3xl font-bold mb-6">{t('library')}</h1>
-              
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
-                  {myPlaylists.map(pl => {
-                      let cover = pl.customCover;
-                      if (!cover && pl.tracks.length > 0) {
-                          const t = tracks.find(t => t.id === pl.tracks[0]);
-                          if (t) cover = getTrackCover(t);
-                      }
-                      const isLikedPl = pl.id.startsWith('liked') || pl.id === 'liked';
-                      // Hide system text for Liked Songs
-                      const subText = isLikedPl ? t('playlist') : (pl.isSystem ? t('system') : `${t('by')} ${pl.creatorName || t('you')}`);
+          <div className="h-full overflow-y-auto pb-32 relative w-full page-enter px-4 md:px-8 py-8 space-y-9">
+              <div>
+                  <h1 className="text-3xl font-bold mb-6">{t('library')}</h1>
 
-                      return (
-                          <div 
-                              key={pl.id} 
-                              onClick={() => setView({ type: 'PLAYLIST', id: pl.id })}
-                              className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
-                          >
-                              <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative">
-                                  {isLikedPl ? (
-                                      <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
-                                          <Heart size={32} fill="white" className="text-white md:w-10 md:h-10" />
-                                      </div>
-                                  ) : cover ? (
-                                      <img src={cover} className="w-full h-full object-cover" />
-                                  ) : (
-                                      <ListMusic size={32} className="text-secondary md:w-10 md:h-10" />
-                                  )}
-                                  <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                                      <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
-                                  </div>
-                              </div>
-                              <h3 className="font-bold truncate text-white text-sm md:text-base">{pl.name}</h3>
-                              <p className="text-xs md:text-sm text-secondary truncate">{subText}</p>
+                  {/* 1. TOP BLOCK: Liked Songs (Плейлист Любимые треки) */}
+                  <div 
+                      onClick={() => setView({ type: 'PLAYLIST', id: userLikedPl.id })}
+                      className="group cursor-pointer rounded-xl bg-gradient-to-r from-surface to-surface/60 hover:from-surface-highlight hover:to-surface p-4 md:p-5 flex items-center justify-between transition duration-200 hover-scale"
+                  >
+                      <div className="flex items-center gap-4 md:gap-5 min-w-0">
+                          <div className="w-16 h-16 md:w-20 md:h-20 rounded-lg bg-gradient-to-br from-indigo-700 to-blue-400 flex items-center justify-center shadow-lg shrink-0 group-hover:shadow-indigo-500/20 transition-all">
+                              <Heart size={32} fill="white" className="text-white md:w-9 md:h-9" />
                           </div>
-                      );
-                  })}
-
-                  {likedAlbums.map(album => (
-                      <div 
-                          key={album.id} 
-                          onClick={() => setView({ type: 'ALBUM', id: album.id })}
-                          className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
-                      >
-                          <div className="aspect-square mb-3 md:mb-4 shadow-lg rounded-md overflow-hidden bg-surface-highlight relative">
-                              <img src={getAlbumCover(album.id)} className="w-full h-full object-cover" />
-                              <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                                  <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
-                              </div>
+                          <div className="flex flex-col min-w-0">
+                              <span className="text-xs uppercase tracking-wider text-secondary font-semibold">{t('playlist')}</span>
+                              <h2 className="text-lg md:text-2xl font-bold text-white truncate group-hover:text-primary transition-colors">
+                                  {userLikedPl.name}
+                              </h2>
+                              <p className="text-xs md:text-sm text-secondary truncate mt-0.5">
+                                  {likedTracksCount} {likedTracksCount === 1 ? t('trackOne') : t('tracksCount')}
+                              </p>
                           </div>
-                          <h3 className="font-bold truncate text-white text-sm md:text-base">{album.title}</h3>
-                          <p className="text-xs md:text-sm text-secondary truncate">{album.artist}</p>
                       </div>
-                  ))}
 
-                  {/* Followed Artists */}
-                  {followedArtists.map(artistName => {
-                      const acc = artistAccounts.find(a => a.artistName === artistName);
-                      // Fallback image search
-                      const artistTrack = tracks.find(t => t.artist === artistName);
-                      const image = acc?.avatar || (artistTrack ? getTrackCover(artistTrack) : undefined);
-
-                      return (
-                          <div 
-                              key={artistName} 
-                              onClick={() => goToArtist(artistName)}
-                              className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
-                          >
-                              <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-full overflow-hidden bg-surface-highlight relative">
-                                  {image ? (
-                                      <img src={image} className="w-full h-full object-cover" />
-                                  ) : (
-                                      <User size={32} className="text-secondary md:w-10 md:h-10" />
-                                  )}
-                              </div>
-                              <h3 className="font-bold truncate text-white text-center text-sm md:text-base">{artistName}</h3>
-                              <p className="text-xs md:text-sm text-secondary truncate text-center">{t('artist')}</p>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                          <div className="w-11 h-11 md:w-12 md:h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-90 md:opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200">
+                              <Play fill="black" size={20} className="text-black ml-0.5" />
                           </div>
-                      );
-                  })}
+                      </div>
+                  </div>
+              </div>
+
+              {/* 2. BLOCK: Albums (Альбомы) */}
+              {likedAlbums.length > 0 && (
+                  <div>
+                      <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-baseline gap-2">
+                              <h2 className="text-lg md:text-xl font-bold text-white">{t('albums')}</h2>
+                              <span className="text-xs text-secondary font-normal">{likedAlbums.length}</span>
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-5">
+                          {likedAlbums.map(album => (
+                              <div 
+                                  key={album.id} 
+                                  onClick={() => setView({ type: 'ALBUM', id: album.id })}
+                                  className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
+                              >
+                                  <div className="aspect-square mb-3 md:mb-4 shadow-lg rounded-md overflow-hidden bg-surface-highlight relative">
+                                      <img src={getAlbumCover(album.id)} className="w-full h-full object-cover" alt="" />
+                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                                          <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
+                                      </div>
+                                  </div>
+                                  <h3 className="font-bold truncate text-white text-sm md:text-base">{album.title}</h3>
+                                  <p className="text-xs md:text-sm text-secondary truncate">{album.artist}</p>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
+
+              {/* 3. BLOCK: Artists (Артисты) */}
+              {followedArtists.length > 0 && (
+                  <div>
+                      <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-baseline gap-2">
+                              <h2 className="text-lg md:text-xl font-bold text-white">{t('artists')}</h2>
+                              <span className="text-xs text-secondary font-normal">{followedArtists.length}</span>
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-5">
+                          {followedArtists.map(artistName => {
+                              const acc = artistAccounts.find(a => a.artistName === artistName);
+                              const artistTrack = tracks.find(t => t.artist === artistName);
+                              const image = acc?.avatar || (artistTrack ? getTrackCover(artistTrack) : undefined);
+
+                              return (
+                                  <div 
+                                      key={artistName} 
+                                      onClick={() => goToArtist(artistName)}
+                                      className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale text-center"
+                                  >
+                                      <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-full overflow-hidden bg-surface-highlight relative mx-auto">
+                                          {image ? (
+                                              <img src={image} className="w-full h-full object-cover" alt="" />
+                                          ) : (
+                                              <User size={32} className="text-secondary md:w-10 md:h-10" />
+                                          )}
+                                      </div>
+                                      <h3 className="font-bold truncate text-white text-sm md:text-base">{artistName}</h3>
+                                      <p className="text-xs md:text-sm text-secondary truncate">{t('artist')}</p>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              )}
+
+              {/* 4. BLOCK: Playlists (Плейлисты) */}
+              <div>
+                  <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-baseline gap-2">
+                          <h2 className="text-lg md:text-xl font-bold text-white">{t('playlists')}</h2>
+                          <span className="text-xs text-secondary font-normal">{otherPlaylists.length}</span>
+                      </div>
+                  </div>
+                  <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-5">
+                      {/* FIRST ITEM: Create Playlist Button Card */}
+                      <div 
+                          onClick={handleCreate}
+                          className="bg-surface/50 hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale border border-dashed border-white/10 hover:border-primary/50 flex flex-col justify-between"
+                      >
+                          <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight/70 group-hover:bg-primary/20 transition-colors relative">
+                              <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/10 group-hover:bg-primary group-hover:text-black flex items-center justify-center text-white transition-all duration-300">
+                                  <Plus size={28} className="transition-transform group-hover:scale-110" />
+                              </div>
+                          </div>
+                          <div>
+                              <h3 className="font-bold truncate text-white text-sm md:text-base group-hover:text-primary transition-colors">
+                                  {t('createPlaylist')}
+                              </h3>
+                              <p className="text-xs md:text-sm text-secondary truncate">
+                                  {t('playlist')}
+                              </p>
+                          </div>
+                      </div>
+
+                      {otherPlaylists.map(pl => {
+                          let cover = pl.customCover;
+                          if (!cover && pl.tracks.length > 0) {
+                              const t = tracks.find(t => t.id === pl.tracks[0]);
+                              if (t) cover = getTrackCover(t);
+                          }
+                          const subText = pl.isSystem ? t('system') : `${t('by')} ${pl.creatorName || t('you')}`;
+
+                          return (
+                              <div 
+                                  key={pl.id} 
+                                  onClick={() => setView({ type: 'PLAYLIST', id: pl.id })}
+                                  className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
+                              >
+                                  <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative">
+                                      {cover ? (
+                                          <img src={cover} className="w-full h-full object-cover" alt="" />
+                                      ) : (
+                                          <ListMusic size={32} className="text-secondary md:w-10 md:h-10" />
+                                      )}
+                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                                          <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
+                                      </div>
+                                  </div>
+                                  <h3 className="font-bold truncate text-white text-sm md:text-base">{pl.name}</h3>
+                                  <p className="text-xs md:text-sm text-secondary truncate">{subText}</p>
+                              </div>
+                          );
+                      })}
+                  </div>
               </div>
           </div>
       );
@@ -177,17 +256,21 @@ export const Library = () => {
                ) : (
                    dailyChart.map((track, idx) => {
                        const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+                       const isCurrent = currentTrack?.id === track.id;
                        
                        return (
-                       <div key={track.id} className="grid grid-cols-[30px_1fr_60px] md:grid-cols-[30px_4fr_2fr_1fr_60px] gap-4 px-2 py-3 rounded hover:bg-surface-highlight group items-center">
+                       <div key={track.id} className="grid grid-cols-[30px_minmax(0,1fr)_60px] md:grid-cols-[30px_4fr_2fr_1fr_60px] gap-4 px-2 py-3 rounded hover:bg-surface-highlight group items-center">
                             <div className="flex justify-center text-xl font-bold text-secondary">{idx + 1}</div>
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                 <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover" alt="" />
-                                 <div className="flex flex-col overflow-hidden">
-                                    <span className="text-white font-medium truncate flex items-center gap-2">
-                                        {track.title}
-                                        {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
-                                    </span>
+                            <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                                 <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover shrink-0" alt="" />
+                                 <div className="flex flex-col overflow-hidden min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        {isCurrent && (
+                                            <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
+                                        )}
+                                        <span className={`${isCurrent ? 'text-primary font-bold' : 'text-white font-medium'} truncate`}>{track.title}</span>
+                                        {track.explicit && <ExplicitBadge />}
+                                    </div>
                                     <div className="text-xs text-secondary truncate">
                                         {allArtists.map((a, i) => (
                                             <span key={a}>
@@ -290,9 +373,13 @@ export const Library = () => {
                 <div className="relative z-10 w-full">
                     <div className="flex items-center gap-2 mb-2 text-white">
                         {isVerified && (
-                            <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
-                                <span className="w-3 h-3 bg-white rounded-full flex items-center justify-center"><i className="block w-1 h-1 bg-blue-600 rounded-full"></i></span>
-                                {t('verifiedArtist')}
+                            <div className="flex items-center gap-2 text-white/95 drop-shadow-md">
+                                <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                    <Check size={12} strokeWidth={3.5} />
+                                </span>
+                                <span className="text-xs md:text-sm font-semibold tracking-wide">
+                                    {t('verifiedArtist')}
+                                </span>
                             </div>
                         )}
                     </div>
@@ -345,23 +432,34 @@ export const Library = () => {
 
                         <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
                         <div className="flex flex-col gap-1 mb-8">
-                            {topTracks.map((track, idx) => (
+                            {topTracks.map((track, idx) => {
+                                const isCurrent = currentTrack?.id === track.id;
+                                return (
                                 <div key={track.id} className="grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer" onClick={() => playTrack(track, topTracks)}>
-                                    <span className="text-secondary text-sm">{idx + 1}</span>
-                                    <div className="flex items-center gap-3">
-                                        <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover" alt=""/>
-                                        <div className="flex flex-col overflow-hidden">
-                                            <span className="font-medium text-white truncate flex items-center gap-2">
-                                                {track.title}
-                                                {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
-                                            </span>
+                                    <div className="w-5 flex justify-center items-center">
+                                        {isCurrent ? (
+                                            <PlayingVisualizer isPlaying={isPlaying} size="sm" />
+                                        ) : (
+                                            <span className="text-secondary text-sm">{idx + 1}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                                        <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover shrink-0" alt=""/>
+                                        <div className="flex flex-col overflow-hidden min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                {isCurrent && (
+                                                    <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
+                                                )}
+                                                <span className={`${isCurrent ? 'text-primary font-bold' : 'font-medium text-white'} truncate`}>{track.title}</span>
+                                                {track.explicit && <ExplicitBadge />}
+                                            </div>
                                             <span className="md:hidden text-xs text-secondary truncate">{formatPlays(track.plays)} {t('plays')}</span>
                                         </div>
                                     </div>
                                     <span className="text-secondary text-sm hidden md:block">{formatPlays(track.plays)}</span>
                                     <span className="text-secondary text-sm text-right">{formatDuration(track.duration)}</span>
                                 </div>
-                            ))}
+                            );})}
                         </div>
 
                         {/* Дискография: вертикальный блок сверху вниз */}
@@ -677,7 +775,7 @@ export const Library = () => {
         {/* Action Bar */}
         <div className="px-6 md:px-8 py-4 md:py-6 bg-background/50 backdrop-blur-sm sticky top-0 z-30 flex items-center gap-6 animate-appear">
           <button 
-             onClick={() => items.length > 0 && playTrack(items[0], items)}
+             onClick={() => items.length > 0 && playTrack(items[0], items, !isPlaylist ? (currentAlbumObj?.id || id) : undefined)}
              className="w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg"
           >
             <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
@@ -724,31 +822,37 @@ export const Library = () => {
            {items.map((track, idx) => {
                // Logic: If displaying a track inside an Album View, use the Album's cover, not the Track's canonical cover
                // This allows "reused" tracks via HUEQ to show the correct context-aware cover art
-               const displayCover = !isPlaylist ? cover : getTrackCover(track);
+               const displayCover = !isPlaylist ? cover : getTrackCover(track, currentAlbumObj?.id);
 
                const albumArtist = !isPlaylist ? (subtitle.split(' • ')[1] || "") : "";
                const allTrackArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+               const isCurrent = currentTrack?.id === track.id;
 
                return (
-             <div key={track.id} className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 rounded hover:bg-surface-highlight group items-center">
+             <div key={track.id} className="grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 rounded hover:bg-surface-highlight group items-center">
                
                <div className="w-4 flex justify-center">
                    <span className="text-secondary group-hover:hidden text-sm">{idx + 1}</span>
-                   <button onClick={() => playTrack(track, items)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
+                   <button onClick={() => playTrack(track, items, !isPlaylist ? (currentAlbumObj?.id || id) : undefined)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
                </div>
                
-               <div className="flex items-center gap-3 overflow-hidden">
-                 <img src={displayCover} className="w-10 h-10 md:hidden rounded object-cover" alt="" />
-                 <div className="flex flex-col overflow-hidden">
-                   <span className="text-white font-medium truncate flex items-center gap-2">
-                      {track.title} 
-                      {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">{t('explicitShort')}</span>}
-                      {track.feat && (
-                          <span className="md:hidden text-secondary font-normal">
-                              {` (feat. ${track.feat})`}
-                          </span>
+               <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                 <img src={displayCover} className="w-10 h-10 md:hidden rounded object-cover shrink-0" alt="" />
+                 <div className="flex flex-col overflow-hidden min-w-0 flex-1">
+                   <div className="flex items-center gap-1.5 min-w-0">
+                      {isCurrent && (
+                          <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
                       )}
-                   </span>
+                      <span className={`${isCurrent ? 'text-primary font-bold' : 'text-white font-medium'} truncate`}>
+                         {track.title}
+                         {track.feat && (
+                             <span className="md:hidden text-secondary font-normal">
+                                 {` (feat. ${track.feat})`}
+                             </span>
+                         )}
+                      </span>
+                      {track.explicit && <ExplicitBadge />}
+                   </div>
                    
                    {/* Mobile Artist & Plays Display */}
                    <div className="md:hidden text-xs text-secondary truncate mt-0.5 flex items-center gap-1">

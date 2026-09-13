@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
 import { Play, ListMusic, User as UserIcon, Clock } from '../components/Icons.tsx';
+import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
+import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
+import { StorageService } from '../services/storage.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -9,15 +13,76 @@ const formatDuration = (seconds: number) => {
 };
 
 export const Home = () => {
-  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, t } = useStore();
+  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, getAlbumCover, currentTrack, isPlaying, t } = useStore();
+
+  const [remotePlays14d, setRemotePlays14d] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    if (isSupabaseConfigured()) {
+      const twoWeeksAgoISO = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      SupabaseService.fetchDailyPlaysSince(twoWeeksAgoISO).then(res => {
+        if (isMounted && res) {
+          setRemotePlays14d(res);
+        }
+      }).catch(err => console.warn('Home 14d plays fetch error:', err));
+    }
+    return () => { isMounted = false; };
+  }, []);
 
   const previewCharts = dailyChart.slice(0, 5);
   
-  const latestReleases = [...albums].sort((a, b) => {
+  const latestReleases = useMemo(() => {
+    return [...albums].sort((a, b) => {
       const dateA = a.releaseDate ? new Date(a.releaseDate).getTime() : new Date(a.year, 0, 1).getTime();
       const dateB = b.releaseDate ? new Date(b.releaseDate).getTime() : new Date(b.year, 0, 1).getTime();
       return dateB - dateA;
-  }).slice(0, 5);
+    }).slice(0, 5);
+  }, [albums]);
+
+  // Top 5 most listened releases in the last 2 weeks (14 days)
+  const popularAlbums = useMemo(() => {
+    const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+    const recentLogs = localLogs.filter(l => l.timestamp >= twoWeeksAgo);
+    const localMap: Record<string, number> = {};
+    recentLogs.forEach(l => {
+      localMap[l.trackId] = (localMap[l.trackId] || 0) + (l.plays || 0);
+    });
+
+    const getAlbum14DayPlays = (album: typeof albums[0]): number => {
+      const albumTracks = tracks.filter(t => (album.trackIds && album.trackIds.includes(t.id)) || t.album === album.title);
+      
+      // Sum plays from logs (Supabase remote logs + local logs)
+      const logsSum = albumTracks.reduce((sum, t) => {
+        const pRemote = remotePlays14d[t.id] || 0;
+        const pLocal = localMap[t.id] || 0;
+        return sum + Math.max(pRemote, pLocal);
+      }, 0);
+
+      if (logsSum > 0) return logsSum;
+
+      // If release was published in the last 14 days, count all its track plays
+      const relDate = album.releaseDate ? new Date(album.releaseDate).getTime() : 0;
+      if (relDate >= twoWeeksAgo) {
+        return albumTracks.reduce((sum, t) => sum + (t.plays || 0), 0);
+      }
+
+      // Proportional or baseline fallback based on release track plays
+      return albumTracks.reduce((sum, t) => sum + (t.plays || 0), 0);
+    };
+
+    return [...albums]
+      .sort((a, b) => {
+        const playsA = getAlbum14DayPlays(a);
+        const playsB = getAlbum14DayPlays(b);
+        if (playsB !== playsA) return playsB - playsA;
+        const dateA = a.releaseDate ? new Date(a.releaseDate).getTime() : new Date(a.year, 0, 1).getTime();
+        const dateB = b.releaseDate ? new Date(b.releaseDate).getTime() : new Date(b.year, 0, 1).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 5);
+  }, [albums, tracks, remotePlays14d]);
 
   const getGreeting = () => {
       const hour = new Date().getHours();
@@ -87,6 +152,7 @@ export const Home = () => {
           <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-6 pb-4 md:pb-0 snap-x no-scrollbar">
              {recommendations.map(track => {
                const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+               const isCurrent = currentTrack?.id === track.id;
                return (
                <div 
                  key={track.id} 
@@ -99,10 +165,15 @@ export const Home = () => {
                      <Play fill="black" size={20} className="text-black ml-1" />
                    </div>
                  </div>
-                 <h4 className="font-bold truncate text-sm flex items-center gap-1">
-                     {track.title}
-                     {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
-                 </h4>
+                 <div className="flex items-center gap-1.5 min-w-0">
+                     {isCurrent && (
+                         <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1 inline-flex" />
+                     )}
+                     <h4 className={`font-bold truncate text-sm ${isCurrent ? 'text-primary' : 'text-white'}`}>
+                         {track.title}
+                     </h4>
+                     {track.explicit && <ExplicitBadge />}
+                 </div>
                  <p className="text-xs text-secondary truncate">
                      {allArtists.join(", ")}
                  </p>
@@ -131,6 +202,7 @@ export const Home = () => {
         ) : (
             previewCharts.map((track, idx) => {
                 const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
+                const isCurrent = currentTrack?.id === track.id;
                 return (
                 <div 
                     key={track.id} 
@@ -144,10 +216,15 @@ export const Home = () => {
                     
                     <div className="flex items-center gap-3 md:gap-4 flex-1 overflow-hidden">
                         <img src={getTrackCover(track)} alt={track.title} className="w-10 h-10 md:w-10 md:h-10 rounded object-cover" />
-                        <div className="flex-1 overflow-hidden">
-                        <div className="font-semibold text-white truncate group-hover:underline text-sm md:text-base flex items-center gap-2">
-                            {track.title}
-                            {track.explicit && <span className="text-[8px] border border-secondary text-secondary px-1 rounded bg-surface">E</span>}
+                        <div className="flex-1 overflow-hidden min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            {isCurrent && (
+                                <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
+                            )}
+                            <span className={`font-semibold truncate group-hover:underline text-sm md:text-base ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>
+                                {track.title}
+                            </span>
+                            {track.explicit && <ExplicitBadge />}
                         </div>
                         <div className="text-xs text-secondary truncate flex items-center gap-1">
                             {allArtists.map((a, i) => (
@@ -195,17 +272,17 @@ export const Home = () => {
 
       <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('popularAlbums')}</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
-        {albums.length === 0 ? (
+        {popularAlbums.length === 0 ? (
           <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noReleases')}</div>
         ) : (
-          albums.map(album => (
+          popularAlbums.map(album => (
             <div 
               key={album.id} 
               onClick={() => setView({ type: 'ALBUM', id: album.id })}
               className="w-[150px] md:w-auto p-3 md:p-4 bg-surface hover:bg-surface-highlight rounded-lg cursor-pointer group snap-start flex-shrink-0 hover-scale"
             >
               <div className="relative mb-3 md:mb-4 w-full aspect-square">
-                <img src={album.covers[0]} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
+                <img src={getAlbumCover ? getAlbumCover(album.id) : (album.covers[0] || '')} alt={album.title} className="w-full h-full object-cover rounded shadow-lg" />
                 <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                   <Play fill="black" size={24} className="text-black ml-1" />
                 </div>

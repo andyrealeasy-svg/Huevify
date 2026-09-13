@@ -6,9 +6,10 @@ import {
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
   Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save
 } from './Icons.tsx';
-import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft } from '../types.ts';
+import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { StorageService } from '../services/storage.ts';
+import { ExplicitBadge } from './ExplicitBadge.tsx';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
 
@@ -85,6 +86,12 @@ export const ArtistHub = () => {
 
   // Release Detail Modal State
   const [selectedRelease, setSelectedRelease] = useState<ReleaseRequest | null>(null);
+
+  // HUEQ Track Loading State (Step 2)
+  const [isHueqModalOpen, setIsHueqModalOpen] = useState(false);
+  const [hueqInput, setHueqInput] = useState("");
+  const [hueqLookupError, setHueqLookupError] = useState("");
+  const [previewTrackFromHueq, setPreviewTrackFromHueq] = useState<Track | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -496,9 +503,93 @@ export const ArtistHub = () => {
       });
   };
 
+  const handleHueqInputChange = (val: string) => {
+      setHueqInput(val);
+      setHueqLookupError("");
+      const clean = val.trim().toUpperCase();
+      if (clean.length >= 3) {
+          const found = getTrackByHueq(clean);
+          if (found) {
+              setPreviewTrackFromHueq(found);
+              setHueqLookupError("");
+          } else {
+              setPreviewTrackFromHueq(null);
+          }
+      } else {
+          setPreviewTrackFromHueq(null);
+      }
+  };
+
+  const handleHueqSearchClick = () => {
+      const clean = hueqInput.trim().toUpperCase();
+      if (!clean) {
+          setHueqLookupError(t('enterHueqCode') || "Введите HUEQ код");
+          return;
+      }
+      const found = getTrackByHueq(clean);
+      if (found) {
+          setPreviewTrackFromHueq(found);
+          setHueqLookupError("");
+      } else {
+          setPreviewTrackFromHueq(null);
+          setHueqLookupError(`${t('trackNotFoundByHueq') || "Трек с таким HUEQ кодом не найден"}: "${clean}"`);
+      }
+  };
+
+  const handleAddTrackByHueq = (trackOrCode?: Track | string) => {
+      let targetTrack: Track | undefined;
+      let code = "";
+
+      if (trackOrCode && typeof trackOrCode === 'object') {
+          targetTrack = trackOrCode;
+          code = targetTrack.hueq || "";
+      } else {
+          code = (typeof trackOrCode === 'string' ? trackOrCode : hueqInput).trim().toUpperCase();
+          targetTrack = previewTrackFromHueq || getTrackByHueq(code);
+      }
+
+      if (!targetTrack) {
+          setHueqLookupError(`${t('trackNotFoundByHueq') || "Трек с таким HUEQ кодом не найден"}: "${code}"`);
+          return;
+      }
+
+      const finalHueq = targetTrack.hueq || code;
+
+      const alreadyExists = distTracks.some(dt => 
+          (dt.existingHueq && dt.existingHueq.toUpperCase() === finalHueq.toUpperCase()) ||
+          (dt.generatedHueq && dt.generatedHueq.toUpperCase() === finalHueq.toUpperCase()) ||
+          (dt.fileUrl && dt.fileUrl === targetTrack?.url && dt.title.toLowerCase() === targetTrack?.title.toLowerCase())
+      );
+
+      if (alreadyExists) {
+          showNotification(`Трек "${targetTrack.title}" уже в списке релиза`, "info");
+      }
+
+      const newTrack: DistributionTrack = {
+          title: targetTrack.title,
+          explicit: targetTrack.explicit || false,
+          feat: targetTrack.feat || "",
+          mainArtists: targetTrack.mainArtists || [],
+          genre: targetTrack.genre || distGenre || "Pop",
+          duration: targetTrack.duration || 180,
+          fileUrl: targetTrack.url,
+          existingHueq: finalHueq,
+          generatedHueq: finalHueq,
+          artist: targetTrack.artist
+      };
+
+      setDistTracks(prev => [...prev, newTrack]);
+      showNotification(`${t('trackAddedByHueq') || "Трек добавлен по HUEQ"}: ${targetTrack.title}`, "success");
+      setHueqInput("");
+      setHueqLookupError("");
+      setPreviewTrackFromHueq(null);
+      setIsHueqModalOpen(false);
+  };
+
   const handleHueqBlur = (idx: number, hueq: string) => {
       if (!hueq) return;
-      const existing = getTrackByHueq(hueq);
+      const clean = hueq.trim().toUpperCase();
+      const existing = getTrackByHueq(clean);
       
       if (existing) {
           setDistTracks(prev => {
@@ -508,17 +599,17 @@ export const ArtistHub = () => {
                   title: existing.title,
                   explicit: existing.explicit || false,
                   feat: existing.feat || "",
-                  existingHueq: hueq,
+                  existingHueq: existing.hueq || clean,
                   fileUrl: existing.url,
                   duration: existing.duration,
-                  genre: existing.genre, // Sync genre
+                  genre: existing.genre || newTracks[idx].genre,
                   mainArtists: existing.mainArtists || []
               };
               return newTracks;
           });
-          showNotification(`HUEQ Found! Track details auto-filled: ${existing.title}`, "success");
+          showNotification(`HUEQ найден: ${existing.title}`, "success");
       } else {
-          updateTrack(idx, 'existingHueq', hueq);
+          updateTrack(idx, 'existingHueq', clean);
       }
   };
 
@@ -1370,16 +1461,34 @@ export const ArtistHub = () => {
 
           {distStep === 2 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
-                  <h3 className="text-xl font-bold">{t('step2')}</h3>
-                  
-                  <div className="flex justify-end">
-                      <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition">
-                          <Plus size={18}/> {t('addTrack')}
-                      </button>
-                      <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <h3 className="text-xl font-bold">{t('step2')}</h3>
+                      
+                      <div className="flex items-center gap-2.5">
+                          <button 
+                              type="button"
+                              onClick={() => {
+                                  setHueqInput("");
+                                  setHueqLookupError("");
+                                  setPreviewTrackFromHueq(null);
+                                  setIsHueqModalOpen(true);
+                              }}
+                              className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight hover:border-white/20 px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                          >
+                              <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
+                          </button>
+                          <button 
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()} 
+                              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                          >
+                              <Plus size={16}/> {t('addTrack')}
+                          </button>
+                          <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
+                      </div>
                   </div>
 
-                  <div className="flex flex-col gap-4 max-h-[300px] overflow-y-auto">
+                  <div className="flex flex-col gap-4 max-h-[360px] overflow-y-auto">
                       {distTracks.map((track, i) => (
                           <div key={i} className="bg-surface-highlight p-4 rounded flex flex-col gap-3">
                               <div className="flex justify-between items-start">
@@ -1405,11 +1514,15 @@ export const ArtistHub = () => {
                                               className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
                                               placeholder={t('trackTitle')}
                                           />
-                                          {track.generatedHueq && !track.existingHueq && (
+                                          {track.existingHueq ? (
+                                              <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full font-mono mt-1 inline-flex items-center gap-1 w-fit">
+                                                  ✓ HUEQ: {track.existingHueq}
+                                              </span>
+                                          ) : track.generatedHueq ? (
                                               <span className="text-[10px] text-secondary/70 font-mono mt-1">
                                                   HUEQ: {track.generatedHueq}
                                               </span>
-                                          )}
+                                          ) : null}
                                       </div>
                                   </div>
                                   <button onClick={() => setDistTracks(distTracks.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-400"><Trash2 size={20}/></button>
@@ -1480,7 +1593,40 @@ export const ArtistHub = () => {
                               </div>
                           </div>
                       ))}
-                      {distTracks.length === 0 && <div className="text-center text-secondary py-8 border-2 border-dashed border-surface-highlight rounded">{t('addTrack')}</div>}
+                      {distTracks.length === 0 && (
+                          <div className="text-center py-10 px-4 border-2 border-dashed border-surface-highlight/70 rounded-xl flex flex-col items-center justify-center gap-3 bg-surface/20">
+                              <div className="w-12 h-12 rounded-full bg-surface-highlight/60 flex items-center justify-center text-secondary">
+                                  <FileAudio size={24} />
+                              </div>
+                              <div className="font-semibold text-white text-sm sm:text-base">
+                                  {t('noTracks') || "Треков пока нет"}
+                              </div>
+                              <p className="text-xs text-secondary max-w-md">
+                                  {t('searchByHueqDesc') || "Загрузите аудиофайл с устройства или используйте HUEQ-код существующего трека без повторной загрузки аудио."}
+                              </p>
+                              <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
+                                  <button 
+                                      type="button" 
+                                      onClick={() => fileInputRef.current?.click()} 
+                                      className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
+                                  >
+                                      <Plus size={16}/> {t('addTrack')}
+                                  </button>
+                                  <button 
+                                      type="button" 
+                                      onClick={() => {
+                                          setHueqInput("");
+                                          setHueqLookupError("");
+                                          setPreviewTrackFromHueq(null);
+                                          setIsHueqModalOpen(true);
+                                      }} 
+                                      className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
+                                  >
+                                      <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
+                                  </button>
+                              </div>
+                          </div>
+                      )}
                   </div>
               </div>
           )}
@@ -1991,10 +2137,13 @@ export const ArtistHub = () => {
                               <div key={idx} className="flex justify-between items-center p-2 hover:bg-surface-highlight rounded">
                                   <div className="flex items-center gap-3">
                                       <span className="text-secondary text-sm w-6">{idx + 1}</span>
-                                      <div className="flex flex-col">
-                                          <span className="font-bold text-sm">{track.title}</span>
+                                      <div className="flex flex-col min-w-0">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                              <span className="font-bold text-sm truncate">{track.title}</span>
+                                              {track.explicit && <ExplicitBadge />}
+                                          </div>
                                           <span className="text-xs text-secondary flex flex-wrap items-center gap-1">
-                                              <span>{track.artist || selectedRelease.artistName} {track.explicit ? `(${t('explicit')})` : ''}</span>
+                                              <span>{track.artist || selectedRelease.artistName}</span>
                                           </span>
                                       </div>
                                   </div>
@@ -2009,6 +2158,222 @@ export const ArtistHub = () => {
                               </div>
                           ))}
                       </div>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
+  const renderHueqImportModal = () => {
+      // Find artist's own existing tracks with HUEQ codes for quick selection
+      const artistOwnTracks = tracks.filter(t => {
+          if (!t.hueq) return false;
+          if (currentModerator) return true;
+          const currentName = (currentArtist?.artistName || distArtistName || "").toLowerCase();
+          if (!currentName) return false;
+          return (
+              t.artist?.toLowerCase() === currentName ||
+              t.mainArtists?.some(ma => ma.toLowerCase() === currentName)
+          );
+      });
+
+      return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsHueqModalOpen(false)}>
+              <div 
+                  className="bg-surface border border-surface-highlight rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-up" 
+                  onClick={e => e.stopPropagation()}
+              >
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-5 border-b border-surface-highlight bg-surface-highlight/30">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                              <Search size={20} />
+                          </div>
+                          <div>
+                              <h3 className="text-lg font-bold text-white leading-snug">{t('addByHueq') || "Загрузка трека по HUEQ"}</h3>
+                              <p className="text-xs text-secondary">
+                                  {t('searchByHueqDesc') || "Импорт существующего трека без повторной загрузки аудиофайла"}
+                              </p>
+                          </div>
+                      </div>
+                      <button 
+                          type="button"
+                          onClick={() => setIsHueqModalOpen(false)} 
+                          className="text-secondary hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition"
+                      >
+                          <X size={20} />
+                      </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="p-5 overflow-y-auto flex flex-col gap-5">
+                      {/* Input Section */}
+                      <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold uppercase text-secondary tracking-wider">
+                              {t('enterHueqCode') || "HUEQ-код трека"}
+                          </label>
+                          <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                  <input 
+                                      type="text" 
+                                      value={hueqInput} 
+                                      onChange={e => handleHueqInputChange(e.target.value)}
+                                      onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              if (previewTrackFromHueq) {
+                                                  handleAddTrackByHueq();
+                                              } else {
+                                                  handleHueqSearchClick();
+                                              }
+                                          }
+                                      }}
+                                      autoFocus
+                                      placeholder={t('hueqPlaceholder') || "Введите HUEQ код (например, 123AB4)..."}
+                                      className="w-full bg-background border border-surface-highlight focus:border-primary rounded-xl px-4 py-3 font-mono text-sm uppercase text-white placeholder:normal-case placeholder:text-secondary/60 focus:outline-none transition"
+                                  />
+                                  {hueqInput && (
+                                      <button 
+                                          type="button" 
+                                          onClick={() => { setHueqInput(""); setPreviewTrackFromHueq(null); setHueqLookupError(""); }}
+                                          className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-white"
+                                      >
+                                          <X size={16} />
+                                      </button>
+                                  )}
+                              </div>
+                              <button 
+                                  type="button" 
+                                  onClick={handleHueqSearchClick}
+                                  className="bg-primary text-black font-bold px-4 py-3 rounded-xl hover:scale-105 transition text-sm shrink-0"
+                              >
+                                  {t('findAndAddTrack') || "Найти"}
+                              </button>
+                          </div>
+                          {hueqLookupError && (
+                              <div className="text-xs text-red-400 flex items-center gap-1.5 mt-1">
+                                  <XCircle size={14} className="shrink-0" />
+                                  <span>{hueqLookupError}</span>
+                              </div>
+                          )}
+                      </div>
+
+                      {/* Live Preview Card */}
+                      {previewTrackFromHueq && (
+                          <div className="border border-primary/40 bg-primary/5 rounded-xl p-4 flex flex-col gap-3 animate-fade-in">
+                              <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1">
+                                      <CheckCircle size={14} /> Трек найден
+                                  </span>
+                                  <span className="text-xs font-mono text-secondary bg-black/40 px-2 py-0.5 rounded">
+                                      HUEQ: {previewTrackFromHueq.hueq}
+                                  </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                  {previewTrackFromHueq.cover ? (
+                                      <img 
+                                          src={previewTrackFromHueq.cover} 
+                                          alt={previewTrackFromHueq.title} 
+                                          className="w-14 h-14 rounded-lg object-cover bg-surface-highlight shrink-0 shadow"
+                                      />
+                                  ) : (
+                                      <div className="w-14 h-14 rounded-lg bg-surface-highlight flex items-center justify-center text-secondary shrink-0">
+                                          <FileAudio size={24} />
+                                      </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                      <div className="font-bold text-white text-base truncate flex items-center gap-1.5">
+                                          <span className="truncate">{previewTrackFromHueq.title}</span>
+                                          {previewTrackFromHueq.explicit && <ExplicitBadge />}
+                                      </div>
+                                      <div className="text-secondary text-xs truncate">
+                                          {previewTrackFromHueq.artist} {previewTrackFromHueq.feat ? `feat. ${previewTrackFromHueq.feat}` : ''}
+                                      </div>
+                                      <div className="text-[11px] text-secondary/70 mt-1 flex items-center gap-2">
+                                          <span>{previewTrackFromHueq.genre || distGenre}</span>
+                                          <span>•</span>
+                                          <span>{formatDuration(previewTrackFromHueq.duration)}</span>
+                                      </div>
+                                  </div>
+                              </div>
+                              <button 
+                                  type="button" 
+                                  onClick={() => handleAddTrackByHueq()}
+                                  className="w-full bg-white text-black font-bold py-2.5 rounded-xl hover:scale-[1.02] transition text-sm flex items-center justify-center gap-2 shadow"
+                              >
+                                  <Plus size={16} /> Добавить этот трек в релиз
+                              </button>
+                          </div>
+                      )}
+
+                      {/* Quick select from artist's existing catalog */}
+                      {artistOwnTracks.length > 0 && (
+                          <div className="flex flex-col gap-2.5 border-t border-surface-highlight/50 pt-4">
+                              <div className="text-xs font-bold text-secondary uppercase tracking-wider">
+                                  {currentModerator ? "Все доступные треки с HUEQ:" : "Ваши треки с кодами HUEQ:"}
+                              </div>
+                              <div className="flex flex-col gap-2 max-h-[190px] overflow-y-auto pr-1">
+                                  {artistOwnTracks.map(trk => {
+                                      const isAdded = distTracks.some(dt => 
+                                          (dt.existingHueq && dt.existingHueq.toUpperCase() === trk.hueq?.toUpperCase()) ||
+                                          (dt.fileUrl && dt.fileUrl === trk.url && dt.title.toLowerCase() === trk.title.toLowerCase())
+                                      );
+                                      return (
+                                          <div 
+                                              key={trk.id} 
+                                              className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
+                                                  isAdded 
+                                                      ? 'bg-surface-highlight/20 border-transparent opacity-60' 
+                                                      : 'bg-background hover:bg-surface-highlight/40 border-surface-highlight/60'
+                                              }`}
+                                          >
+                                              <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                                                  {trk.cover ? (
+                                                      <img src={trk.cover} alt={trk.title} className="w-9 h-9 rounded object-cover shrink-0" />
+                                                  ) : (
+                                                      <div className="w-9 h-9 rounded bg-surface-highlight flex items-center justify-center text-secondary shrink-0">
+                                                          <FileAudio size={16} />
+                                                      </div>
+                                                  )}
+                                                  <div className="min-w-0 flex-1">
+                                                      <div className="text-sm font-semibold text-white truncate flex items-center gap-1">
+                                                          <span className="truncate">{trk.title}</span>
+                                                          {trk.explicit && <ExplicitBadge />}
+                                                      </div>
+                                                      <div className="text-[11px] text-secondary/70 font-mono truncate">
+                                                          HUEQ: {trk.hueq} • {formatDuration(trk.duration)}
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                              <button 
+                                                  type="button" 
+                                                  disabled={isAdded}
+                                                  onClick={() => handleAddTrackByHueq(trk)}
+                                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 ${
+                                                      isAdded 
+                                                          ? 'bg-transparent text-secondary cursor-not-allowed' 
+                                                          : 'bg-surface-highlight hover:bg-white hover:text-black text-white'
+                                                  }`}
+                                              >
+                                                  {isAdded ? "Добавлен" : "+ Добавить"}
+                                              </button>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="p-4 border-t border-surface-highlight bg-surface-highlight/20 flex justify-end">
+                      <button 
+                          type="button"
+                          onClick={() => setIsHueqModalOpen(false)}
+                          className="px-4 py-2 text-sm text-secondary hover:text-white transition font-medium"
+                      >
+                          Закрыть
+                      </button>
                   </div>
               </div>
           </div>
@@ -2053,6 +2418,7 @@ export const ArtistHub = () => {
         
         {/* Overlays */}
         {selectedRelease && renderReleaseDetailModal()}
+        {isHueqModalOpen && renderHueqImportModal()}
     </div>
   );
 };

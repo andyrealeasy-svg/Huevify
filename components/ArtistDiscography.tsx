@@ -127,7 +127,7 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
     e.stopPropagation();
     const albumTracks = (album.trackIds || []).map(tid => tracks.find(t => t.id === tid)).filter((t): t is Track => !!t);
     if (albumTracks.length > 0) {
-      playTrack(albumTracks[0], albumTracks);
+      playTrack(albumTracks[0], albumTracks, album.id);
     }
   };
 

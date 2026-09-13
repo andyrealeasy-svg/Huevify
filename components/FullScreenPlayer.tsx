@@ -4,6 +4,7 @@ import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, 
   Heart, Plus, ListMusic, Volume, Volume1, Volume2, VolumeX
 } from './Icons';
+import { ExplicitBadge } from './ExplicitBadge';
 import { PlayMode } from '../types';
 import { extractColorFromImage, getCachedColor, getHashPalette, ExtractedColors } from '../utils/colorExtractor';
 
@@ -126,8 +127,11 @@ export const FullScreenPlayer = () => {
 
         {/* Track Info */}
         <div className="flex justify-between items-center mt-4 mb-4">
-          <div className="flex flex-col overflow-hidden mr-4">
-            <h2 className="text-2xl font-bold text-white truncate marquee">{currentTrack.title}</h2>
+          <div className="flex flex-col overflow-hidden mr-4 min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-2xl font-bold text-white truncate marquee">{currentTrack.title}</h2>
+              {currentTrack.explicit && <ExplicitBadge size="md" />}
+            </div>
             <div className="text-lg text-white/80 truncate">
                 {allArtists.map((a, i) => (
                     <span key={a}>

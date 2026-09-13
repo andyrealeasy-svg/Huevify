@@ -619,6 +619,20 @@ export const SupabaseService = {
   async recordPlayLog(trackId: string, userId: string = 'anonymous', playsCount: number = 1, currentBasePlays?: number): Promise<number | null> {
     if (!supabase) return null;
     try {
+      // Anti-stream-farming validation: check if this user/device has already recorded 20 plays for this track in the last 24h
+      const sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: countErr } = await supabase
+        .from('track_play_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('track_id', trackId)
+        .eq('user_id', userId || 'anonymous')
+        .gte('created_at', sinceISO);
+
+      if (!countErr && typeof count === 'number' && count >= 20) {
+        console.info(`[Supabase Stream Filter] User/Device "${userId}" reached daily 20 streams limit on track ${trackId}. Filtered.`);
+        return null;
+      }
+
       const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       
       // 1. Insert timestamped log entry into track_play_logs with the random playsCount (100..10000)

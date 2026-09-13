@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification } from '../types';
+import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord } from '../types';
 import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase';
@@ -33,6 +33,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     songs: "Songs",
     albums: "Albums",
     album: "Album",
+    playlists: "Playlists",
     publicPlaylists: "Public Playlists",
     noResults: "No results found for",
     popularReleases: "Popular Releases",
@@ -102,6 +103,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     allowExplicit: "Allow Explicit Content",
     hideExplicit: "Turn off to hide explicit tracks",
     autoPlay: "Auto-play",
+    crossfade: "Crossfade",
+    crossfadeDesc: "Seamless transition between tracks by fading volume",
+    crossfadeEnable: "Enable Crossfade",
+    crossfadeDuration: "Crossfade Duration",
+    secondsShort: "s",
     playlistName: "Playlist Name",
     description: "Description",
     choosePhoto: "Choose Photo",
@@ -140,6 +146,13 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     step2: "Step 2: Tracks",
     step3: "Step 3: Schedule",
     addTrack: "Add Track (Upload Audio)",
+    addByHueq: "Add by HUEQ",
+    enterHueqCode: "Enter HUEQ code",
+    findAndAddTrack: "Find and Add Track",
+    hueqPlaceholder: "Enter HUEQ code (e.g. 123AB4)...",
+    trackNotFoundByHueq: "Track with this HUEQ code was not found",
+    trackAddedByHueq: "Track added by HUEQ",
+    searchByHueqDesc: "Import an existing track without re-uploading the audio file.",
     trackTitle: "Track Title",
     explicit: "Explicit",
     explicitShort: "E",
@@ -196,6 +209,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     genre_ElectronicDance: "Electronic/Dance",
     discoverBest: "Discover the best",
     genreSuffix: "tracks and releases.",
+    otherYears: "Other",
     saveDraft: "Save to Draft",
     draftSaved: "Release draft saved successfully.",
     drafts: "Drafts",
@@ -231,6 +245,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     songs: "Треки",
     albums: "Альбомы",
     album: "Альбом",
+    playlists: "Плейлисты",
     publicPlaylists: "Плейлисты пользователей",
     noResults: "Ничего не найдено по запросу",
     popularReleases: "Популярные релизы",
@@ -300,6 +315,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     allowExplicit: "Контент 18+",
     hideExplicit: "Выключите, чтобы скрыть Explicit треки",
     autoPlay: "Автовоспроизведение",
+    crossfade: "Плавный переход",
+    crossfadeDesc: "Бесшовный переход между треками с затуханием и нарастанием громкости",
+    crossfadeEnable: "Включить плавный переход",
+    crossfadeDuration: "Длительность перехода",
+    secondsShort: "с",
     playlistName: "Название плейлиста",
     description: "Описание",
     choosePhoto: "Выберите фото",
@@ -338,6 +358,13 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     step2: "Шаг 2: Треки",
     step3: "Шаг 3: Расписание",
     addTrack: "Добавить трек (Аудиофайл)",
+    addByHueq: "Добавить по HUEQ",
+    enterHueqCode: "Введите HUEQ код",
+    findAndAddTrack: "Найти и добавить трек",
+    hueqPlaceholder: "Введите HUEQ код (например, 123AB4)...",
+    trackNotFoundByHueq: "Трек с таким HUEQ кодом не найден",
+    trackAddedByHueq: "Трек добавлен по HUEQ",
+    searchByHueqDesc: "Импорт существующего трека без повторной загрузки аудиофайла.",
     trackTitle: "Название трека",
     explicit: "Explicit (18+)",
     explicitShort: "E",
@@ -394,6 +421,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     genre_ElectronicDance: "Электроника",
     discoverBest: "Лучшие треки и релизы в жанре",
     genreSuffix: "",
+    otherYears: "Другие",
     saveDraft: "Сохранить в черновик",
     draftSaved: "Черновик релиза сохранён.",
     drafts: "Черновики",
@@ -457,7 +485,7 @@ interface StoreContextType {
   
   // Cover Management
   getAlbumCover: (albumId: string) => string;
-  getTrackCover: (track: Track) => string;
+  getTrackCover: (track: Track, explicitAlbumId?: string) => string;
   changeAlbumCover: (albumId: string, index: number) => void;
 
   // Artist Hub / Moderation
@@ -531,7 +559,7 @@ interface StoreContextType {
   toggleFollowArtist: (artistName: string) => void;
   isArtistFollowed: (artistName: string) => boolean;
   goBack: () => void;
-  playTrack: (track: Track, newQueue?: Track[]) => void;
+  playTrack: (track: Track, newQueue?: Track[], contextAlbumId?: string) => void;
   currentQueue: Track[];
   togglePlay: () => void;
   nextTrack: () => void;
@@ -554,6 +582,7 @@ interface StoreContextType {
   isAlbumLiked: (albumId: string) => boolean;
   isSupabaseConnected: boolean;
   clearAppCache: (keepAuth?: boolean) => Promise<void>;
+  getTrackStreamInfo: (trackId: string) => { streamedToday: number; dailyLimit: number; remaining: number };
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -572,6 +601,18 @@ export const generateHUEQ = (): string => {
     return `${randomDigit()}${randomDigit()}${randomDigit()}${randomChar()}${randomChar()}${randomDigit()}`;
 };
 
+// Anti-stream-farming limit: max counted plays per track from a user/device within rolling 24 hours
+export const DAILY_COUNTED_STREAMS_PER_TRACK = 20;
+
+export const getOrCreateDeviceId = (): string => {
+  let devId = StorageService.load<string>('huevify_device_id', '');
+  if (!devId) {
+    devId = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
+    StorageService.save('huevify_device_id', devId);
+  }
+  return devId;
+};
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -586,6 +627,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     allowExplicitContent: true, // Default to true
     autoPlay: true,
     crossfade: 0,
+    crossfadeEnabled: false,
     albumCoverIndexes: {}
   });
 
@@ -666,6 +708,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Player State ---
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [activePlaybackAlbumId, setActivePlaybackAlbumId] = useState<string | null>(null);
   const [currentQueue, setCurrentQueue] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playMode, setPlayMode] = useState<PlayMode>(PlayMode.OFF);
@@ -691,13 +734,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null);
 
   // --- Refs ---
-  const audioRef = useRef<HTMLAudioElement>(new Audio());
+  const audioRefA = useRef<HTMLAudioElement>(new Audio());
+  const audioRefB = useRef<HTMLAudioElement>(new Audio());
+  const activeChannelRef = useRef<'A' | 'B'>('A');
+  const crossfadeIntervalRef = useRef<number | null>(null);
+  const crossfadeTriggeredRef = useRef(false);
   const cumulativeTimeRef = useRef(0);
   const lastTimeRef = useRef(0);
   const tracksRef = useRef<Track[]>(tracks);
   tracksRef.current = tracks;
   // Real-time Sync Channel
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  const getActiveAudio = () => activeChannelRef.current === 'A' ? audioRefA.current : audioRefB.current;
+  const getInactiveAudio = () => activeChannelRef.current === 'A' ? audioRefB.current : audioRefA.current;
 
   const showNotification = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
       const id = Date.now().toString();
@@ -852,7 +902,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       releaseDate: req.releaseDate, 
                       recordLabel: req.label,
                       type: req.type,
-                      mainArtists: req.additionalMainArtists || [] 
+                      mainArtists: req.additionalMainArtists || [],
+                      genre: req.genre
                   };
 
                   const newTracksForThisAlbum: Track[] = [];
@@ -1126,7 +1177,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         const initialVolume = StorageService.load<number>('huevify_volume', 1);
-        audioRef.current.volume = toAudioVolume(initialVolume);
+        audioRefA.current.volume = toAudioVolume(initialVolume);
+        audioRefB.current.volume = toAudioVolume(initialVolume);
       } catch (e) {
         console.error("Initialization failed", e);
       } finally {
@@ -1247,6 +1299,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               if (userSettings) {
                   setAppSettingsState({
                       ...userSettings,
+                      crossfade: typeof userSettings.crossfade === 'number' ? userSettings.crossfade : 0,
+                      crossfadeEnabled: userSettings.crossfadeEnabled ?? (userSettings.crossfade > 0),
                       albumCoverIndexes: userSettings.albumCoverIndexes || {}
                   });
               } else {
@@ -1257,6 +1311,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     allowExplicitContent: true,
                     autoPlay: true,
                     crossfade: 0,
+                    crossfadeEnabled: false,
                     albumCoverIndexes: {}
                   });
               }
@@ -1884,7 +1939,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   
   const getTrackByHueq = (hueq: string): Track | undefined => {
-      return tracks.find(t => t.hueq === hueq);
+      if (!hueq) return undefined;
+      const clean = hueq.trim().toUpperCase();
+      const live = tracks.find(t => t.hueq && t.hueq.trim().toUpperCase() === clean);
+      if (live) return live;
+
+      for (const req of releaseRequests) {
+          for (const dt of req.tracks || []) {
+              const code = (dt.existingHueq || dt.generatedHueq || '').trim().toUpperCase();
+              if (code && code === clean) {
+                  return {
+                      id: `req_trk_${req.id}_${dt.title}`,
+                      title: dt.title,
+                      artist: dt.artist || req.artistName,
+                      album: req.title,
+                      cover: req.covers && req.covers.length > 0 ? req.covers[0] : (albums.find(a => a.title === req.title)?.covers?.[0] || ''),
+                      duration: dt.duration || 180,
+                      url: dt.fileUrl,
+                      plays: 0,
+                      genre: dt.genre || req.genre,
+                      explicit: dt.explicit,
+                      feat: dt.feat,
+                      hueq: code,
+                      mainArtists: dt.mainArtists
+                  };
+              }
+          }
+      }
+      return undefined;
   };
 
   // --- 21:00 UTC+3 (18:00 UTC) Chart Timing Helpers ---
@@ -2100,10 +2182,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return album.covers[index] || album.covers[0];
   };
 
-  const getTrackCover = (track: Track): string => {
+  const getTrackCover = (track: Track, explicitAlbumId?: string): string => {
       if (!track) return "";
-      // Find the album associated with this track to check for a preferred cover
-      const album = albums.find(a => a.title === track.album);
+      
+      // 1. Explicit album context passed in
+      if (explicitAlbumId) {
+          const album = albums.find(a => a.id === explicitAlbumId);
+          if (album) return getAlbumCover(album.id);
+      }
+
+      // 2. If track is currently playing and activePlaybackAlbumId is set
+      if (currentTrack && currentTrack.id === track.id && activePlaybackAlbumId) {
+          const album = albums.find(a => a.id === activePlaybackAlbumId);
+          if (album) return getAlbumCover(album.id);
+      }
+
+      // 3. Find album matching track.album title AND containing track.id
+      let album = albums.find(a => a.title === track.album && a.trackIds && a.trackIds.includes(track.id));
+      
+      // 4. Fallback: find any album in catalog containing track.id
+      if (!album) {
+          album = albums.find(a => a.trackIds && a.trackIds.includes(track.id));
+      }
+
+      // 5. Fallback: find album matching track.album title
+      if (!album) {
+          album = albums.find(a => a.title === track.album);
+      }
+
       if (album) {
           return getAlbumCover(album.id);
       }
@@ -2336,7 +2442,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logoutArtistHub(); // Clean up artist/mod sessions too
       setProfileModalOpen(false);
       setIsPlaying(false);
-      audioRef.current.pause();
+      if (crossfadeIntervalRef.current) {
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+      }
+      audioRefA.current.pause();
+      audioRefA.current.src = '';
+      audioRefB.current.pause();
+      audioRefB.current.src = '';
       setCurrentTrack(null);
       setViewInternal({ type: 'HOME' });
   };
@@ -2475,11 +2588,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     cumulativeTimeRef.current = 0;
     lastTimeRef.current = 0;
     setHasCountedListen(false);
+    crossfadeTriggeredRef.current = false;
   }, [currentTrack]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    const handleTimeUpdate = () => {
+    const handleTimeUpdate = (audio: HTMLAudioElement, channel: 'A' | 'B') => {
+      if (activeChannelRef.current !== channel) return;
+      
       const now = audio.currentTime;
       setProgress(now);
       const diff = now - lastTimeRef.current;
@@ -2495,35 +2610,149 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (cumulativeTimeRef.current >= threshold && !hasCountedListen && currentTrack) {
           handleListenCount(currentTrack);
       }
+
+      // Crossfade transition trigger before track reaches end
+      const isCrossfadeOn = appSettings.crossfadeEnabled ?? (appSettings.crossfade > 0);
+      const crossfadeSec = isCrossfadeOn ? Math.max(0, Math.min(12, appSettings.crossfade)) : 0;
+      if (crossfadeSec > 0 && playMode !== PlayMode.ONE && audio.duration > crossfadeSec + 1 && !crossfadeTriggeredRef.current) {
+          if (now >= audio.duration - crossfadeSec) {
+              crossfadeTriggeredRef.current = true;
+              if (appSettings.autoPlay) {
+                  nextTrack();
+              }
+          }
+      }
     };
-    const handleEnded = () => {
+
+    const handleEnded = (audio: HTMLAudioElement, channel: 'A' | 'B') => {
+      if (activeChannelRef.current !== channel) {
+          try {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.src = '';
+          } catch {}
+          return;
+      }
+
       if (!hasCountedListen && currentTrack) {
           handleListenCount(currentTrack);
       }
       if (playMode === PlayMode.ONE) { 
           audio.currentTime = 0; 
-          // Logic: If user repeats ONE, it counts as a new listen for the next loop
           cumulativeTimeRef.current = 0; 
           setHasCountedListen(false);
           playAudioSafe(audio); 
       }
-      else if (appSettings.autoPlay) { nextTrack(); } 
-      else { setIsPlaying(false); audioRef.current.pause(); }
+      else if (appSettings.autoPlay) { 
+          if (!crossfadeTriggeredRef.current) {
+              nextTrack(); 
+          }
+      } 
+      else { 
+          setIsPlaying(false); 
+          audio.pause(); 
+      }
     };
-    const handleLoadedMetadata = () => setDuration(audio.duration);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+    const handleLoadedMetadata = (audio: HTMLAudioElement, channel: 'A' | 'B') => {
+      if (activeChannelRef.current === channel) {
+          setDuration(audio.duration);
+      }
+    };
+
+    const audioA = audioRefA.current;
+    const audioB = audioRefB.current;
+
+    const onTimeUpdateA = () => handleTimeUpdate(audioA, 'A');
+    const onEndedA = () => handleEnded(audioA, 'A');
+    const onMetadataA = () => handleLoadedMetadata(audioA, 'A');
+
+    const onTimeUpdateB = () => handleTimeUpdate(audioB, 'B');
+    const onEndedB = () => handleEnded(audioB, 'B');
+    const onMetadataB = () => handleLoadedMetadata(audioB, 'B');
+
+    audioA.addEventListener('timeupdate', onTimeUpdateA);
+    audioA.addEventListener('ended', onEndedA);
+    audioA.addEventListener('loadedmetadata', onMetadataA);
+
+    audioB.addEventListener('timeupdate', onTimeUpdateB);
+    audioB.addEventListener('ended', onEndedB);
+    audioB.addEventListener('loadedmetadata', onMetadataB);
+
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioA.removeEventListener('timeupdate', onTimeUpdateA);
+      audioA.removeEventListener('ended', onEndedA);
+      audioA.removeEventListener('loadedmetadata', onMetadataA);
+
+      audioB.removeEventListener('timeupdate', onTimeUpdateB);
+      audioB.removeEventListener('ended', onEndedB);
+      audioB.removeEventListener('loadedmetadata', onMetadataB);
     };
-  }, [currentTrack, hasCountedListen, playMode, tracks, isShuffle, appSettings.autoPlay]);
+  }, [currentTrack, hasCountedListen, playMode, tracks, isShuffle, appSettings.autoPlay, appSettings.crossfade, appSettings.crossfadeEnabled]);
+
+  const checkStreamEligibility = (trackId: string): { eligible: boolean; countInWindow: number; remaining: number } => {
+    const now = Date.now();
+    const windowMs = 24 * 60 * 60 * 1000;
+    const history = StorageService.load<UserStreamRecord[]>('huevify_stream_history', []);
+    
+    const currentUserId = currentUser?.id ? `user_${currentUser.id}` : '';
+    const currentDeviceId = getOrCreateDeviceId();
+
+    const streamsIn24h = history.filter(entry => {
+      if (entry.trackId !== trackId) return false;
+      if (now - entry.timestamp > windowMs) return false;
+      if (currentUserId && entry.userId === currentUserId) return true;
+      if (currentDeviceId && entry.deviceId === currentDeviceId) return true;
+      return false;
+    });
+
+    const count = streamsIn24h.length;
+    return {
+      eligible: count < DAILY_COUNTED_STREAMS_PER_TRACK,
+      countInWindow: count,
+      remaining: Math.max(0, DAILY_COUNTED_STREAMS_PER_TRACK - count)
+    };
+  };
+
+  const recordStreamHistory = (trackId: string) => {
+    const now = Date.now();
+    const history = StorageService.load<UserStreamRecord[]>('huevify_stream_history', []);
+    const currentUserId = currentUser?.id ? `user_${currentUser.id}` : '';
+    const currentDeviceId = getOrCreateDeviceId();
+
+    // Prune entries older than 48 hours to maintain fast, compact storage
+    const pruned = history.filter(entry => now - entry.timestamp <= 48 * 60 * 60 * 1000);
+    pruned.push({
+      trackId,
+      userId: currentUserId,
+      deviceId: currentDeviceId,
+      timestamp: now
+    });
+    StorageService.save('huevify_stream_history', pruned);
+  };
+
+  const getTrackStreamInfo = (trackId: string) => {
+    const info = checkStreamEligibility(trackId);
+    return {
+      streamedToday: info.countInWindow,
+      dailyLimit: DAILY_COUNTED_STREAMS_PER_TRACK,
+      remaining: info.remaining
+    };
+  };
 
   const handleListenCount = (track: Track) => {
     if (!track) return;
     setHasCountedListen(true);
+
+    // Stream filtering: max 20 eligible streams per track from user/device in rolling 24 hours
+    const { eligible, countInWindow } = checkStreamEligibility(track.id);
+    if (!eligible) {
+      console.info(`[Stream Filter] Track "${track.title}" (${track.id}) stream filtered: 24h limit (${countInWindow}/${DAILY_COUNTED_STREAMS_PER_TRACK}) reached. Public plays not incremented.`);
+      return;
+    }
+
+    // Record verified stream in local anti-farming history
+    recordStreamHistory(track.id);
 
     // Random plays multiplier: 1 listen = +100..10000 plays
     const addedPlays = Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
@@ -2537,14 +2766,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return updated;
     });
 
-    // Save local log for offline/fallback chart calculation
+    // Save local log for offline/fallback chart calculation and 2-week popular release analytics
     const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
     localLogs.push({ trackId: track.id, plays: addedPlays, timestamp: Date.now() });
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     StorageService.save('huevify_play_logs', localLogs.filter(l => l.timestamp >= cutoff));
 
     if (isSupabaseConfigured()) {
-        SupabaseService.recordPlayLog(track.id, currentUser?.id || 'anonymous', addedPlays, currentBasePlays).then(newCount => {
+        const effectiveUserId = currentUser?.id ? `user_${currentUser.id}` : getOrCreateDeviceId();
+        SupabaseService.recordPlayLog(track.id, effectiveUserId, addedPlays, currentBasePlays).then(newCount => {
             if (newCount !== null) {
                 setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
                 const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
@@ -2594,7 +2824,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return q.filter(t => tracks.some(live => live.id === t.id));
   };
 
-  const playTrack = (track: Track, newQueue?: Track[]) => {
+  const playTrack = (track: Track, newQueue?: Track[], contextAlbumId?: string) => {
     if (!track) return;
     // 1. Check if track is Explicit and allowed
     if (track.explicit && !appSettings.allowExplicitContent) {
@@ -2608,6 +2838,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showNotification("This track is no longer available.", "error");
         return;
     }
+
+    // Resolve context album for playback
+    let chosenAlbumId: string | null = contextAlbumId || null;
+    if (!chosenAlbumId && view.type === 'ALBUM') {
+        chosenAlbumId = (view as any).id;
+    }
+    if (!chosenAlbumId && newQueue && newQueue.length > 0) {
+        const matchingAlbum = albums.find(a => 
+            a.trackIds && 
+            a.trackIds.length === newQueue.length && 
+            a.trackIds.every(id => newQueue.some(q => q.id === id))
+        );
+        if (matchingAlbum) chosenAlbumId = matchingAlbum.id;
+    }
+    if (!chosenAlbumId) {
+        const matchingAlbum = albums.find(a => a.trackIds && a.trackIds.includes(track.id));
+        if (matchingAlbum) chosenAlbumId = matchingAlbum.id;
+    }
+
+    setActivePlaybackAlbumId(chosenAlbumId);
 
     // Set or preserve active playback queue
     if (newQueue && newQueue.length > 0) {
@@ -2637,72 +2887,167 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
     }
     
-    if (currentTrack?.id === track.id) { togglePlay(); return; }
+    const activeAudio = getActiveAudio();
+    if (currentTrack?.id === track.id) { 
+      togglePlay(); 
+      return; 
+    }
     
     // New Track Logic
     setCurrentTrack(track);
     setHasCountedListen(false); // Reset listen count for new track
     cumulativeTimeRef.current = 0; // Reset time accumulator
+    crossfadeTriggeredRef.current = false;
     
-    try {
-      audioRef.current.pause();
-    } catch {
-      // ignore
+    const isCrossfadeOn = appSettings.crossfadeEnabled ?? (appSettings.crossfade > 0);
+    const crossfadeSec = isCrossfadeOn ? Math.max(0, Math.min(12, appSettings.crossfade)) : 0;
+    const targetVol = toAudioVolume(volume);
+
+    // Stop previous crossfade interval if any
+    if (crossfadeIntervalRef.current) {
+      clearInterval(crossfadeIntervalRef.current);
+      crossfadeIntervalRef.current = null;
     }
-    audioRef.current.src = track.url;
-    audioRef.current.volume = toAudioVolume(volume);
-    audioRef.current.load();
-    playAudioSafe(audioRef.current);
+
+    // If currently playing audio and crossfade is enabled, seamlessly crossfade between dual audio instances
+    if (isPlaying && crossfadeSec > 0 && activeAudio.src && !activeAudio.paused) {
+      const outgoingAudio = activeAudio;
+      const nextChannel = activeChannelRef.current === 'A' ? 'B' : 'A';
+      activeChannelRef.current = nextChannel;
+      const incomingAudio = nextChannel === 'A' ? audioRefA.current : audioRefB.current;
+
+      incomingAudio.src = track.url;
+      incomingAudio.currentTime = 0;
+      incomingAudio.volume = 0;
+      incomingAudio.load();
+      playAudioSafe(incomingAudio);
+
+      const initialOutVol = outgoingAudio.volume > 0 ? outgoingAudio.volume : targetVol;
+      const fadeDurationMs = crossfadeSec * 1000;
+      const startTime = Date.now();
+
+      crossfadeIntervalRef.current = window.setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progressRatio = Math.min(1, elapsed / fadeDurationMs);
+
+        try {
+          outgoingAudio.volume = Math.max(0, initialOutVol * (1 - progressRatio));
+          incomingAudio.volume = Math.min(targetVol, targetVol * progressRatio);
+        } catch {}
+
+        if (progressRatio >= 1) {
+          if (crossfadeIntervalRef.current) {
+            clearInterval(crossfadeIntervalRef.current);
+            crossfadeIntervalRef.current = null;
+          }
+          try {
+            outgoingAudio.pause();
+            outgoingAudio.currentTime = 0;
+            outgoingAudio.src = '';
+            incomingAudio.volume = targetVol;
+          } catch {}
+        }
+      }, 25);
+    } else {
+      const inactiveAudio = getInactiveAudio();
+      try {
+        inactiveAudio.pause();
+        inactiveAudio.currentTime = 0;
+        inactiveAudio.src = '';
+      } catch {}
+
+      try {
+        activeAudio.pause();
+      } catch {}
+
+      activeAudio.src = track.url;
+      activeAudio.volume = targetVol;
+      activeAudio.currentTime = 0;
+      activeAudio.load();
+      playAudioSafe(activeAudio);
+    }
   };
 
   const togglePlay = () => {
-    if (audioRef.current.paused) { 
-      playAudioSafe(audioRef.current); 
+    const activeAudio = getActiveAudio();
+    if (activeAudio.paused) { 
+      playAudioSafe(activeAudio); 
     } else { 
-      audioRef.current.pause(); 
+      if (crossfadeIntervalRef.current) {
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+      }
+      audioRefA.current.pause();
+      audioRefB.current.pause();
       setIsPlaying(false); 
     }
   };
   const setVolume = (vol: number) => { 
     const clamped = Math.max(0, Math.min(1, vol));
     setVolumeState(clamped); 
-    audioRef.current.volume = toAudioVolume(clamped); 
+    const audVol = toAudioVolume(clamped);
+    if (!crossfadeIntervalRef.current) {
+      getActiveAudio().volume = audVol;
+    }
     StorageService.save('huevify_volume', clamped);
   };
-  const seek = (time: number) => { audioRef.current.currentTime = time; lastTimeRef.current = time; setProgress(time); };
+  const seek = (time: number) => { 
+    if (crossfadeIntervalRef.current) {
+      clearInterval(crossfadeIntervalRef.current);
+      crossfadeIntervalRef.current = null;
+      const inactiveAudio = getInactiveAudio();
+      try {
+        inactiveAudio.pause();
+        inactiveAudio.currentTime = 0;
+        inactiveAudio.src = '';
+      } catch {}
+      getActiveAudio().volume = toAudioVolume(volume);
+    }
+    const activeAudio = getActiveAudio();
+    activeAudio.currentTime = time; 
+    lastTimeRef.current = time; 
+    setProgress(time);
+    crossfadeTriggeredRef.current = false;
+  };
   
   const nextTrack = () => {
     const queue = getQueue();
     if (queue.length === 0) {
         setIsPlaying(false);
-        audioRef.current.pause();
+        getActiveAudio().pause();
         return;
     }
     if (isShuffle) {
         const randomTrack = queue[Math.floor(Math.random() * queue.length)];
-        playTrack(randomTrack, queue);
+        playTrack(randomTrack, queue, activePlaybackAlbumId || undefined);
         return;
     }
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
     if (idx !== -1 && idx < queue.length - 1) {
-        playTrack(queue[idx + 1], queue);
+        playTrack(queue[idx + 1], queue, activePlaybackAlbumId || undefined);
     } else if (playMode === PlayMode.CONTEXT) {
-        playTrack(queue[0], queue);
+        playTrack(queue[0], queue, activePlaybackAlbumId || undefined);
     } else {
         setIsPlaying(false);
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+        const activeAudio = getActiveAudio();
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
     }
   };
   const prevTrack = () => {
-    if (audioRef.current.currentTime > 3) { audioRef.current.currentTime = 0; lastTimeRef.current = 0; return; }
+    const activeAudio = getActiveAudio();
+    if (activeAudio.currentTime > 3) { 
+        activeAudio.currentTime = 0; 
+        lastTimeRef.current = 0; 
+        return; 
+    }
     const queue = getQueue();
     if (queue.length === 0) return;
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
     if (idx > 0) {
-        playTrack(queue[idx - 1], queue);
+        playTrack(queue[idx - 1], queue, activePlaybackAlbumId || undefined);
     } else {
-        playTrack(queue[queue.length - 1], queue);
+        playTrack(queue[queue.length - 1], queue, activePlaybackAlbumId || undefined);
     }
   };
   const toggleRepeat = () => {
@@ -2966,7 +3311,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,
       setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, togglePlaylistSave, toggleLike, isLiked,
-      toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache
+      toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache, getTrackStreamInfo
     }}>
       {children}
     </StoreContext.Provider>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2 } from './Icons.tsx';
+import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2, SlidersHorizontal, Activity } from './Icons.tsx';
 import { AppSettings } from '../types.ts';
 import { compressImage } from '../utils/imageCompressor.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
@@ -324,6 +324,105 @@ export const ProfileModal = () => {
                             />
                             <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                         </label>
+                    </div>
+                </div>
+            </div>
+
+            {/* Crossfade Settings */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <SlidersHorizontal size={18} className="text-primary" />
+                    <h3 className="font-bold">{t('crossfade')}</h3>
+                </div>
+                
+                <div className="p-3.5 bg-surface-highlight rounded-lg flex flex-col gap-3.5 border border-white/5">
+                    {/* Crossfade Toggle */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Activity size={20} className="text-secondary shrink-0" />
+                            <div className="flex flex-col">
+                                <span className="font-medium text-sm text-white">{t('crossfadeEnable')}</span>
+                                <span className="text-xs text-secondary leading-snug">{t('crossfadeDesc')}</span>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                            <input 
+                                type="checkbox" 
+                                className="sr-only peer" 
+                                checked={!!appSettings.crossfadeEnabled}
+                                onChange={e => {
+                                    const enabled = e.target.checked;
+                                    updateSettings({ 
+                                        crossfadeEnabled: enabled,
+                                        crossfade: enabled && (!appSettings.crossfade || appSettings.crossfade === 0) ? 4 : appSettings.crossfade
+                                    });
+                                }}
+                            />
+                            <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+
+                    {/* Crossfade Duration Slider (0-12s) */}
+                    <div className={`flex flex-col gap-2.5 pt-3 border-t border-white/5 transition-opacity duration-200 ${appSettings.crossfadeEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-secondary uppercase tracking-wider">{t('crossfadeDuration')}</span>
+                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/30">
+                                {appSettings.crossfade || 0} {t('secondsShort')}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-secondary font-mono">0{t('secondsShort')}</span>
+                            <div className="relative flex-1 flex items-center h-6 select-none touch-none group/slider cursor-pointer">
+                                {/* Track Background */}
+                                <div className="w-full h-2 bg-zinc-700/80 rounded-full overflow-hidden relative">
+                                    {/* Active Filled Progress Bar */}
+                                    <div 
+                                        className="h-full bg-primary rounded-full transition-all duration-75"
+                                        style={{ width: `${((appSettings.crossfade || 0) / 12) * 100}%` }}
+                                    />
+                                </div>
+
+                                {/* Always Visible Custom Thumb Handle */}
+                                <div 
+                                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 bg-white rounded-full shadow-md border border-black/10 pointer-events-none transition-transform group-hover/slider:scale-125 flex items-center justify-center"
+                                    style={{ left: `${((appSettings.crossfade || 0) / 12) * 100}%` }}
+                                >
+                                    <div className="w-1.5 h-1.5 bg-black/40 rounded-full"></div>
+                                </div>
+
+                                {/* Native Range Input overlay for full drag and touch support */}
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="12" 
+                                    step="1"
+                                    value={appSettings.crossfade || 0}
+                                    onChange={e => updateSettings({ crossfade: parseInt(e.target.value, 10) })}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    disabled={!appSettings.crossfadeEnabled}
+                                />
+                            </div>
+                            <span className="text-[11px] text-secondary font-mono">12{t('secondsShort')}</span>
+                        </div>
+
+                        {/* Quick Duration Presets */}
+                        <div className="grid grid-cols-5 gap-1.5 mt-1">
+                            {[0, 3, 5, 8, 12].map(sec => (
+                                <button
+                                    key={sec}
+                                    type="button"
+                                    onClick={() => updateSettings({ crossfade: sec, crossfadeEnabled: sec > 0 ? true : appSettings.crossfadeEnabled })}
+                                    className={`py-1 text-xs rounded transition font-mono ${
+                                        (appSettings.crossfade || 0) === sec 
+                                            ? 'bg-primary text-black font-bold shadow-sm' 
+                                            : 'bg-black/30 text-secondary hover:text-white hover:bg-black/50'
+                                    }`}
+                                >
+                                    {sec}{t('secondsShort')}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
