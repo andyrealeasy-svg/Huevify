@@ -18,6 +18,7 @@ const formatPlays = (plays: number) => {
 
 export const Search = () => {
   const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, getAlbumCover, releaseRequests, currentTrack, isPlaying, t } = useStore();
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   const [query, setQuery] = useState("");
   const [selectedGenreYear, setSelectedGenreYear] = useState<string>("all");
 
@@ -294,7 +295,16 @@ export const Search = () => {
           <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
               <div className={`p-8 ${genreColor} bg-gradient-to-b from-transparent to-background/90 animate-appear`}>
                    <div className="absolute top-4 left-4 z-20">
-                      <button onClick={goBack} className="w-8 h-8 bg-black/30 rounded-full flex items-center justify-center text-white"><ArrowLeft size={20}/></button>
+                      <button 
+                        onClick={goBack} 
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+                          isLiquidGlass
+                            ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:bg-black/30'
+                            : 'bg-black/30'
+                        }`}
+                      >
+                        <ArrowLeft size={20}/>
+                      </button>
                    </div>
                    <h1 className="text-4xl md:text-6xl font-bold mt-8 mb-4">{genreDisplayName}</h1>
                    <p className="text-white/80 font-bold">{t('discoverBest')} {genreDisplayName} {t('genreSuffix')}</p>
@@ -315,7 +325,7 @@ export const Search = () => {
                                   >
                                       <div className="relative mb-3 md:mb-4 w-full aspect-square">
                                           <img src={getAlbumCover ? getAlbumCover(album.id) : (album.covers?.[0] || '')} className="w-full h-full object-cover rounded shadow-lg" alt="" />
-                                          <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                                          <div className="absolute bottom-2 right-2 w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-primary-glow opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                                               <Play fill="black" size={24} className="text-black ml-1" />
                                           </div>
                                       </div>
@@ -338,10 +348,14 @@ export const Search = () => {
                       <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
                           <button
                               onClick={() => setSelectedGenreYear('all')}
-                              className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap ${
+                              className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap active:scale-95 ${
                                   activeYearKey === 'all'
-                                      ? 'bg-white text-black shadow-md'
-                                      : 'bg-surface hover:bg-surface-highlight text-white'
+                                      ? isLiquidGlass
+                                          ? 'max-md:bg-white/90 max-md:text-black max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.8)] md:bg-white md:text-black md:shadow-md'
+                                          : 'bg-white text-black shadow-md'
+                                      : isLiquidGlass
+                                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:text-white max-md:shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] md:bg-surface md:hover:bg-surface-highlight text-white'
+                                          : 'bg-surface hover:bg-surface-highlight text-white'
                               }`}
                           >
                               {t('allReleases') || 'Все'}
@@ -350,10 +364,14 @@ export const Search = () => {
                               <button
                                   key={g.yearKey}
                                   onClick={() => setSelectedGenreYear(g.yearKey)}
-                                  className={`px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap ${
+                                  className={`px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold transition whitespace-nowrap active:scale-95 ${
                                       activeYearKey === g.yearKey
-                                          ? 'bg-white text-black shadow-md'
-                                          : 'bg-surface hover:bg-surface-highlight text-white'
+                                          ? isLiquidGlass
+                                              ? 'max-md:bg-white/90 max-md:text-black max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.8)] md:bg-white md:text-black md:shadow-md'
+                                              : 'bg-white text-black shadow-md'
+                                          : isLiquidGlass
+                                              ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:text-white max-md:shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] md:bg-surface md:hover:bg-surface-highlight text-white'
+                                              : 'bg-surface hover:bg-surface-highlight text-white'
                                   }`}
                               >
                                   {g.yearLabel}
@@ -433,11 +451,20 @@ export const Search = () => {
   return (
     <div className="p-8 pb-32 bg-background flex-1 overflow-y-auto h-full page-enter">
       <div className="mb-8 relative">
-        <SearchIcon className="absolute left-4 top-3.5 text-black" size={24} />
+        <SearchIcon 
+          className={`absolute left-4 top-3.5 transition-colors ${
+            isLiquidGlass ? 'max-md:text-white/70 md:text-black' : 'text-black'
+          }`} 
+          size={24} 
+        />
         <input 
           type="text" 
           placeholder={t('searchPlaceholder')} 
-          className="w-full md:w-96 py-3 pl-12 pr-4 rounded-full text-black font-semibold focus:outline-none focus:ring-2 focus:ring-white"
+          className={`w-full md:w-96 py-3 pl-12 pr-4 rounded-full font-semibold focus:outline-none transition-all ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-2xl max-md:border max-md:border-white/20 max-md:text-white max-md:placeholder-white/50 max-md:shadow-[0_8px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.3)] max-md:focus:border-white/40 md:bg-white md:text-black md:focus:ring-2 md:focus:ring-white'
+              : 'bg-white text-black focus:ring-2 focus:ring-white'
+          }`}
           value={query}
           onChange={e => setQuery(e.target.value)}
           autoFocus
@@ -541,7 +568,7 @@ export const Search = () => {
                                            onClick={(e) => {
                                                e.stopPropagation();
                                                if (albumTracks.length > 0) {
-                                                   playTrack(albumTracks[0], albumTracks);
+                                                   playTrack(albumTracks[0], albumTracks, album.id);
                                                }
                                            }}
                                            className="absolute bottom-2 right-2 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300"
@@ -610,7 +637,11 @@ export const Search = () => {
              <div 
                key={genre.id} 
                onClick={() => setView({ type: 'GENRE', id: genre.id })}
-               className={`aspect-[2/1] ${genre.color} rounded-lg p-6 font-bold text-3xl md:text-4xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition shadow-lg group`}
+               className={`aspect-[2/1] ${genre.color} p-6 font-bold text-3xl md:text-4xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition shadow-lg group ${
+                 isLiquidGlass
+                   ? 'max-md:rounded-2xl max-md:border max-md:border-white/20 max-md:shadow-[0_10px_28px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] md:rounded-lg'
+                   : 'rounded-lg'
+               }`}
              >
                 <span className="relative z-10">{t(genre.key)}</span>
                 {cover && (

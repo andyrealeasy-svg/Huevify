@@ -28,8 +28,11 @@ export const ArtistHub = () => {
     approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
     submitRelease, updateReleaseRequest, getArtistStats, submitProfileEdit, hasModerator, existingArtists,
     deleteRelease, getTrackByHueq, tracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
-    changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t
+    changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t,
+    appSettings
   } = useStore();
+
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [view, setView] = useState<HubView>('AUTH');
 
@@ -835,10 +838,20 @@ export const ArtistHub = () => {
   // --- RENDERERS ---
 
   const renderAuth = () => (
-      <div className="fixed inset-0 overflow-y-auto bg-black flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in my-8">
+      <div className={`fixed inset-0 overflow-y-auto flex items-center justify-center p-4 ${
+        isLiquidGlass ? 'max-md:bg-black/80 max-md:backdrop-blur-3xl md:bg-black' : 'bg-black'
+      }`}>
+          <div className={`w-full max-w-md p-8 rounded-xl shadow-2xl animate-zoom-in my-8 ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+              : 'bg-surface border border-surface-highlight'
+          }`}>
               <div className="flex justify-center mb-6">
-                  <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center animate-bounce">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center animate-bounce ${
+                    isLiquidGlass
+                      ? 'max-md:bg-primary/25 max-md:backdrop-blur-md max-md:border max-md:border-primary/30 max-md:shadow-[0_0_20px_rgba(29,185,84,0.3)] md:bg-primary/20'
+                      : 'bg-primary/20'
+                  }`}>
                       {role === 'ARTIST' ? <Mic2 size={32} className="text-primary" /> : <Shield size={32} className="text-primary" />}
                   </div>
               </div>
@@ -850,11 +863,21 @@ export const ArtistHub = () => {
 
               {/* Only show role toggle if no moderator exists yet */}
               {!hasModerator && (
-                  <div className="flex bg-surface-highlight p-1 rounded-full mb-6">
+                  <div className={`flex p-1 rounded-full mb-6 ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 md:bg-surface-highlight'
+                      : 'bg-surface-highlight'
+                  }`}>
                       <button
                           type="button"
                           onClick={() => { setRole('ARTIST'); setMessage(""); }}
-                          className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'ARTIST' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
+                          className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${
+                            role === 'ARTIST'
+                              ? isLiquidGlass
+                                ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_4px_16px_rgba(29,185,84,0.4)] md:bg-primary md:text-black md:shadow-lg'
+                                : 'bg-primary text-black shadow-lg'
+                              : 'text-secondary hover:text-white'
+                          }`}
                       >
                           {t('artist')}
                       </button>
@@ -862,14 +885,20 @@ export const ArtistHub = () => {
                       <button
                           type="button"
                           onClick={() => { setRole('MODERATOR'); setMessage(""); }}
-                          className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${role === 'MODERATOR' ? 'bg-primary text-black shadow-lg' : 'text-secondary hover:text-white'}`}
+                          className={`flex-1 py-2 rounded-full text-sm font-bold transition-all duration-300 ${
+                            role === 'MODERATOR'
+                              ? isLiquidGlass
+                                ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_4px_16px_rgba(29,185,84,0.4)] md:bg-primary md:text-black md:shadow-lg'
+                                : 'bg-primary text-black shadow-lg'
+                              : 'text-secondary hover:text-white'
+                          }`}
                       >
                           Moderator
                       </button>
                   </div>
               )}
 
-              {message && <div className="bg-red-500/20 text-red-500 p-3 rounded mb-4 text-center text-sm animate-pulse">{message}</div>}
+              {message && <div className="bg-red-500/20 text-red-500 p-3 rounded-xl mb-4 text-center text-sm animate-pulse border border-red-500/30">{message}</div>}
 
               <form onSubmit={authMode === 'LOGIN' ? handleLogin : handleRegister} className="flex flex-col gap-4">
 
@@ -888,7 +917,11 @@ export const ArtistHub = () => {
                                   placeholder="New Artist Alias"
                                   value={newArtistAlias}
                                   onChange={e => setNewArtistAlias(e.target.value)}
-                                  className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
+                                  className={`p-3 rounded border focus:border-primary focus:outline-none transition-colors ${
+                                    isLiquidGlass
+                                      ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                      : 'bg-background border-surface-highlight'
+                                  }`}
                               />
                           )}
 
@@ -905,14 +938,26 @@ export const ArtistHub = () => {
 
                   <input
                       type="text" placeholder={t('username')} value={username} onChange={e => setUsername(e.target.value)}
-                      className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
+                      className={`p-3 rounded border focus:border-primary focus:outline-none transition-colors ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                          : 'bg-background border-surface-highlight'
+                      }`}
                   />
                   <input
                       type="password" placeholder={t('password')} value={password} onChange={e => setPassword(e.target.value)}
-                      className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none transition-colors"
+                      className={`p-3 rounded border focus:border-primary focus:outline-none transition-colors ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                          : 'bg-background border-surface-highlight'
+                      }`}
                   />
 
-                  <button type="submit" className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition-transform mt-2 shadow-lg hover:shadow-primary/20">
+                  <button type="submit" className={`bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition mt-2 ${
+                    isLiquidGlass
+                      ? 'max-md:shadow-[0_4px_20px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:shadow-lg md:hover:shadow-primary/20'
+                      : 'shadow-lg hover:shadow-primary/20'
+                  }`}>
                       {authMode === 'LOGIN' ? (role === 'MODERATOR' ? "Войти как модератор" : t('login')) : (role === 'MODERATOR' ? "Зарегистрировать модератора" : 'Submit Application')}
                   </button>
               </form>
@@ -970,24 +1015,35 @@ export const ArtistHub = () => {
   const renderModCredentials = () => (
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
-               <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><Key className="text-primary"/> {t('artistCreds')}</h1>
+               <button 
+                 onClick={() => setView('MOD_DASH')} 
+                 className={`text-secondary hover:text-white transition ${
+                   isLiquidGlass ? 'max-md:w-9 max-md:h-9 max-md:rounded-full max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center' : ''
+                 }`}
+               >
+                 <ArrowLeft size={24}/>
+               </button>
+               <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3"><Key className="text-primary"/> {t('artistCreds')}</h1>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
+          <div className={`flex-1 overflow-y-auto rounded-xl border ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] md:bg-surface md:border-surface-highlight'
+              : 'bg-surface border-surface-highlight'
+          }`}>
               <table className="w-full text-left border-collapse">
-                  <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
+                  <thead className="bg-surface-highlight/70 text-secondary text-xs uppercase font-bold sticky top-0 z-10 backdrop-blur-md">
                       <tr>
-                          <th className="p-4 bg-surface-highlight">{t('artist')} Name</th>
-                          <th className="p-4 bg-surface-highlight">{t('username')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('password')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('status')}</th>
-                          <th className="p-4 bg-surface-highlight text-right">{t('delete')}</th>
+                          <th className="p-4">{t('artist')} Name</th>
+                          <th className="p-4">{t('username')}</th>
+                          <th className="p-4">{t('password')}</th>
+                          <th className="p-4">{t('status')}</th>
+                          <th className="p-4 text-right">{t('delete')}</th>
                       </tr>
                   </thead>
                   <tbody>
                       {artistAccounts.map(a => (
-                          <tr key={a.id} className="border-b border-surface-highlight hover:bg-white/5 transition">
+                          <tr key={a.id} className="border-b border-white/5 hover:bg-white/5 transition">
                               <td className="p-4 font-bold">{a.artistName}</td>
                               <td className="p-4 text-sm font-mono">{a.username}</td>
                               <td className="p-4 text-sm font-mono text-red-400">{a.password}</td>
@@ -1037,20 +1093,31 @@ export const ArtistHub = () => {
       return (
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
-               <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><Database className="text-primary"/> {t('manageReleases')}</h1>
+               <button 
+                 onClick={() => setView('MOD_DASH')} 
+                 className={`text-secondary hover:text-white transition ${
+                   isLiquidGlass ? 'max-md:w-9 max-md:h-9 max-md:rounded-full max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center' : ''
+                 }`}
+               >
+                 <ArrowLeft size={24}/>
+               </button>
+               <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3"><Database className="text-primary"/> {t('manageReleases')}</h1>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
+          <div className={`flex-1 overflow-y-auto rounded-xl border ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] md:bg-surface md:border-surface-highlight'
+              : 'bg-surface border-surface-highlight'
+          }`}>
              <table className="w-full text-left border-collapse">
-                    <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
+                    <thead className="bg-surface-highlight/70 text-secondary text-xs uppercase font-bold sticky top-0 z-10 backdrop-blur-md">
                         <tr>
-                            <th className="p-4 bg-surface-highlight">{t('releaseTitle')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('artist')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('type')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('date')}</th>
-                            <th className="p-4 bg-surface-highlight">{t('status')}</th>
-                            <th className="p-4 bg-surface-highlight text-right">{t('actions')}</th>
+                            <th className="p-4">{t('releaseTitle')}</th>
+                            <th className="p-4">{t('artist')}</th>
+                            <th className="p-4">{t('type')}</th>
+                            <th className="p-4">{t('date')}</th>
+                            <th className="p-4">{t('status')}</th>
+                            <th className="p-4 text-right">{t('actions')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1058,7 +1125,7 @@ export const ArtistHub = () => {
                             <tr><td colSpan={6} className="p-8 text-center text-secondary">{t('noReleases')}</td></tr>
                         )}
                         {allDisplayReleases.map((r: any, idx) => (
-                            <tr key={idx} className="border-b border-surface-highlight hover:bg-white/5 transition cursor-pointer" onClick={() => setSelectedRelease(r)}>
+                            <tr key={idx} className="border-b border-white/5 hover:bg-white/5 transition cursor-pointer" onClick={() => setSelectedRelease(r)}>
                                 <td className="p-4 flex items-center gap-3">
                                     <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-10 h-10 rounded object-cover shadow-sm flex-shrink-0" />
                                     <span className="font-bold">{r.title}</span>
@@ -1098,23 +1165,38 @@ export const ArtistHub = () => {
   const renderModAllTracks = () => (
       <div className="w-full h-full flex flex-col p-6 relative animate-fade-in">
           <div className="flex items-center gap-4 mb-8 shrink-0">
-               <button onClick={() => setView('MOD_DASH')} className="text-secondary hover:text-white"><ArrowLeft size={24}/></button>
-               <h1 className="text-3xl font-bold flex items-center gap-3"><ListMusic className="text-primary"/> {t('manageTracks')}</h1>
+               <button 
+                 onClick={() => setView('MOD_DASH')} 
+                 className={`text-secondary hover:text-white transition ${
+                   isLiquidGlass ? 'max-md:w-9 max-md:h-9 max-md:rounded-full max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center' : ''
+                 }`}
+               >
+                 <ArrowLeft size={24}/>
+               </button>
+               <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3"><ListMusic className="text-primary"/> {t('manageTracks')}</h1>
           </div>
 
-          <div className="bg-surface-highlight/20 p-4 rounded-lg mb-4 text-sm text-secondary">
+          <div className={`p-4 rounded-xl mb-4 text-sm text-secondary border ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border-white/10 md:bg-surface-highlight/20 md:border-transparent'
+              : 'bg-surface-highlight/20 border-transparent'
+          }`}>
               Only automatically generated test tracks (ID starts with 't') can be deleted individually here. User uploaded tracks must be managed via Releases.
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-surface rounded-xl border border-surface-highlight">
+          <div className={`flex-1 overflow-y-auto rounded-xl border ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] md:bg-surface md:border-surface-highlight'
+              : 'bg-surface border-surface-highlight'
+          }`}>
               <table className="w-full text-left border-collapse">
-                  <thead className="bg-surface-highlight text-secondary text-xs uppercase font-bold sticky top-0 z-10">
+                  <thead className="bg-surface-highlight/70 text-secondary text-xs uppercase font-bold sticky top-0 z-10 backdrop-blur-md">
                       <tr>
-                          <th className="p-4 bg-surface-highlight">{t('trackTitle')}</th>
-                          <th className="p-4 bg-surface-highlight">{t('artist')}</th>
-                          <th className="p-4 bg-surface-highlight">Album</th>
-                          <th className="p-4 bg-surface-highlight">ID</th>
-                          <th className="p-4 bg-surface-highlight text-right">{t('delete')}</th>
+                          <th className="p-4">{t('trackTitle')}</th>
+                          <th className="p-4">{t('artist')}</th>
+                          <th className="p-4">Album</th>
+                          <th className="p-4">ID</th>
+                          <th className="p-4 text-right">{t('delete')}</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -1128,7 +1210,7 @@ export const ArtistHub = () => {
                       {tracks.map(t => {
                           const isTest = t.id.startsWith('t');
                           return (
-                          <tr key={t.id} className="border-b border-surface-highlight hover:bg-white/5 transition">
+                          <tr key={t.id} className="border-b border-white/5 hover:bg-white/5 transition">
                               <td className="p-4 flex items-center gap-3">
                                   <img src={getTrackCover(t)} className="w-8 h-8 rounded object-cover" />
                                   <span className="font-bold">{t.title}</span>
@@ -1154,8 +1236,19 @@ export const ArtistHub = () => {
   );
 
   const renderModSettings = () => (
-      <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative">
-          <button onClick={() => setView('MOD_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
+      <div className={`w-full max-w-md p-8 rounded-xl shadow-2xl animate-zoom-in relative ${
+        isLiquidGlass
+          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+          : 'bg-surface border border-surface-highlight'
+      }`}>
+          <button 
+            onClick={() => setView('MOD_DASH')} 
+            className={`absolute top-6 left-6 text-secondary hover:text-white ${
+              isLiquidGlass ? 'max-md:w-8 max-md:h-8 max-md:rounded-full max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center' : ''
+            }`}
+          >
+            <ArrowLeft size={20}/>
+          </button>
           <h2 className="text-2xl font-bold mb-6 text-center">Moderator Settings</h2>
 
           <div className="flex flex-col gap-6">
@@ -1165,14 +1258,22 @@ export const ArtistHub = () => {
                       type="password"
                       value={modNewPassword}
                       onChange={e => setModNewPassword(e.target.value)}
-                      className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
+                      className={`p-3 rounded border focus:border-primary focus:outline-none ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                          : 'bg-background border-surface-highlight'
+                      }`}
                       placeholder={t('newPass')}
                   />
               </div>
 
               <button
                   onClick={handleModPasswordChange}
-                  className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
+                  className={`bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition ${
+                    isLiquidGlass
+                      ? 'max-md:shadow-[0_4px_20px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:shadow-lg md:shadow-primary/20'
+                      : 'shadow-lg shadow-primary/20'
+                  }`}
               >
                   {t('updatePass')}
               </button>
@@ -1183,27 +1284,60 @@ export const ArtistHub = () => {
   const renderModDash = () => (
       <div className="w-full h-full flex flex-col p-6 relative overflow-y-auto animate-fade-in pb-8">
           <div className="flex justify-between items-center mb-8 shrink-0">
-              <h1 className="text-3xl font-bold flex items-center gap-3"><Shield className="text-primary"/> {t('modDash')}</h1>
-              <button onClick={() => setView('MOD_SETTINGS')} className="text-secondary hover:text-white transition p-2 rounded-full hover:bg-surface-highlight">
+              <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3"><Shield className="text-primary"/> {t('modDash')}</h1>
+              <button 
+                onClick={() => setView('MOD_SETTINGS')} 
+                className={`text-secondary hover:text-white transition p-2 rounded-full hover:bg-surface-highlight ${
+                  isLiquidGlass ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15' : ''
+                }`}
+              >
                   <Settings size={24}/>
               </button>
           </div>
 
           {/* Quick Actions Grid for Mod */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 shrink-0">
-               <button onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} className="bg-primary text-black p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-32 shadow-lg hover:shadow-primary/20 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 shrink-0">
+                <button 
+                  onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] max-md:rounded-2xl md:bg-primary md:text-black md:shadow-lg md:hover:shadow-primary/20'
+                      : 'bg-primary text-black shadow-lg hover:shadow-primary/20'
+                  }`}
+                >
                     <UploadCloud size={32}/>
                     {t('uploadRelease')}
                 </button>
-                <button onClick={() => setView('MOD_ALL_RELEASES')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
+                <button 
+                  onClick={() => setView('MOD_ALL_RELEASES')} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
+                      : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
+                  }`}
+                >
                     <Database size={32} className="text-secondary"/>
                     {t('manageReleases')}
                 </button>
-                <button onClick={() => setView('MOD_ALL_TRACKS')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
+                <button 
+                  onClick={() => setView('MOD_ALL_TRACKS')} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
+                      : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
+                  }`}
+                >
                     <ListMusic size={32} className="text-secondary"/>
                     {t('manageTracks')}
                 </button>
-                <button onClick={() => setView('MOD_CREDENTIALS')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
+                <button 
+                  onClick={() => setView('MOD_CREDENTIALS')} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
+                      : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
+                  }`}
+                >
                     <Key size={32} className="text-secondary"/>
                     {t('artistCreds')}
                 </button>
@@ -1222,7 +1356,14 @@ export const ArtistHub = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {drafts.map(d => (
-                          <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
+                          <div 
+                            key={d.id} 
+                            className={`p-4 rounded-xl flex flex-col justify-between gap-3 group transition ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:border-primary/40 md:shadow-sm md:hover:shadow-md'
+                                : 'bg-surface border border-surface-highlight hover:border-primary/40 shadow-sm hover:shadow-md'
+                            }`}
+                          >
                               <div className="flex items-start gap-3">
                                   <div className="w-14 h-14 rounded-lg bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5">
                                       {d.covers && d.covers.length > 0 ? (
@@ -1245,7 +1386,7 @@ export const ArtistHub = () => {
                                   </div>
                               </div>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
+                              <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-1">
                                   <button
                                       onClick={(e) => handleDeleteDraft(d.id, e)}
                                       className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
@@ -1270,12 +1411,21 @@ export const ArtistHub = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {/* Artist Requests */}
-              <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
+              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
+                  : 'bg-surface border-surface-highlight'
+              }`}>
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><User size={18}/> {t('pendingArtists')}</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
                       {artistAccounts.filter(a => a.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
                       {artistAccounts.filter(a => a.status === 'PENDING').map(a => (
-                          <div key={a.id} className="p-3 bg-surface-highlight rounded flex justify-between items-center animate-slide-in-bottom">
+                          <div 
+                            key={a.id} 
+                            className={`p-3 rounded-xl flex justify-between items-center animate-slide-in-bottom ${
+                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
+                            }`}
+                          >
                               <div>
                                   <div className="font-bold">{a.artistName}</div>
                                   <div className="text-xs text-secondary">@{a.username}</div>
@@ -1290,12 +1440,22 @@ export const ArtistHub = () => {
               </div>
 
               {/* Release Requests */}
-              <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
+              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
+                  : 'bg-surface border-surface-highlight'
+              }`}>
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><UploadCloud size={18}/> {t('pendingReleases')}</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
                       {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
                       {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).map(r => (
-                          <div key={r.id} className="p-3 bg-surface-highlight rounded flex gap-3 cursor-pointer hover:bg-zinc-800 transition-colors animate-slide-in-bottom items-start" onClick={() => setSelectedRelease(r)}>
+                          <div 
+                            key={r.id} 
+                            className={`p-3 rounded-xl flex gap-3 cursor-pointer hover:bg-zinc-800 transition-colors animate-slide-in-bottom items-start ${
+                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
+                            }`} 
+                            onClick={() => setSelectedRelease(r)}
+                          >
                               <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-12 h-12 rounded object-cover flex-shrink-0" alt=""/>
                               <div className="flex-1 min-w-0 flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
@@ -1323,12 +1483,21 @@ export const ArtistHub = () => {
               </div>
 
               {/* Profile Edits */}
-              <div className="bg-surface rounded-xl p-4 flex flex-col border border-surface-highlight max-h-[500px]">
+              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
+                  : 'bg-surface border-surface-highlight'
+              }`}>
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><Edit size={18}/> {t('profileEdits')}</h3>
                   <div className="overflow-y-auto flex-1 flex flex-col gap-3">
                       {profileEditRequests.filter(r => r.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
                       {profileEditRequests.filter(r => r.status === 'PENDING').map(r => (
-                          <div key={r.id} className="p-3 bg-surface-highlight rounded flex flex-col gap-2 animate-slide-in-bottom">
+                          <div 
+                            key={r.id} 
+                            className={`p-3 rounded-xl flex flex-col gap-2 animate-slide-in-bottom ${
+                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
+                            }`}
+                          >
                                <div className="font-bold text-sm">{r.artistName} updates</div>
                                {r.newAvatar && <div className="text-xs text-secondary">New Avatar</div>}
                                {r.newBio && <div className="text-xs text-secondary bg-black/20 p-1 rounded italic line-clamp-2">Bio: {r.newBio}</div>}
@@ -1346,7 +1515,11 @@ export const ArtistHub = () => {
           <div className="mt-auto">
               <button
                   onClick={() => { logoutArtistHub(); setView('AUTH'); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:bg-surface-highlight'
+                      : 'bg-surface-highlight'
+                  }`}
               >
                   <LogOut size={18} />
                   {t('logout')}
@@ -1356,9 +1529,18 @@ export const ArtistHub = () => {
   );
 
   const renderDistribution = () => (
-      <div className="w-full max-w-4xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[90vh] overflow-y-auto">
+      <div className={`w-full max-w-4xl p-6 md:p-8 rounded-xl shadow-2xl animate-zoom-in relative max-h-[90vh] overflow-y-auto ${
+        isLiquidGlass
+          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+          : 'bg-surface border border-surface-highlight'
+      }`}>
           <div className="flex justify-between items-center mb-6">
-              <button onClick={() => currentModerator ? setView('MOD_DASH') : setView('ARTIST_DASH')} className="text-secondary hover:text-white flex items-center gap-2 text-sm font-medium transition">
+              <button 
+                onClick={() => currentModerator ? setView('MOD_DASH') : setView('ARTIST_DASH')} 
+                className={`text-secondary hover:text-white flex items-center gap-2 text-sm font-medium transition ${
+                  isLiquidGlass ? 'max-md:px-3 max-md:py-1.5 max-md:rounded-full max-md:bg-white/[0.08] max-md:border max-md:border-white/10' : ''
+                }`}
+              >
                   <ArrowLeft size={20}/>
                   <span>{t('back')}</span>
               </button>
@@ -1366,7 +1548,11 @@ export const ArtistHub = () => {
               <div className="flex items-center gap-3">
                   <button
                       onClick={() => saveCurrentDraft(true)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-surface-highlight hover:bg-zinc-700 text-xs font-semibold rounded-full text-secondary hover:text-white transition border border-white/5"
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-full text-secondary hover:text-white transition border ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 max-md:shadow-[0_2px_10px_rgba(0,0,0,0.2)] md:bg-surface-highlight md:hover:bg-zinc-700 md:border-white/5'
+                          : 'bg-surface-highlight hover:bg-zinc-700 border-white/5'
+                      }`}
                       title={t('saveDraft')}
                   >
                       <Bookmark size={14} className={activeDraftId ? "text-primary" : ""} />
@@ -1376,7 +1562,7 @@ export const ArtistHub = () => {
               </div>
           </div>
 
-          <h2 className="text-3xl font-bold text-center mb-8">{isEditing ? t('updateRelease') : t('uploadNew')}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">{isEditing ? t('updateRelease') : t('uploadNew')}</h2>
 
           <div className="flex justify-center gap-4 mb-8">
               {[1, 2, 3].map(s => (
@@ -1389,7 +1575,17 @@ export const ArtistHub = () => {
                   <h3 className="text-xl font-bold">{t('step1')}</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col gap-4">
-                          <input type="text" placeholder={`${t('releaseTitle')} *`} value={distTitle} onChange={e => setDistTitle(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
+                          <input 
+                            type="text" 
+                            placeholder={`${t('releaseTitle')} *`} 
+                            value={distTitle} 
+                            onChange={e => setDistTitle(e.target.value)} 
+                            className={`p-3 rounded border focus:border-primary focus:outline-none ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                : 'bg-background border-surface-highlight'
+                            }`} 
+                          />
 
                           {currentModerator && (
                               <input
@@ -1397,7 +1593,11 @@ export const ArtistHub = () => {
                                   placeholder={`${t('primaryArtist')} *`}
                                   value={distArtistName}
                                   onChange={e => setDistArtistName(e.target.value)}
-                                  className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none border-l-4 border-l-primary"
+                                  className={`p-3 rounded border focus:border-primary focus:outline-none border-l-4 border-l-primary ${
+                                    isLiquidGlass
+                                      ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                      : 'bg-background border-surface-highlight'
+                                  }`}
                               />
                           )}
 
@@ -1411,10 +1611,27 @@ export const ArtistHub = () => {
                               onChange={val => setDistGenre(val)}
                               options={['Pop', 'Rap/Hip-Hop', 'R&B', 'Electronic/Dance']}
                           />
-                          <input type="text" placeholder={t('recordLabel')} value={distLabel} onChange={e => setDistLabel(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
+                          <input 
+                            type="text" 
+                            placeholder={t('recordLabel')} 
+                            value={distLabel} 
+                            onChange={e => setDistLabel(e.target.value)} 
+                            className={`p-3 rounded border focus:border-primary focus:outline-none ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                : 'bg-background border-surface-highlight'
+                            }`} 
+                          />
                       </div>
                       <div className="flex flex-col gap-4">
-                          <div className="border-2 border-dashed border-surface-highlight rounded-lg p-8 flex flex-col items-center justify-center text-center hover:border-primary transition cursor-pointer relative overflow-hidden" onClick={() => coverInputRef.current?.click()}>
+                          <div 
+                            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center hover:border-primary transition cursor-pointer relative overflow-hidden ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.04] max-md:border-white/20 max-md:rounded-2xl md:border-surface-highlight'
+                                : 'border-surface-highlight'
+                            }`} 
+                            onClick={() => coverInputRef.current?.click()}
+                          >
                               {distCovers.length > 0 ? (
                                   <div className="grid grid-cols-2 gap-2 w-full">
                                       {distCovers.map((c, i) => (
@@ -1437,8 +1654,27 @@ export const ArtistHub = () => {
                           <div>
                               <label className="text-xs text-secondary font-bold uppercase mb-2 block">{t('trackLevelArtist')}</label>
                               <div className="flex gap-2">
-                                  <input type="text" value={distMainArtistInput} onChange={e => setDistMainArtistInput(e.target.value)} className="flex-1 bg-background p-2 rounded border border-surface-highlight text-sm" placeholder={t('artist')} />
-                                  <button onClick={() => { if(distMainArtistInput) { setDistMainArtists([...distMainArtists, distMainArtistInput]); setDistMainArtistInput(""); } }} className="bg-surface-highlight p-2 rounded hover:bg-white hover:text-black"><Plus size={20}/></button>
+                                  <input 
+                                    type="text" 
+                                    value={distMainArtistInput} 
+                                    onChange={e => setDistMainArtistInput(e.target.value)} 
+                                    className={`flex-1 p-2 rounded border text-sm ${
+                                      isLiquidGlass
+                                        ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                        : 'bg-background border-surface-highlight'
+                                    }`} 
+                                    placeholder={t('artist')} 
+                                  />
+                                  <button 
+                                    onClick={() => { if(distMainArtistInput) { setDistMainArtists([...distMainArtists, distMainArtistInput]); setDistMainArtistInput(""); } }} 
+                                    className={`p-2 rounded hover:bg-white hover:text-black ${
+                                      isLiquidGlass
+                                        ? 'max-md:bg-white/[0.12] max-md:border max-md:border-white/15 max-md:rounded-xl md:bg-surface-highlight'
+                                        : 'bg-surface-highlight'
+                                    }`}
+                                  >
+                                    <Plus size={20}/>
+                                  </button>
                               </div>
                               <div className="flex flex-wrap gap-2 mt-2">
                                   {distMainArtists.map((a, i) => (
@@ -1467,14 +1703,20 @@ export const ArtistHub = () => {
                                   setPreviewTrackFromHueq(null);
                                   setIsHueqModalOpen(true);
                               }}
-                              className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight hover:border-white/20 px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                              className={`flex items-center gap-2 text-white border px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm ${
+                                isLiquidGlass
+                                  ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 md:bg-surface md:hover:bg-surface-highlight md:border-surface-highlight md:hover:border-white/20'
+                                  : 'bg-surface hover:bg-surface-highlight border-surface-highlight hover:border-white/20'
+                              }`}
                           >
                               <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
                           </button>
                           <button
                               type="button"
                               onClick={() => fileInputRef.current?.click()}
-                              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                              className={`flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm ${
+                                isLiquidGlass ? 'max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25)]' : ''
+                              }`}
                           >
                               <Plus size={16}/> {t('addTrack')}
                           </button>
@@ -1484,7 +1726,14 @@ export const ArtistHub = () => {
 
                   <div className="flex flex-col gap-4 max-h-[360px] overflow-y-auto">
                       {distTracks.map((track, i) => (
-                          <div key={i} className="bg-surface-highlight p-4 rounded flex flex-col gap-3">
+                          <div 
+                            key={i} 
+                            className={`p-4 rounded flex flex-col gap-3 ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-xl md:bg-surface-highlight'
+                                : 'bg-surface-highlight'
+                            }`}
+                          >
                               <div className="flex justify-between items-start">
                                   <div className="flex items-center gap-3">
                                       <div className="flex flex-col gap-1 mr-2">
@@ -1584,7 +1833,11 @@ export const ArtistHub = () => {
                           </div>
                       ))}
                       {distTracks.length === 0 && (
-                          <div className="text-center py-10 px-4 border-2 border-dashed border-surface-highlight/70 rounded-xl flex flex-col items-center justify-center gap-3 bg-surface/20">
+                          <div className={`text-center py-10 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 ${
+                            isLiquidGlass
+                              ? 'max-md:bg-white/[0.04] max-md:border-white/15 max-md:rounded-2xl md:border-surface-highlight/70 md:bg-surface/20'
+                              : 'border-surface-highlight/70 bg-surface/20'
+                          }`}>
                               <div className="w-12 h-12 rounded-full bg-surface-highlight/60 flex items-center justify-center text-secondary">
                                   <FileAudio size={24} />
                               </div>
@@ -1610,7 +1863,11 @@ export const ArtistHub = () => {
                                           setPreviewTrackFromHueq(null);
                                           setIsHueqModalOpen(true);
                                       }}
-                                      className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
+                                      className={`flex items-center gap-2 text-white border px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow ${
+                                        isLiquidGlass
+                                          ? 'max-md:bg-white/[0.1] max-md:border-white/15 md:bg-surface md:hover:bg-surface-highlight md:border-surface-highlight'
+                                          : 'bg-surface hover:bg-surface-highlight border-surface-highlight'
+                                      }`}
                                   >
                                       <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
                                   </button>
@@ -1627,19 +1884,50 @@ export const ArtistHub = () => {
                   <div className="flex flex-col gap-4 max-w-md mx-auto w-full">
                       <div className="flex flex-col gap-1">
                           <label className="text-xs font-bold text-secondary uppercase">{t('releaseDate')} *</label>
-                          <input type="date" value={distDate} onChange={e => setDistDate(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none calendar-dark" />
+                          <input 
+                            type="date" 
+                            value={distDate} 
+                            onChange={e => setDistDate(e.target.value)} 
+                            className={`p-3 rounded border focus:border-primary focus:outline-none calendar-dark ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                : 'bg-background border-surface-highlight'
+                            }`} 
+                          />
                       </div>
                       <div className="flex flex-col gap-1">
                           <label className="text-xs font-bold text-secondary uppercase">{t('releaseTime')} *</label>
-                          <input type="time" value={distTime} onChange={e => setDistTime(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none" />
+                          <input 
+                            type="time" 
+                            value={distTime} 
+                            onChange={e => setDistTime(e.target.value)} 
+                            className={`p-3 rounded border focus:border-primary focus:outline-none ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                : 'bg-background border-surface-highlight'
+                            }`} 
+                          />
                       </div>
                       <div className="flex flex-col gap-1">
                           <label className="text-xs font-bold text-secondary uppercase">{t('msgToMods')}</label>
-                          <textarea value={distMsg} onChange={e => setDistMsg(e.target.value)} className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none h-24 resize-none" placeholder={t('trackNote')}></textarea>
+                          <textarea 
+                            value={distMsg} 
+                            onChange={e => setDistMsg(e.target.value)} 
+                            className={`p-3 rounded border focus:border-primary focus:outline-none h-24 resize-none ${
+                              isLiquidGlass
+                                ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                                : 'bg-background border-surface-highlight'
+                            }`} 
+                            placeholder={t('trackNote')}
+                          ></textarea>
                       </div>
 
                       {/* Draft Status Banner on Step 3 */}
-                      <div className="p-3 bg-surface-highlight/40 border border-surface-highlight rounded-lg flex items-center justify-between text-xs">
+                      <div className={`p-3 border rounded-lg flex items-center justify-between text-xs ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border-white/10 max-md:rounded-xl md:bg-surface-highlight/40 md:border-surface-highlight'
+                          : 'bg-surface-highlight/40 border-surface-highlight'
+                      }`}>
                           <div className="flex items-center gap-2 text-secondary">
                               <Bookmark size={15} className="text-primary"/>
                               <span>{lastSavedTime ? `${t('draftSaved')} (${lastSavedTime})` : t('draftAutoSaved')}</span>
@@ -1656,7 +1944,12 @@ export const ArtistHub = () => {
                           <h4 className="text-sm font-bold text-secondary uppercase mb-2">Release Preview</h4>
                           <div className="flex flex-col gap-2">
                               {distTracks.map((track, idx) => (
-                                  <div key={idx} className="flex justify-between items-center bg-surface-highlight p-2 rounded">
+                                  <div 
+                                    key={idx} 
+                                    className={`flex justify-between items-center p-2 rounded ${
+                                      isLiquidGlass ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
+                                    }`}
+                                  >
                                       <span className="font-bold text-sm">{track.title}</span>
                                       <span className="font-mono text-[10px] text-secondary/70 border border-secondary/30 px-2 py-0.5 rounded select-all hover:text-white hover:border-white transition-colors cursor-text" title="HUEQ">
                                           {track.existingHueq || track.generatedHueq}
@@ -1682,7 +1975,11 @@ export const ArtistHub = () => {
                           if (currentModerator) setView('MOD_DASH');
                           else setView('ARTIST_DASH');
                       }}
-                      className="px-5 py-2 rounded-full font-bold bg-surface-highlight text-white hover:bg-zinc-700 transition flex items-center gap-2 border border-white/10 shadow-sm"
+                      className={`px-5 py-2 rounded-full font-bold text-white transition flex items-center gap-2 border shadow-sm ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 md:bg-surface-highlight md:hover:bg-zinc-700 md:border-white/10'
+                          : 'bg-surface-highlight hover:bg-zinc-700 border-white/10'
+                      }`}
                       title={t('saveDraft')}
                   >
                       <Bookmark size={16} className="text-primary" />
@@ -1690,9 +1987,23 @@ export const ArtistHub = () => {
                   </button>
 
                   {distStep < 3 ? (
-                      <button onClick={handleNextStep} className="px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition">{t('next')}</button>
+                      <button 
+                        onClick={handleNextStep} 
+                        className={`px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition ${
+                          isLiquidGlass ? 'max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25)]' : ''
+                        }`}
+                      >
+                        {t('next')}
+                      </button>
                   ) : (
-                      <button onClick={handleSubmitRelease} className="px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition shadow-lg shadow-primary/20">
+                      <button 
+                        onClick={handleSubmitRelease} 
+                        className={`px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition ${
+                          isLiquidGlass
+                            ? 'max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:shadow-lg md:shadow-primary/20'
+                            : 'shadow-lg shadow-primary/20'
+                        }`}
+                      >
                           {isEditing ? t('updateRelease') : t('submitRelease')}
                       </button>
                   )}
@@ -1757,7 +2068,11 @@ export const ArtistHub = () => {
 
             {/* Stats */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8 shrink-0">
-                <div className="bg-surface border border-surface-highlight p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden">
+                <div className={`p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden ${
+                  isLiquidGlass
+                    ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+                    : 'bg-surface border border-surface-highlight'
+                }`}>
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/20 rounded-full flex items-center justify-center shrink-0 aspect-square">
                         <BarChart2 size={20} className="text-primary sm:w-6 sm:h-6"/>
                     </div>
@@ -1766,7 +2081,11 @@ export const ArtistHub = () => {
                         <div className="text-[10px] sm:text-xs text-secondary uppercase font-bold leading-tight line-clamp-2 break-words mt-0.5">{t('monthlyPlays')}</div>
                     </div>
                 </div>
-                <div className="bg-surface border border-surface-highlight p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden">
+                <div className={`p-3 sm:p-4 rounded-xl flex items-center gap-2.5 sm:gap-4 min-w-0 overflow-hidden ${
+                  isLiquidGlass
+                    ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+                    : 'bg-surface border border-surface-highlight'
+                }`}>
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/20 rounded-full flex items-center justify-center shrink-0 aspect-square">
                         <Globe size={20} className="text-primary sm:w-6 sm:h-6"/>
                     </div>
@@ -1777,16 +2096,37 @@ export const ArtistHub = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full shrink-0">
-                <button onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} className="bg-primary text-black p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-32 shadow-lg hover:shadow-primary/20 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 w-full shrink-0">
+                <button 
+                  onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] max-md:rounded-2xl md:bg-primary md:text-black md:shadow-lg md:hover:shadow-primary/20'
+                      : 'bg-primary text-black shadow-lg hover:shadow-primary/20'
+                  }`}
+                >
                     <UploadCloud size={32}/>
                     {t('uploadNew')}
                 </button>
-                <button onClick={() => setView('PROFILE_EDIT')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
+                <button 
+                  onClick={() => setView('PROFILE_EDIT')} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
+                      : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
+                  }`}
+                >
                     <Edit size={32} className="text-secondary"/>
                     {t('editProfile')}
                 </button>
-                <button onClick={() => setView('ARTIST_PICK')} className="bg-surface border border-surface-highlight p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-surface-highlight transition font-bold h-32 hover:scale-105 w-full">
+                <button 
+                  onClick={() => setView('ARTIST_PICK')} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
+                      : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
+                  }`}
+                >
                     <ListMusic size={32} className="text-secondary"/>
                     {t('artistPick')}
                 </button>
@@ -1805,7 +2145,14 @@ export const ArtistHub = () => {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {drafts.map(d => (
-                            <div key={d.id} className="bg-surface border border-surface-highlight hover:border-primary/40 p-4 rounded-xl flex flex-col justify-between gap-3 group transition shadow-sm hover:shadow-md">
+                            <div 
+                              key={d.id} 
+                              className={`p-4 rounded-xl flex flex-col justify-between gap-3 group transition ${
+                                isLiquidGlass
+                                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:border-primary/40 md:shadow-sm md:hover:shadow-md'
+                                  : 'bg-surface border border-surface-highlight hover:border-primary/40 shadow-sm hover:shadow-md'
+                              }`}
+                            >
                                 <div className="flex items-start gap-3">
                                     <div className="w-14 h-14 rounded-lg bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5">
                                         {d.covers && d.covers.length > 0 ? (
@@ -1828,7 +2175,7 @@ export const ArtistHub = () => {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-between pt-2 border-t border-surface-highlight mt-1">
+                                <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-1">
                                     <button
                                         onClick={(e) => handleDeleteDraft(d.id, e)}
                                         className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
@@ -1913,7 +2260,15 @@ export const ArtistHub = () => {
             <div className="md:hidden flex flex-col gap-3 pb-20">
                 {myReleases.length === 0 && <div className="text-center text-secondary">{t('noReleases')}</div>}
                 {myReleases.map((r, idx) => (
-                    <div key={idx} className="bg-surface p-4 rounded-lg flex items-center gap-4 cursor-pointer active:scale-95 transition items-start" onClick={() => setSelectedRelease(r)}>
+                    <div 
+                      key={idx} 
+                      className={`p-4 rounded-lg flex items-center gap-4 cursor-pointer active:scale-95 transition items-start ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface'
+                          : 'bg-surface'
+                      }`} 
+                      onClick={() => setSelectedRelease(r)}
+                    >
                         <div className="w-16 h-16 shrink-0">
                             <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-full h-full rounded object-cover shadow-sm" />
                         </div>
@@ -1945,7 +2300,11 @@ export const ArtistHub = () => {
             <div className="mt-auto pt-8">
                 <button
                     onClick={() => { logoutArtistHub(); setView('AUTH'); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-surface-highlight rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg"
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg ${
+                      isLiquidGlass
+                        ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:bg-surface-highlight'
+                        : 'bg-surface-highlight'
+                    }`}
                 >
                     <LogOut size={18} />
                     {t('logout')}
@@ -1956,15 +2315,28 @@ export const ArtistHub = () => {
   };
 
   const renderProfileEditForm = () => (
-      <div className="w-full max-w-md bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative max-h-[85vh] overflow-y-auto custom-scrollbar">
-          <button onClick={() => setView('ARTIST_DASH')} className="absolute top-4 left-4 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
+      <div className={`w-full max-w-md p-6 md:p-8 rounded-xl shadow-2xl animate-zoom-in relative max-h-[85vh] overflow-y-auto custom-scrollbar ${
+        isLiquidGlass
+          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+          : 'bg-surface border border-surface-highlight'
+      }`}>
+          <button 
+            onClick={() => setView('ARTIST_DASH')} 
+            className={`absolute top-4 left-4 text-secondary hover:text-white ${
+              isLiquidGlass ? 'max-md:p-1.5 max-md:rounded-full max-md:bg-white/[0.08] max-md:border max-md:border-white/10' : ''
+            }`}
+          >
+            <ArrowLeft size={24}/>
+          </button>
           <h2 className="text-2xl font-bold text-center mb-6">{t('editProfile')}</h2>
 
           <div className="flex flex-col gap-6">
               <div className="flex justify-center">
                   <div
                       onClick={() => avatarInputRef.current?.click()}
-                      className="w-32 h-32 rounded-full bg-surface-highlight flex items-center justify-center cursor-pointer hover:opacity-80 transition relative overflow-hidden group border-2 border-transparent hover:border-primary"
+                      className={`w-32 h-32 rounded-full flex items-center justify-center cursor-pointer hover:opacity-80 transition relative overflow-hidden group border-2 border-transparent hover:border-primary ${
+                        isLiquidGlass ? 'max-md:bg-white/[0.08] max-md:border-white/15 md:bg-surface-highlight' : 'bg-surface-highlight'
+                      }`}
                   >
                       {editAvatar ? (
                           <img src={editAvatar} alt="Avatar" className="w-full h-full object-cover" />
@@ -1983,7 +2355,11 @@ export const ArtistHub = () => {
                   <textarea
                       value={editBio}
                       onChange={e => setEditBio(e.target.value)}
-                      className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none resize-none h-32 text-white"
+                      className={`p-3 rounded border focus:border-primary focus:outline-none resize-none h-32 text-white ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                          : 'bg-background border-surface-highlight'
+                      }`}
                       placeholder="Tell fans about yourself..."
                   />
               </div>
@@ -1994,14 +2370,22 @@ export const ArtistHub = () => {
                       type="password"
                       value={editNewPassword}
                       onChange={e => setEditNewPassword(e.target.value)}
-                      className="bg-background p-3 rounded border border-surface-highlight focus:border-primary focus:outline-none"
+                      className={`p-3 rounded border focus:border-primary focus:outline-none ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 max-md:rounded-xl md:bg-background md:border-surface-highlight'
+                          : 'bg-background border-surface-highlight'
+                      }`}
                       placeholder={t('newPass')}
                   />
               </div>
 
               <button
                   onClick={handleProfileUpdate}
-                  className="bg-primary text-black font-bold py-3 rounded-full hover:scale-105 transition shadow-lg shadow-primary/20"
+                  className={`text-black font-bold py-3 rounded-full hover:scale-105 transition ${
+                    isLiquidGlass
+                      ? 'max-md:bg-primary max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:bg-primary md:shadow-lg md:shadow-primary/20'
+                      : 'bg-primary shadow-lg shadow-primary/20'
+                  }`}
               >
                   {t('submitChanges')}
               </button>
@@ -2025,8 +2409,19 @@ export const ArtistHub = () => {
       ].slice(0, 20);
 
       return (
-        <div className="w-full max-w-2xl bg-surface p-8 rounded-xl shadow-2xl border border-surface-highlight animate-zoom-in relative h-[80vh] flex flex-col">
-            <button onClick={() => setView('ARTIST_DASH')} className="absolute top-8 left-8 text-secondary hover:text-white"><ArrowLeft size={24}/></button>
+        <div className={`w-full max-w-2xl p-6 md:p-8 rounded-xl shadow-2xl animate-zoom-in relative h-[80vh] flex flex-col ${
+          isLiquidGlass
+            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+            : 'bg-surface border border-surface-highlight'
+        }`}>
+            <button 
+              onClick={() => setView('ARTIST_DASH')} 
+              className={`absolute top-6 md:top-8 left-6 md:left-8 text-secondary hover:text-white ${
+                isLiquidGlass ? 'max-md:p-1.5 max-md:rounded-full max-md:bg-white/[0.08] max-md:border max-md:border-white/10' : ''
+              }`}
+            >
+              <ArrowLeft size={24}/>
+            </button>
             <h2 className="text-2xl font-bold text-center mb-6">{t('artistPick')}</h2>
 
             <div className="relative mb-6">
@@ -2034,7 +2429,11 @@ export const ArtistHub = () => {
                 <input
                     type="text"
                     placeholder={t('searchTrackAlbum')}
-                    className="w-full bg-background py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                    className={`w-full py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary ${
+                      isLiquidGlass
+                        ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 md:bg-background'
+                        : 'bg-background'
+                    }`}
                     value={pickSearch}
                     onChange={e => setPickSearch(e.target.value)}
                     autoFocus
@@ -2069,7 +2468,11 @@ export const ArtistHub = () => {
                                showNotification("Artist Pick updated (Pending Approval)", "success");
                                setView('ARTIST_DASH');
                            }}
-                           className="flex items-center gap-4 p-3 rounded hover:bg-surface-highlight cursor-pointer"
+                           className={`flex items-center gap-4 p-3 rounded cursor-pointer transition ${
+                             isLiquidGlass
+                               ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 max-md:rounded-xl md:hover:bg-surface-highlight'
+                               : 'hover:bg-surface-highlight'
+                           }`}
                        >
                            <img src={image} className="w-12 h-12 rounded object-cover" />
                            <div className="flex flex-col">
@@ -2088,7 +2491,11 @@ export const ArtistHub = () => {
       if(!selectedRelease) return null;
       return (
           <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4">
-              <div className="bg-surface w-full max-w-2xl rounded-xl p-6 relative shadow-2xl border border-surface-highlight animate-zoom-in max-h-[90vh] overflow-hidden flex flex-col">
+              <div className={`w-full max-w-2xl rounded-xl p-6 relative shadow-2xl animate-zoom-in max-h-[90vh] overflow-hidden flex flex-col ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
+                  : 'bg-surface border border-surface-highlight'
+              }`}>
                   {/* Header */}
                   <div className="flex justify-between items-center mb-6 shrink-0">
                       <h2 className="text-2xl font-bold">{t('releaseTitle')}</h2>
@@ -2097,10 +2504,10 @@ export const ArtistHub = () => {
 
                   <div className="overflow-y-auto flex-1 pr-2">
                       {/* Album Info */}
-                      <div className="flex gap-6 mb-6">
-                          <img src={selectedRelease.covers[0]} className="w-40 h-40 rounded shadow-lg object-cover bg-zinc-800 shrink-0" />
+                      <div className="flex flex-col sm:flex-row gap-6 mb-6">
+                          <img src={selectedRelease.covers[0]} className="w-36 h-36 sm:w-40 sm:h-40 rounded shadow-lg object-cover bg-zinc-800 shrink-0" />
                           <div className="flex flex-col gap-2">
-                              <h3 className="text-3xl font-bold">{selectedRelease.title}</h3>
+                              <h3 className="text-2xl sm:text-3xl font-bold">{selectedRelease.title}</h3>
                               <div className="text-secondary font-bold">{selectedRelease.artistName}</div>
                               <div className="text-sm text-secondary">{selectedRelease.type} • {selectedRelease.genre}</div>
                               <div className="text-sm text-secondary">Label: {selectedRelease.label}</div>
@@ -2124,7 +2531,12 @@ export const ArtistHub = () => {
                       <h4 className="font-bold mb-3 border-b border-surface-highlight pb-2">{t('step2')}</h4>
                       <div className="flex flex-col gap-2">
                           {selectedRelease.tracks.map((track, idx) => (
-                              <div key={idx} className="flex justify-between items-center p-2 hover:bg-surface-highlight rounded">
+                              <div 
+                                key={idx} 
+                                className={`flex justify-between items-center p-2 rounded ${
+                                  isLiquidGlass ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 md:hover:bg-surface-highlight' : 'hover:bg-surface-highlight'
+                                }`}
+                              >
                                   <div className="flex items-center gap-3">
                                       <span className="text-secondary text-sm w-6">{idx + 1}</span>
                                       <div className="flex flex-col min-w-0">
@@ -2170,11 +2582,19 @@ export const ArtistHub = () => {
       return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsHueqModalOpen(false)}>
               <div
-                  className="bg-surface border border-surface-highlight rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-up"
+                  className={`rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-up ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:border md:border-surface-highlight'
+                      : 'bg-surface border border-surface-highlight'
+                  }`}
                   onClick={e => e.stopPropagation()}
               >
                   {/* Header */}
-                  <div className="flex items-center justify-between p-5 border-b border-surface-highlight bg-surface-highlight/30">
+                  <div className={`flex items-center justify-between p-5 border-b ${
+                    isLiquidGlass
+                      ? 'max-md:border-white/10 max-md:bg-white/[0.04] md:border-surface-highlight md:bg-surface-highlight/30'
+                      : 'border-surface-highlight bg-surface-highlight/30'
+                  }`}>
                       <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
                               <Search size={20} />
@@ -2220,7 +2640,11 @@ export const ArtistHub = () => {
                                       }}
                                       autoFocus
                                       placeholder={t('hueqPlaceholder') || "Введите HUEQ код (например, 123AB4)..."}
-                                      className="w-full bg-background border border-surface-highlight focus:border-primary rounded-xl px-4 py-3 font-mono text-sm uppercase text-white placeholder:normal-case placeholder:text-secondary/60 focus:outline-none transition"
+                                      className={`w-full focus:border-primary rounded-xl px-4 py-3 font-mono text-sm uppercase text-white placeholder:normal-case placeholder:text-secondary/60 focus:outline-none transition ${
+                                        isLiquidGlass
+                                          ? 'max-md:bg-white/[0.07] max-md:border-white/15 md:bg-background md:border-surface-highlight'
+                                          : 'bg-background border-surface-highlight'
+                                      }`}
                                   />
                                   {hueqInput && (
                                       <button
@@ -2235,7 +2659,11 @@ export const ArtistHub = () => {
                               <button
                                   type="button"
                                   onClick={handleHueqSearchClick}
-                                  className="bg-primary text-black font-bold px-4 py-3 rounded-xl hover:scale-105 transition text-sm shrink-0"
+                                  className={`font-bold px-4 py-3 rounded-xl hover:scale-105 transition text-sm shrink-0 ${
+                                    isLiquidGlass
+                                      ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_4px_16px_rgba(29,185,84,0.3)] md:bg-primary md:text-black'
+                                      : 'bg-primary text-black'
+                                  }`}
                               >
                                   {t('findAndAddTrack') || "Найти"}
                               </button>
@@ -2250,7 +2678,11 @@ export const ArtistHub = () => {
 
                       {/* Live Preview Card */}
                       {previewTrackFromHueq && (
-                          <div className="border border-primary/40 bg-primary/5 rounded-xl p-4 flex flex-col gap-3 animate-fade-in">
+                          <div className={`border rounded-xl p-4 flex flex-col gap-3 animate-fade-in ${
+                            isLiquidGlass
+                              ? 'max-md:bg-white/[0.06] max-md:border-primary/50 md:border-primary/40 md:bg-primary/5'
+                              : 'border-primary/40 bg-primary/5'
+                          }`}>
                               <div className="flex items-center justify-between">
                                   <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1">
                                       <CheckCircle size={14} /> Трек найден
@@ -2298,7 +2730,9 @@ export const ArtistHub = () => {
 
                       {/* Quick select from artist's existing catalog */}
                       {artistOwnTracks.length > 0 && (
-                          <div className="flex flex-col gap-2.5 border-t border-surface-highlight/50 pt-4">
+                          <div className={`flex flex-col gap-2.5 border-t pt-4 ${
+                            isLiquidGlass ? 'max-md:border-white/10 md:border-surface-highlight/50' : 'border-surface-highlight/50'
+                          }`}>
                               <div className="text-xs font-bold text-secondary uppercase tracking-wider">
                                   {currentModerator ? "Все доступные треки с HUEQ:" : "Ваши треки с кодами HUEQ:"}
                               </div>
@@ -2314,7 +2748,9 @@ export const ArtistHub = () => {
                                               className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
                                                   isAdded
                                                       ? 'bg-surface-highlight/20 border-transparent opacity-60'
-                                                      : 'bg-background hover:bg-surface-highlight/40 border-surface-highlight/60'
+                                                      : isLiquidGlass
+                                                        ? 'max-md:bg-white/[0.05] max-md:border-white/10 md:bg-background md:hover:bg-surface-highlight/40 md:border-surface-highlight/60'
+                                                        : 'bg-background hover:bg-surface-highlight/40 border-surface-highlight/60'
                                               }`}
                                           >
                                               <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
@@ -2342,7 +2778,9 @@ export const ArtistHub = () => {
                                                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 ${
                                                       isAdded
                                                           ? 'bg-transparent text-secondary cursor-not-allowed'
-                                                          : 'bg-surface-highlight hover:bg-white hover:text-black text-white'
+                                                          : isLiquidGlass
+                                                            ? 'max-md:bg-white/[0.12] max-md:border max-md:border-white/15 max-md:hover:bg-white max-md:hover:text-black md:bg-surface-highlight md:hover:bg-white md:hover:text-black text-white'
+                                                            : 'bg-surface-highlight hover:bg-white hover:text-black text-white'
                                                   }`}
                                               >
                                                   {isAdded ? "Добавлен" : "+ Добавить"}
@@ -2356,7 +2794,11 @@ export const ArtistHub = () => {
                   </div>
 
                   {/* Footer */}
-                  <div className="p-4 border-t border-surface-highlight bg-surface-highlight/20 flex justify-end">
+                  <div className={`p-4 border-t flex justify-end ${
+                    isLiquidGlass
+                      ? 'max-md:border-white/10 max-md:bg-white/[0.02] md:border-surface-highlight md:bg-surface-highlight/20'
+                      : 'border-surface-highlight bg-surface-highlight/20'
+                  }`}>
                       <button
                           type="button"
                           onClick={() => setIsHueqModalOpen(false)}

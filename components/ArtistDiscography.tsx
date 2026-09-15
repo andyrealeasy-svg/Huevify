@@ -18,8 +18,11 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
     goBack, 
     playTrack, 
     t, 
-    artistAccounts
+    artistAccounts,
+    appSettings
   } = useStore();
+
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [activeTab, setActiveTab] = useState<TabType>('all');
 
@@ -147,11 +150,15 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
   return (
     <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
       {/* Top Bar / Header */}
-      <div className="sticky top-0 z-30 bg-background/90 backdrop-blur-md px-4 md:px-8 py-4 border-b border-white/5 flex items-center justify-between gap-4">
+      <div className="sticky top-0 z-30 px-4 md:px-8 py-4 border-b border-white/5 flex items-center justify-between gap-4 bg-background">
         <div className="flex items-center gap-4">
           <button 
             onClick={goBack} 
-            className="w-9 h-9 bg-black/50 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition hover:scale-105"
+            className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+              isLiquidGlass
+                ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:bg-black/50 md:hover:bg-black/80'
+                : 'bg-black/50 hover:bg-black/80'
+            }`}
             title={t('returnHome', 'Назад')}
           >
             <ArrowLeft size={20} />
@@ -178,24 +185,31 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
       <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto">
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-8 scrollbar-none">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition flex items-center gap-2 ${
-                activeTab === tab.id
-                  ? 'bg-white text-black shadow-md'
-                  : 'bg-surface hover:bg-surface-highlight text-white/90'
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`text-xs px-1.5 py-0.2 rounded-full ${
-                activeTab === tab.id ? 'bg-black/15 text-black' : 'bg-white/10 text-secondary'
-              }`}>
-                {tab.count}
-              </span>
-            </button>
-          ))}
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition flex items-center gap-2 ${
+                  isLiquidGlass
+                    ? isActive
+                      ? 'max-md:bg-white/95 max-md:text-black max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25),inset_0_1px_0_rgba(255,255,255,0.8)] md:bg-white md:text-black md:shadow-md'
+                      : 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:text-white/90 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.25)] max-md:active:scale-95 md:bg-surface md:hover:bg-surface-highlight md:text-white/90'
+                    : isActive
+                      ? 'bg-white text-black shadow-md'
+                      : 'bg-surface hover:bg-surface-highlight text-white/90'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-xs px-1.5 py-0.2 rounded-full ${
+                  isActive ? 'bg-black/15 text-black' : 'bg-white/10 text-secondary'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {!hasAnyContent && (
@@ -213,10 +227,14 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
             </h2>
             <div 
               onClick={() => setView({ type: 'ALBUM', id: latestRelease.id })}
-              className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 group cursor-pointer transition"
+              className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:p-2 md:rounded-lg md:hover:bg-white/5'
+                  : 'p-2 rounded-lg hover:bg-white/5'
+              }`}
             >
               <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
                   <img 
                     src={getAlbumCover(latestRelease.id)} 
                     alt={latestRelease.title}
@@ -256,16 +274,20 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
               </h2>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               {albumReleases.map(album => {
                 return (
                   <div 
                     key={album.id}
                     onClick={() => setView({ type: 'ALBUM', id: album.id })}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 group cursor-pointer transition"
+                    className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                      isLiquidGlass
+                        ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:p-2 md:rounded-lg md:hover:bg-white/5'
+                        : 'p-2 rounded-lg hover:bg-white/5'
+                    }`}
                   >
                     <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
                         <img 
                           src={getAlbumCover(album.id)} 
                           alt={album.title}
@@ -308,17 +330,21 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
               </h2>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               {singleReleases.map(single => {
                 const releaseType = single.type === 'EP' ? 'EP' : t('single', 'Сингл');
                 return (
                   <div 
                     key={single.id}
                     onClick={() => setView({ type: 'ALBUM', id: single.id })}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 group cursor-pointer transition"
+                    className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                      isLiquidGlass
+                        ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:p-2 md:rounded-lg md:hover:bg-white/5'
+                        : 'p-2 rounded-lg hover:bg-white/5'
+                    }`}
                   >
                     <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
                         <img 
                           src={getAlbumCover(single.id)} 
                           alt={single.title}
@@ -361,17 +387,21 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
               </h2>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2">
               {appearsOnData.map(({ album }) => {
                 const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом');
                 return (
                   <div 
                     key={album.id}
                     onClick={() => setView({ type: 'ALBUM', id: album.id })}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 group cursor-pointer transition"
+                    className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                      isLiquidGlass
+                        ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:p-2 md:rounded-lg md:hover:bg-white/5'
+                        : 'p-2 rounded-lg hover:bg-white/5'
+                    }`}
                   >
                     <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                      <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
                         <img 
                           src={getAlbumCover(album.id)} 
                           alt={album.title}

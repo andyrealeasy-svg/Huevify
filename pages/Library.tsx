@@ -22,8 +22,9 @@ export const Library = () => {
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
     currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover,
-    currentTrack, isPlaying, t
+    currentTrack, isPlaying, t, appSettings
   } = useStore();
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
 
@@ -75,7 +76,11 @@ export const Library = () => {
                   {/* 1. TOP BLOCK: Liked Songs (Плейлист Любимые треки) */}
                   <div 
                       onClick={() => setView({ type: 'PLAYLIST', id: userLikedPl.id })}
-                      className="group cursor-pointer rounded-xl bg-gradient-to-r from-surface to-surface/60 hover:from-surface-highlight hover:to-surface p-4 md:p-5 flex items-center justify-between transition duration-200 hover-scale"
+                      className={`group cursor-pointer p-4 md:p-5 flex items-center justify-between transition duration-200 hover-scale ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_12px_28px_-6px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] md:rounded-xl md:bg-gradient-to-r md:from-surface md:to-surface/60 md:hover:from-surface-highlight md:hover:to-surface'
+                          : 'rounded-xl bg-gradient-to-r from-surface to-surface/60 hover:from-surface-highlight hover:to-surface'
+                      }`}
                   >
                       <div className="flex items-center gap-4 md:gap-5 min-w-0">
                           <div className="w-16 h-16 md:w-20 md:h-20 rounded-lg bg-gradient-to-br from-indigo-700 to-blue-400 flex items-center justify-center shadow-lg shrink-0 group-hover:shadow-indigo-500/20 transition-all">
@@ -93,7 +98,7 @@ export const Library = () => {
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0 ml-4">
-                          <div className="w-11 h-11 md:w-12 md:h-12 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-90 md:opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200">
+                          <div className="w-11 h-11 md:w-12 md:h-12 bg-primary rounded-full flex items-center justify-center shadow-primary-glow opacity-90 md:opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200">
                               <Play fill="black" size={20} className="text-black ml-0.5" />
                           </div>
                       </div>
@@ -114,11 +119,15 @@ export const Library = () => {
                               <div 
                                   key={album.id} 
                                   onClick={() => setView({ type: 'ALBUM', id: album.id })}
-                                  className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
+                                  className={`p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale ${
+                                    isLiquidGlass
+                                      ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-95 md:bg-surface md:hover:bg-surface-highlight'
+                                      : 'bg-surface hover:bg-surface-highlight'
+                                  }`}
                               >
                                   <div className="aspect-square mb-3 md:mb-4 shadow-lg rounded-md overflow-hidden bg-surface-highlight relative">
                                       <img src={getAlbumCover(album.id)} className="w-full h-full object-cover" alt="" />
-                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-primary-glow opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                                           <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
                                       </div>
                                   </div>
@@ -149,9 +158,13 @@ export const Library = () => {
                                   <div 
                                       key={artistName} 
                                       onClick={() => goToArtist(artistName)}
-                                      className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale text-center"
+                                      className={`p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale text-center ${
+                                        isLiquidGlass
+                                          ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-95 md:bg-surface md:hover:bg-surface-highlight'
+                                          : 'bg-surface hover:bg-surface-highlight'
+                                      }`}
                                   >
-                                      <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-full overflow-hidden bg-surface-highlight relative mx-auto">
+                                      <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-full overflow-hidden bg-surface-highlight relative mx-auto max-md:border max-md:border-white/15">
                                           {image ? (
                                               <img src={image} className="w-full h-full object-cover" alt="" />
                                           ) : (
@@ -179,9 +192,17 @@ export const Library = () => {
                       {/* FIRST ITEM: Create Playlist Button Card */}
                       <div 
                           onClick={handleCreate}
-                          className="bg-surface/50 hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale border border-dashed border-white/10 hover:border-primary/50 flex flex-col justify-between"
+                          className={`p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale border flex flex-col justify-between ${
+                            isLiquidGlass
+                              ? 'max-md:bg-white/[0.05] max-md:backdrop-blur-xl max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.15)] max-md:active:scale-95 md:bg-surface/50 md:hover:bg-surface-highlight md:border-dashed md:border-white/10 md:hover:border-primary/50'
+                              : 'bg-surface/50 hover:bg-surface-highlight border-dashed border-white/10 hover:border-primary/50'
+                          }`}
                       >
-                          <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight/70 group-hover:bg-primary/20 transition-colors relative">
+                          <div className={`aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden relative transition-colors ${
+                            isLiquidGlass
+                              ? 'max-md:bg-white/[0.06] max-md:rounded-xl md:bg-surface-highlight/70 md:group-hover:bg-primary/20'
+                              : 'bg-surface-highlight/70 group-hover:bg-primary/20'
+                          }`}>
                               <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/10 group-hover:bg-primary group-hover:text-black flex items-center justify-center text-white transition-all duration-300">
                                   <Plus size={28} className="transition-transform group-hover:scale-110" />
                               </div>
@@ -208,15 +229,19 @@ export const Library = () => {
                               <div 
                                   key={pl.id} 
                                   onClick={() => setView({ type: 'PLAYLIST', id: pl.id })}
-                                  className="bg-surface hover:bg-surface-highlight p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale"
+                                  className={`p-3 md:p-4 rounded-lg cursor-pointer transition group hover-scale ${
+                                    isLiquidGlass
+                                      ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-95 md:bg-surface md:hover:bg-surface-highlight'
+                                      : 'bg-surface hover:bg-surface-highlight'
+                                  }`}
                               >
-                                  <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative">
+                                  <div className="aspect-square mb-3 md:mb-4 shadow-lg flex items-center justify-center rounded-md overflow-hidden bg-surface-highlight relative max-md:rounded-xl">
                                       {cover ? (
                                           <img src={cover} className="w-full h-full object-cover" alt="" />
                                       ) : (
                                           <ListMusic size={32} className="text-secondary md:w-10 md:h-10" />
                                       )}
-                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                                      <div className="absolute bottom-2 right-2 w-8 h-8 md:w-10 md:h-10 bg-primary rounded-full flex items-center justify-center shadow-primary-glow opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                                           <Play fill="black" size={16} className="text-black ml-1 md:w-5 md:h-5" />
                                       </div>
                                   </div>
@@ -237,7 +262,16 @@ export const Library = () => {
         <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
             <div className="p-8 bg-gradient-to-b from-purple-900 to-background animate-appear">
                  <div className="absolute top-4 left-4 z-20">
-                    <button onClick={goBack} className="w-8 h-8 bg-black/50 rounded-full flex items-center justify-center text-white"><ArrowLeft size={20}/></button>
+                    <button 
+                      onClick={goBack} 
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:w-8 md:h-8 md:bg-black/50'
+                          : 'w-8 h-8 bg-black/50'
+                      }`}
+                    >
+                      <ArrowLeft size={20}/>
+                    </button>
                  </div>
                  <h1 className="text-3xl md:text-5xl font-bold mt-8 mb-4">Huevify Daily Top 25</h1>
                  <p className="text-white/70">{t('chartDesc')}</p>
@@ -368,7 +402,16 @@ export const Library = () => {
                 style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.2), #121212), url(${artistAccount?.avatar || (topTracks[0] ? getTrackCover(topTracks[0]) : '')})` }}
             >
                 <div className="absolute top-4 left-4 z-20">
-                    <button onClick={goBack} className="w-8 h-8 bg-black/50 rounded-full flex items-center justify-center text-white"><ArrowLeft size={20}/></button>
+                    <button 
+                      onClick={goBack} 
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:w-8 md:h-8 md:bg-black/50'
+                          : 'w-8 h-8 bg-black/50'
+                      }`}
+                    >
+                      <ArrowLeft size={20}/>
+                    </button>
                 </div>
                 <div className="relative z-10 w-full">
                     <div className="flex items-center gap-2 mb-2 text-white">
@@ -390,14 +433,29 @@ export const Library = () => {
 
             <div className="px-4 md:px-8 py-6 animate-slide-up">
                 <div className="flex items-center gap-4 mb-8">
-                    <button onClick={() => topTracks.length && playTrack(topTracks[0], topTracks)} className="w-14 h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg">
+                    <button 
+                        onClick={() => topTracks.length && playTrack(topTracks[0], topTracks)} 
+                        className={`w-14 h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow ${
+                          isLiquidGlass
+                            ? 'max-md:bg-primary/95 max-md:active:scale-95 md:hover:scale-105'
+                            : 'hover:scale-105'
+                        }`}
+                    >
                         <Play size={28} fill="black" className="ml-1 text-black" />
                     </button>
                     
                     {/* Follow Button */}
                     <button 
                         onClick={() => toggleFollowArtist(artistName)}
-                        className={`px-6 py-1.5 font-bold text-sm rounded-full uppercase tracking-widest border transition ${isFollowing ? 'border-white text-white hover:bg-white/10' : 'border-secondary text-white hover:border-white'}`}
+                        className={`px-6 py-2 font-bold text-sm rounded-full uppercase tracking-widest transition ${
+                          isLiquidGlass
+                            ? isFollowing 
+                              ? 'max-md:bg-white/20 max-md:backdrop-blur-xl max-md:border max-md:border-white/30 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] max-md:active:scale-95 md:border md:border-white md:text-white md:hover:bg-white/10'
+                              : 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:active:scale-95 md:border md:border-secondary md:text-white md:hover:border-white'
+                            : isFollowing 
+                              ? 'border border-white text-white hover:bg-white/10' 
+                              : 'border border-secondary text-white hover:border-white'
+                        }`}
                     >
                         {isFollowing ? t('following') : t('follow')}
                     </button>
@@ -412,10 +470,14 @@ export const Library = () => {
                             <div className="mb-8">
                                 <h2 className="text-2xl font-bold mb-4">{t('artistPick')}</h2>
                                 <div 
-                                    className="flex items-start gap-4 cursor-pointer hover:bg-surface-highlight p-4 rounded transition group bg-surface"
+                                    className={`flex items-start gap-4 cursor-pointer p-4 transition group ${
+                                      isLiquidGlass
+                                        ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded md:bg-surface md:hover:bg-surface-highlight'
+                                        : 'rounded bg-surface hover:bg-surface-highlight'
+                                    }`}
                                     onClick={() => pick.id && setView({ type: pick.type as any, id: pick.id })}
                                 >
-                                    <img src={pick.image} className="w-20 h-20 rounded object-cover shadow-lg" />
+                                    <img src={pick.image} className="w-20 h-20 rounded-xl object-cover shadow-lg shrink-0" />
                                     <div className="flex flex-col justify-center">
                                         <div className="flex items-center gap-2 mb-1">
                                             <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800">
@@ -435,7 +497,15 @@ export const Library = () => {
                             {topTracks.map((track, idx) => {
                                 const isCurrent = currentTrack?.id === track.id;
                                 return (
-                                <div key={track.id} className="grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer" onClick={() => playTrack(track, topTracks)}>
+                                <div 
+                                    key={track.id} 
+                                    className={`grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 transition group cursor-pointer ${
+                                      isLiquidGlass
+                                        ? 'max-md:rounded-xl max-md:hover:bg-white/[0.06] max-md:active:bg-white/[0.1] md:rounded md:hover:bg-surface-highlight'
+                                        : 'rounded hover:bg-surface-highlight'
+                                    }`} 
+                                    onClick={() => playTrack(track, topTracks)}
+                                >
                                     <div className="w-5 flex justify-center items-center">
                                         {isCurrent ? (
                                             <PlayingVisualizer isPlaying={isPlaying} size="sm" />
@@ -444,7 +514,7 @@ export const Library = () => {
                                         )}
                                     </div>
                                     <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                                        <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover shrink-0" alt=""/>
+                                        <img src={getTrackCover(track)} className="w-10 h-10 rounded-lg object-cover shrink-0" alt=""/>
                                         <div className="flex flex-col overflow-hidden min-w-0 flex-1">
                                             <div className="flex items-center gap-1.5 min-w-0">
                                                 {isCurrent && (
@@ -486,10 +556,14 @@ export const Library = () => {
                                             <div 
                                                 key={album.id} 
                                                 onClick={() => setView({ type: 'ALBUM', id: album.id })} 
-                                                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-surface-highlight bg-surface/40 border border-white/5 group cursor-pointer transition"
+                                                className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                                                  isLiquidGlass
+                                                    ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:rounded-lg md:hover:bg-surface-highlight md:bg-surface/40 md:border md:border-white/5'
+                                                    : 'rounded-lg hover:bg-surface-highlight bg-surface/40 border border-white/5'
+                                                }`}
                                             >
                                                 <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                                                    <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-md overflow-hidden shadow-md">
+                                                    <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
                                                         <img 
                                                             src={getAlbumCover(album.id)} 
                                                             alt={album.title}
@@ -522,7 +596,11 @@ export const Library = () => {
                     {/* About Column */}
                     <div className="w-full md:w-1/3">
                         <h2 className="text-2xl font-bold mb-4">{t('about')}</h2>
-                        <div className="bg-surface rounded-lg overflow-hidden relative group cursor-pointer min-h-[300px] hover:scale-[1.02] transition">
+                        <div className={`overflow-hidden relative group cursor-pointer min-h-[300px] transition ${
+                          isLiquidGlass
+                            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-3xl max-md:shadow-[0_12px_36px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:rounded-lg md:hover:scale-[1.02]'
+                            : 'bg-surface rounded-lg hover:scale-[1.02]'
+                        }`}>
                             {/* Use avatar or fallback to first track cover */}
                             <img 
                                 src={artistAccount?.avatar || (topTracks[0] ? getTrackCover(topTracks[0]) : '')} 
@@ -680,7 +758,11 @@ export const Library = () => {
           <div className="absolute top-4 left-4 md:top-6 md:left-6 z-20">
             <button 
               onClick={goBack} 
-              className="w-8 h-8 bg-black/50 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition"
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:w-8 md:h-8 md:bg-black/50 md:hover:bg-black/80'
+                  : 'w-8 h-8 bg-black/50 hover:bg-black/80'
+              }`}
             >
               <ArrowLeft size={20} />
             </button>
@@ -689,7 +771,11 @@ export const Library = () => {
           <div className="flex flex-col items-center text-center md:flex-row md:items-end md:text-left gap-6 mt-8 md:mt-8">
             {/* Cover Art Logic */}
             <div 
-                className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden rounded-md animate-appear relative group ${
+                className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden animate-appear relative group ${
+                  isLiquidGlass
+                    ? 'max-md:rounded-2xl max-md:border max-md:border-white/20 max-md:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:rounded-md'
+                    : 'rounded-md'
+                } ${
                   hasMultipleCovers || (isPlaylist && isOwner && !isSystem) ? 'cursor-pointer' : ''
                 }`}
                 onClick={(e) => { 
@@ -773,37 +859,72 @@ export const Library = () => {
         </div>
 
         {/* Action Bar */}
-        <div className="px-6 md:px-8 py-4 md:py-6 bg-background/50 backdrop-blur-sm sticky top-0 z-30 flex items-center gap-6 animate-appear">
+        <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-background">
           <button 
              onClick={() => items.length > 0 && playTrack(items[0], items, !isPlaylist ? (currentAlbumObj?.id || id) : undefined)}
-             className="w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg"
+             className={`w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow ${
+               isLiquidGlass
+                 ? 'max-md:bg-primary/95 max-md:active:scale-90 md:hover:scale-105'
+                 : 'hover:scale-105'
+             }`}
           >
             <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
           </button>
           
           {!isPlaylist && (
-             <button onClick={() => toggleAlbumLike(id)} className="hover:scale-105 transition">
-                <Heart size={32} fill={isAlbumLiked(id) ? '#1ed760' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
+             <button 
+                onClick={() => toggleAlbumLike(id)} 
+                className={`transition ${
+                  isLiquidGlass
+                    ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
+                    : 'hover:scale-105'
+                }`}
+             >
+                <Heart size={isLiquidGlass ? 24 : 32} fill={isAlbumLiked(id) ? 'currentColor' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
              </button>
           )}
 
           {isPlaylist && isOwner && !isSystem && (
               <>
-                <button onClick={(e) => handleEditPlaylist(id, e)} className="text-secondary hover:text-white transition hover:scale-105" title={t('editPlaylist')}>
-                    <Edit size={32} />
+                <button 
+                    onClick={(e) => handleEditPlaylist(id, e)} 
+                    className={`transition ${
+                      isLiquidGlass
+                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-white max-md:active:scale-90 md:text-secondary md:hover:text-white md:hover:scale-105'
+                        : 'text-secondary hover:text-white hover:scale-105'
+                    }`} 
+                    title={t('editPlaylist')}
+                >
+                    <Edit size={isLiquidGlass ? 22 : 32} />
                 </button>
-                <button onClick={() => deletePlaylist(id)} className="text-secondary hover:text-red-500 transition hover:scale-105" title={t('deletePlaylist')}>
-                    <Trash2 size={32} />
+                <button 
+                    onClick={() => deletePlaylist(id)} 
+                    className={`transition ${
+                      isLiquidGlass
+                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-secondary max-md:active:scale-90 md:text-secondary md:hover:text-red-500 md:hover:scale-105'
+                        : 'text-secondary hover:text-red-500 hover:scale-105'
+                    }`} 
+                    title={t('deletePlaylist')}
+                >
+                    <Trash2 size={isLiquidGlass ? 22 : 32} />
                 </button>
               </>
           )}
 
           {isPlaylist && !isOwner && !isSystem && isPublic && (
-              <button onClick={() => togglePlaylistSave(id)} className="hover:scale-105 transition" title={isSavedPlaylist ? t('removeFromLibrary') : t('addToLibrary')}>
+              <button 
+                  onClick={() => togglePlaylistSave(id)} 
+                  className={`transition ${
+                    isLiquidGlass
+                      ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
+                      : 'hover:scale-105'
+                  }`} 
+                  title={isSavedPlaylist ? t('removeFromLibrary') : t('addToLibrary')}
+              >
                   {isSavedPlaylist ? (
-                      <CheckCircle size={32} className="text-primary" />
+                      <CheckCircle size={isLiquidGlass ? 24 : 32} className="text-primary" />
                   ) : (
-                      <PlusSquare size={32} className="text-secondary hover:text-white" />
+                      <PlusSquare size={isLiquidGlass ? 24 : 32} className="text-secondary hover:text-white" />
                   )}
               </button>
           )}
@@ -829,7 +950,14 @@ export const Library = () => {
                const isCurrent = currentTrack?.id === track.id;
 
                return (
-             <div key={track.id} className="grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 rounded hover:bg-surface-highlight group items-center">
+             <div 
+                key={track.id} 
+                className={`grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 transition group items-center ${
+                  isLiquidGlass
+                    ? 'max-md:rounded-xl max-md:hover:bg-white/[0.06] max-md:active:bg-white/[0.1] md:rounded md:hover:bg-surface-highlight'
+                    : 'rounded hover:bg-surface-highlight'
+                }`}
+             >
                
                <div className="w-4 flex justify-center">
                    <span className="text-secondary group-hover:hidden text-sm">{idx + 1}</span>
@@ -837,7 +965,7 @@ export const Library = () => {
                </div>
                
                <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                 <img src={displayCover} className="w-10 h-10 md:hidden rounded object-cover shrink-0" alt="" />
+                 <img src={displayCover} className="w-10 h-10 md:hidden rounded-lg object-cover shrink-0 shadow-sm" alt="" />
                  <div className="flex flex-col overflow-hidden min-w-0 flex-1">
                    <div className="flex items-center gap-1.5 min-w-0">
                       {isCurrent && (
@@ -907,7 +1035,11 @@ export const Library = () => {
         {/* Cover Picker Modal */}
         {isCoverPickerOpen && currentAlbumObj && (
             <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-                <div className="bg-surface w-full max-w-lg rounded-xl p-6 relative animate-zoom-in">
+                <div className={`w-full max-w-lg p-6 relative animate-zoom-in ${
+                  isLiquidGlass
+                    ? 'max-md:bg-[#15151e]/85 max-md:backdrop-blur-3xl max-md:border max-md:border-white/20 max-md:rounded-3xl max-md:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-surface md:rounded-xl'
+                    : 'bg-surface rounded-xl'
+                }`}>
                     <button onClick={() => setCoverPickerOpen(false)} className="absolute top-4 right-4 text-white"><X size={24}/></button>
                     <h2 className="text-xl font-bold mb-4">{t('chooseCover')}</h2>
                     <p className="text-sm text-secondary mb-4">Select your preferred artwork for this release.</p>
@@ -919,9 +1051,9 @@ export const Library = () => {
                                 onClick={() => { changeAlbumCover(currentAlbumObj.id, idx); setCoverPickerOpen(false); }}
                                 className="cursor-pointer group relative"
                             >
-                                <img src={c} className="w-full aspect-square object-cover rounded shadow-lg group-hover:opacity-80 transition" />
+                                <img src={c} className="w-full aspect-square object-cover rounded-xl shadow-lg group-hover:opacity-80 transition" />
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                    <span className="bg-primary text-black font-bold text-xs px-2 py-1 rounded">{t('select')}</span>
+                                    <span className="bg-primary text-black font-bold text-xs px-2 py-1 rounded-full">{t('select')}</span>
                                 </div>
                             </div>
                         ))}

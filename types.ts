@@ -65,6 +65,7 @@ export interface AppSettings {
   crossfade: number; // seconds (0-12)
   crossfadeEnabled?: boolean; // toggle for crossfade
   albumCoverIndexes: Record<string, number>; // Stores user preference for album covers
+  liquidGlassNav?: boolean; // iOS Liquid Glass bottom navigation style
 }
 
 export type ViewState = 

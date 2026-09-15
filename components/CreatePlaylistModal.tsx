@@ -7,8 +7,9 @@ import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 export const CreatePlaylistModal = () => {
   const { 
     isCreatePlaylistOpen, setCreatePlaylistOpen, createPlaylist, editPlaylist,
-    playlistIdToEdit, playlists, t 
+    playlistIdToEdit, playlists, t, appSettings 
   } = useStore();
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -128,7 +129,13 @@ export const CreatePlaylistModal = () => {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
-      <div className="bg-surface w-full max-w-md rounded-lg p-6 relative shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-200">
+      <div 
+        className={`w-full max-w-md p-6 relative transition-all duration-200 animate-in fade-in zoom-in ${
+          isLiquidGlass
+            ? 'max-md:bg-[#15151e]/85 max-md:backdrop-blur-3xl max-md:border max-md:border-white/20 max-md:rounded-3xl max-md:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-surface md:rounded-lg md:border md:border-surface-highlight md:shadow-2xl'
+            : 'bg-surface rounded-lg border border-surface-highlight shadow-2xl'
+        }`}
+      >
         <button 
           onClick={() => setCreatePlaylistOpen(false)} 
           className="absolute top-4 right-4 text-secondary hover:text-white"
@@ -145,7 +152,11 @@ export const CreatePlaylistModal = () => {
               onClick={() => {
                 if (!isUploading) fileInputRef.current?.click();
               }}
-              className="w-44 h-44 bg-surface-highlight rounded shadow-inner flex flex-col items-center justify-center cursor-pointer hover:bg-[#333] transition relative overflow-hidden group"
+              className={`w-44 h-44 rounded shadow-inner flex flex-col items-center justify-center cursor-pointer transition relative overflow-hidden group ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/15 max-md:rounded-2xl md:bg-surface-highlight md:hover:bg-[#333]'
+                  : 'bg-surface-highlight hover:bg-[#333]'
+              }`}
               title={t('choosePhoto')}
             >
               {cover ? (
@@ -197,17 +208,29 @@ export const CreatePlaylistModal = () => {
               placeholder={t('playlistName')}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="bg-surface-highlight text-white p-3 rounded focus:outline-none focus:ring-1 focus:ring-white font-bold"
+              className={`text-white p-3 font-bold focus:outline-none transition ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:border max-md:border-white/15 max-md:rounded-xl max-md:placeholder-white/40 max-md:focus:border-white/35 md:bg-surface-highlight md:rounded md:focus:ring-1 md:focus:ring-white'
+                  : 'bg-surface-highlight rounded focus:ring-1 focus:ring-white'
+              }`}
             />
             <textarea 
               placeholder={t('description')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="bg-surface-highlight text-white p-3 rounded focus:outline-none focus:ring-1 focus:ring-white resize-none h-24 text-sm"
+              className={`text-white p-3 resize-none h-24 text-sm focus:outline-none transition ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.08] max-md:border max-md:border-white/15 max-md:rounded-xl max-md:placeholder-white/40 max-md:focus:border-white/35 md:bg-surface-highlight md:rounded md:focus:ring-1 md:focus:ring-white'
+                  : 'bg-surface-highlight rounded focus:ring-1 focus:ring-white'
+              }`}
             />
           </div>
 
-          <div className="flex items-center gap-3 bg-surface-highlight p-3 rounded">
+          <div className={`flex items-center gap-3 p-3 transition ${
+            isLiquidGlass
+              ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 max-md:rounded-xl md:bg-surface-highlight md:rounded'
+              : 'bg-surface-highlight rounded'
+          }`}>
               <input 
                 type="checkbox" 
                 id="public-check"
@@ -228,7 +251,9 @@ export const CreatePlaylistModal = () => {
               className={`font-bold py-3 px-8 rounded-full transition flex items-center gap-2 ${
                 isUploading 
                   ? 'bg-neutral-600 text-neutral-400 cursor-not-allowed' 
-                  : 'bg-white text-black hover:scale-105'
+                  : isLiquidGlass
+                    ? 'max-md:bg-white/90 max-md:text-black max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.8)] max-md:active:scale-95 md:bg-white md:text-black md:hover:scale-105'
+                    : 'bg-white text-black hover:scale-105'
               }`}
             >
               {isUploading && <Loader2 size={16} className="animate-spin" />}

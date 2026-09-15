@@ -108,6 +108,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     crossfadeEnable: "Enable Crossfade",
     crossfadeDuration: "Crossfade Duration",
     secondsShort: "s",
+    appearanceStyle: "Appearance & Style",
+    liquidGlassNav: "Liquid Glass",
+    liquidGlassNavDesc: "Pure liquid glass refraction for the bottom navigation bar",
+    classicNav: "Classic Style",
+    liquidGlassStyle: "Liquid Glass",
     playlistName: "Playlist Name",
     description: "Description",
     choosePhoto: "Choose Photo",
@@ -320,6 +325,11 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     crossfadeEnable: "Включить плавный переход",
     crossfadeDuration: "Длительность перехода",
     secondsShort: "с",
+    appearanceStyle: "Внешний вид и оформление",
+    liquidGlassNav: "Жидкое стекло (Liquid Glass)",
+    liquidGlassNavDesc: "Эффект чистого жидкого стекла для панели навигации",
+    classicNav: "Классический стиль",
+    liquidGlassStyle: "Жидкое стекло",
     playlistName: "Название плейлиста",
     description: "Описание",
     choosePhoto: "Выберите фото",
@@ -560,6 +570,7 @@ interface StoreContextType {
   isArtistFollowed: (artistName: string) => boolean;
   goBack: () => void;
   playTrack: (track: Track, newQueue?: Track[], contextAlbumId?: string) => void;
+  playNext: (track: Track) => void;
   currentQueue: Track[];
   togglePlay: () => void;
   nextTrack: () => void;
@@ -628,7 +639,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     autoPlay: true,
     crossfade: 0,
     crossfadeEnabled: false,
-    albumCoverIndexes: {}
+    albumCoverIndexes: {},
+    liquidGlassNav: true
   });
 
   const t = (key: string, defaultText?: string): string => {
@@ -1301,7 +1313,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       ...userSettings,
                       crossfade: typeof userSettings.crossfade === 'number' ? userSettings.crossfade : 0,
                       crossfadeEnabled: userSettings.crossfadeEnabled ?? (userSettings.crossfade > 0),
-                      albumCoverIndexes: userSettings.albumCoverIndexes || {}
+                      albumCoverIndexes: userSettings.albumCoverIndexes || {},
+                      liquidGlassNav: userSettings.liquidGlassNav !== undefined ? userSettings.liquidGlassNav : true
                   });
               } else {
                   // Default settings
@@ -1312,7 +1325,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     autoPlay: true,
                     crossfade: 0,
                     crossfadeEnabled: false,
-                    albumCoverIndexes: {}
+                    albumCoverIndexes: {},
+                    liquidGlassNav: true
                   });
               }
 
@@ -2185,15 +2199,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getTrackCover = (track: Track, explicitAlbumId?: string): string => {
       if (!track) return "";
       
-      // 1. Explicit album context passed in
+      // 1. Explicit album context passed in (only if album contains this track)
       if (explicitAlbumId) {
-          const album = albums.find(a => a.id === explicitAlbumId);
+          const album = albums.find(a => a.id === explicitAlbumId && a.trackIds && a.trackIds.includes(track.id));
           if (album) return getAlbumCover(album.id);
       }
 
-      // 2. If track is currently playing and activePlaybackAlbumId is set
+      // 2. If track is currently playing and activePlaybackAlbumId is set (only if active album contains this track)
       if (currentTrack && currentTrack.id === track.id && activePlaybackAlbumId) {
-          const album = albums.find(a => a.id === activePlaybackAlbumId);
+          const album = albums.find(a => a.id === activePlaybackAlbumId && a.trackIds && a.trackIds.includes(track.id));
           if (album) return getAlbumCover(album.id);
       }
 
@@ -2227,7 +2241,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // --- Settings Injection Effect ---
   useEffect(() => {
-    const color = appSettings.accentColor;
+    const color = appSettings.accentColor || '#1ed760';
     const styleId = 'huevify-theme-override';
     let styleTag = document.getElementById(styleId);
     if (!styleTag) {
@@ -2235,7 +2249,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         styleTag.id = styleId;
         document.head.appendChild(styleTag);
     }
+
+    const hexOrColorToRgba = (colorStr: string, alpha: number): string => {
+      if (!colorStr) return `rgba(30, 215, 96, ${alpha})`;
+      if (colorStr.startsWith('#')) {
+        let hex = colorStr.slice(1);
+        if (hex.length === 3) {
+          hex = hex.split('').map(c => c + c).join('');
+        }
+        const r = parseInt(hex.substring(0, 2), 16) || 0;
+        const g = parseInt(hex.substring(2, 4), 16) || 0;
+        const b = parseInt(hex.substring(4, 6), 16) || 0;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      if (colorStr.startsWith('rgb')) {
+        const match = colorStr.match(/\d+/g);
+        if (match && match.length >= 3) {
+          return `rgba(${match[0]}, ${match[1]}, ${match[2]}, ${alpha})`;
+        }
+      }
+      return colorStr;
+    };
+
+    const glowMedium = hexOrColorToRgba(color, 0.45);
+    const glowSubtle = hexOrColorToRgba(color, 0.25);
+    const glowStrong = hexOrColorToRgba(color, 0.7);
+
     styleTag.innerHTML = `
+        :root {
+          --color-primary: ${color};
+          --primary-glow: ${glowMedium};
+          --primary-glow-subtle: ${glowSubtle};
+          --primary-glow-strong: ${glowStrong};
+        }
         .text-primary { color: ${color} !important; }
         .bg-primary { background-color: ${color} !important; }
         .border-primary { border-color: ${color} !important; }
@@ -2244,6 +2290,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .group:hover .group-hover\\:bg-primary { background-color: ${color} !important; }
         .selection\\:bg-primary::selection { background-color: ${color} !important; }
         .range-slider::-webkit-slider-thumb:hover { background-color: ${color} !important; }
+        .shadow-primary-glow { box-shadow: 0 8px 24px ${glowMedium}, inset 0 1px 0 rgba(255,255,255,0.6) !important; }
+        .shadow-primary-glow-sm { box-shadow: 0 4px 16px ${glowMedium}, inset 0 1px 0 rgba(255,255,255,0.4) !important; }
+        .shadow-primary-glow-lg { box-shadow: 0 12px 32px ${glowStrong}, inset 0 1px 0 rgba(255,255,255,0.6) !important; }
+        .group:hover .group-hover\\:shadow-primary-glow { box-shadow: 0 8px 24px ${glowMedium}, inset 0 1px 0 rgba(255,255,255,0.5) !important; }
     `;
   }, [appSettings.accentColor]);
 
@@ -2839,24 +2889,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
     }
 
-    // Resolve context album for playback
-    let chosenAlbumId: string | null = contextAlbumId || null;
+    // Resolve context album for playback (only when playing in an album release context)
+    let chosenAlbumId: string | null = null;
+    if (contextAlbumId) {
+        const matching = albums.find(a => a.id === contextAlbumId && a.trackIds && a.trackIds.includes(track.id));
+        if (matching) chosenAlbumId = matching.id;
+    }
     if (!chosenAlbumId && view.type === 'ALBUM') {
-        chosenAlbumId = (view as any).id;
+        const matching = albums.find(a => a.id === (view as any).id && a.trackIds && a.trackIds.includes(track.id));
+        if (matching) chosenAlbumId = matching.id;
     }
     if (!chosenAlbumId && newQueue && newQueue.length > 0) {
         const matchingAlbum = albums.find(a => 
             a.trackIds && 
             a.trackIds.length === newQueue.length && 
-            a.trackIds.every(id => newQueue.some(q => q.id === id))
+            a.trackIds.every(id => newQueue.some(q => q.id === id)) &&
+            a.trackIds.includes(track.id)
         );
         if (matchingAlbum) chosenAlbumId = matchingAlbum.id;
     }
-    if (!chosenAlbumId) {
-        const matchingAlbum = albums.find(a => a.trackIds && a.trackIds.includes(track.id));
-        if (matchingAlbum) chosenAlbumId = matchingAlbum.id;
-    }
 
+    // When playing in a mixed playlist, charts, or user playlist, chosenAlbumId is null
     setActivePlaybackAlbumId(chosenAlbumId);
 
     // Set or preserve active playback queue
@@ -3010,6 +3063,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     crossfadeTriggeredRef.current = false;
   };
   
+  const getNextAlbumContext = (targetTrack: Track): string | undefined => {
+    if (!activePlaybackAlbumId) return undefined;
+    const album = albums.find(a => a.id === activePlaybackAlbumId && a.trackIds && a.trackIds.includes(targetTrack.id));
+    return album ? activePlaybackAlbumId : undefined;
+  };
+
   const nextTrack = () => {
     const queue = getQueue();
     if (queue.length === 0) {
@@ -3019,20 +3078,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     if (isShuffle) {
         const randomTrack = queue[Math.floor(Math.random() * queue.length)];
-        playTrack(randomTrack, queue, activePlaybackAlbumId || undefined);
+        playTrack(randomTrack, queue, getNextAlbumContext(randomTrack));
         return;
     }
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
     if (idx !== -1 && idx < queue.length - 1) {
-        playTrack(queue[idx + 1], queue, activePlaybackAlbumId || undefined);
+        const nextTrk = queue[idx + 1];
+        playTrack(nextTrk, queue, getNextAlbumContext(nextTrk));
     } else if (playMode === PlayMode.CONTEXT) {
-        playTrack(queue[0], queue, activePlaybackAlbumId || undefined);
+        const firstTrk = queue[0];
+        playTrack(firstTrk, queue, getNextAlbumContext(firstTrk));
     } else {
         setIsPlaying(false);
         const activeAudio = getActiveAudio();
         activeAudio.pause();
         activeAudio.currentTime = 0;
     }
+  };
+
+  const playNext = (trackToQueue: Track) => {
+    const queue = getQueue();
+    const currentIdx = queue.findIndex(t => t.id === currentTrack?.id);
+    const newQueue = [...queue];
+    if (currentIdx !== -1) {
+      newQueue.splice(currentIdx + 1, 0, trackToQueue);
+    } else {
+      newQueue.unshift(trackToQueue);
+    }
+    setCurrentQueue(newQueue);
   };
   const prevTrack = () => {
     const activeAudio = getActiveAudio();
@@ -3045,9 +3118,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (queue.length === 0) return;
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
     if (idx > 0) {
-        playTrack(queue[idx - 1], queue, activePlaybackAlbumId || undefined);
+        const prevTrk = queue[idx - 1];
+        playTrack(prevTrk, queue, getNextAlbumContext(prevTrk));
     } else {
-        playTrack(queue[queue.length - 1], queue, activePlaybackAlbumId || undefined);
+        const lastTrk = queue[queue.length - 1];
+        playTrack(lastTrk, queue, getNextAlbumContext(lastTrk));
     }
   };
   const toggleRepeat = () => {
@@ -3094,6 +3169,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let updatedPl: Playlist | undefined;
     const updated = all.map(p => { 
       if (p.id === id) { 
+        const isOwner = currentUser ? p.ownerId === currentUser.id : (!p.ownerId || p.ownerId === 'guest');
+        if (!isOwner) return p;
         updatedPl = { 
           ...p, 
           name: name.trim(), 
@@ -3105,13 +3182,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } 
       return p; 
     });
-    syncPlaylists(updated, updatedPl);
+    if (updatedPl) {
+      syncPlaylists(updated, updatedPl);
+    }
   };
   const openDeleteModal = (id: string) => { setPlaylistToDelete(id); setIsDeleteModalOpen(true); };
   const closeDeleteModal = () => { setIsDeleteModalOpen(false); setPlaylistToDelete(null); };
   const confirmDeletePlaylist = () => { 
     if (!playlistToDelete) return; 
     const id = playlistToDelete; 
+    const target = playlists.find(p => p.id === id);
+    if (target) {
+      const isOwner = currentUser ? target.ownerId === currentUser.id : (!target.ownerId || target.ownerId === 'guest');
+      if (!isOwner) {
+        closeDeleteModal();
+        return;
+      }
+    }
     if (view.type === 'PLAYLIST' && (view as any).id === id) setViewInternal({ type: 'LIBRARY' }); 
     const all = [...playlists]; 
     const updated = all.filter(p => p.id !== id); 
@@ -3126,23 +3213,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       let targetPl: Playlist | undefined;
       const updated = playlists.map(p => { 
           if (p.id === playlistId && !p.tracks.includes(trackId)) {
+              const isOwner = currentUser ? p.ownerId === currentUser.id : (!p.ownerId || p.ownerId === 'guest');
+              if (!isOwner) return p;
               targetPl = { ...p, tracks: [...p.tracks, trackId] }; 
               return targetPl;
           } 
           return p; 
       }); 
-      syncPlaylists(updated, targetPl); 
+      if (targetPl) {
+          syncPlaylists(updated, targetPl); 
+      }
   };
   const removeFromPlaylist = (playlistId: string, trackId: string) => { 
       let targetPl: Playlist | undefined;
       const updated = playlists.map(p => { 
           if (p.id === playlistId) {
+              const isOwner = currentUser ? p.ownerId === currentUser.id : (!p.ownerId || p.ownerId === 'guest');
+              if (!isOwner) return p;
               targetPl = { ...p, tracks: p.tracks.filter(id => id !== trackId) }; 
               return targetPl;
           } 
           return p; 
       }); 
-      syncPlaylists(updated, targetPl); 
+      if (targetPl) {
+          syncPlaylists(updated, targetPl); 
+      }
   };
   const togglePlaylistSave = (playlistId: string) => { 
     if (!currentUser) return; 
@@ -3309,7 +3404,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
       isDeleteModalOpen, playlistToDelete, openDeleteModal, closeDeleteModal, confirmDeletePlaylist,
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,
-      setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
+      setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, playNext, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, togglePlaylistSave, toggleLike, isLiked,
       toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache, getTrackStreamInfo
     }}>

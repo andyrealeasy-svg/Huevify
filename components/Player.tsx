@@ -17,9 +17,10 @@ export const Player = () => {
     currentTrack, isPlaying, togglePlay, nextTrack, prevTrack, 
     progress, duration, seek, volume, setVolume, playMode, toggleRepeat,
     isLiked, toggleLike, setMobilePlayerOpen, isShuffle, toggleShuffle,
-    openAddToPlaylist, goToArtist, getTrackCover, t
+    openAddToPlaylist, goToArtist, getTrackCover, t, appSettings
   } = useStore();
 
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   const cover = currentTrack ? getTrackCover(currentTrack) : '';
   const prevVolumeRef = useRef(volume > 0 ? volume : 1);
 
@@ -45,8 +46,15 @@ export const Player = () => {
   const allArtists = Array.from(new Set([currentTrack.artist, ...(currentTrack.mainArtists || [])]));
 
   return (
-    // On mobile: floating card bottom-[68px] with horizontal margins, rounded corners and shadow. On desktop: full-width bottom bar height-24.
-    <div className="fixed bottom-[68px] left-2 right-2 md:bottom-0 md:left-0 md:right-0 md:w-full h-14 md:h-24 bg-[#212124]/95 md:bg-surface backdrop-blur-xl md:backdrop-blur-none rounded-lg md:rounded-none border border-white/10 md:border-t md:border-surface-highlight md:border-x-0 md:border-b-0 shadow-[0_8px_24px_rgba(0,0,0,0.85)] md:shadow-none px-2.5 md:px-4 flex items-center justify-between z-50 transition-all select-none overflow-hidden">
+    // On mobile: floating liquid glass card bottom-[calc(env(safe-area-inset-bottom)+80px)] (liquid) or bottom-[68px] (classic). On desktop: full-width bottom bar.
+    <div 
+      id="mini-player-bar"
+      className={`fixed ${
+        isLiquidGlass 
+          ? 'bottom-[calc(env(safe-area-inset-bottom)+76px)] rounded-2xl bg-zinc-900/70 backdrop-blur-2xl border border-white/15 shadow-[0_12px_32px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]' 
+          : 'bottom-[68px] rounded-lg bg-[#212124]/95 backdrop-blur-xl border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.85)]'
+      } left-2 right-2 md:bottom-0 md:left-0 md:right-0 md:w-full h-14 md:h-24 md:bg-surface md:backdrop-blur-none md:rounded-none md:border-t md:border-surface-highlight md:border-x-0 md:border-b-0 md:shadow-none px-2.5 md:px-4 flex items-center justify-between z-50 transition-all select-none overflow-hidden`}
+    >
       
       {/* Track Info - Clickable on mobile to open full player */}
       <div 

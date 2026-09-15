@@ -4,7 +4,24 @@ import { Home, Search, Library, PlusSquare, Heart, Trash2, ListMusic, Plus, User
 import { ViewState } from '../types.ts';
 
 export const Sidebar = () => {
-  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen, likedPlaylistId, t } = useStore();
+  const { setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, tracks, currentUser, setProfileModalOpen, likedPlaylistId, t, appSettings } = useStore();
+
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
+
+  const isTabActive = (tab: 'HOME' | 'SEARCH' | 'LIBRARY') => {
+    if (tab === 'HOME') return view.type === 'HOME';
+    if (tab === 'SEARCH') return view.type === 'SEARCH';
+    if (tab === 'LIBRARY') {
+      return view.type === 'LIBRARY' || 
+             view.type === 'PLAYLIST' || 
+             view.type === 'ALBUM' || 
+             view.type === 'ARTIST' || 
+             view.type === 'ARTIST_DISCOGRAPHY' || 
+             view.type === 'CHARTS' ||
+             view.type === 'GENRE';
+    }
+    return false;
+  };
 
   const isActive = (type: ViewState['type'], id?: string) => {
     if (view.type !== type) return false;
@@ -13,7 +30,13 @@ export const Sidebar = () => {
   };
 
   const navClass = (active: boolean) => 
-    `flex items-center gap-4 px-4 py-2 cursor-pointer transition font-bold text-sm ${active ? 'text-white' : 'text-secondary hover:text-white'}`;
+    isLiquidGlass
+      ? `relative flex items-center gap-4 px-4 py-2.5 mx-2 rounded-xl cursor-pointer transition-all duration-200 font-medium text-sm select-none ${
+          active 
+            ? 'text-white bg-white/[0.13] backdrop-blur-xl border border-white/20 shadow-[0_4px_14px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.35)]' 
+            : 'text-secondary hover:text-white hover:bg-white/[0.06]'
+        }`
+      : `flex items-center gap-4 px-4 py-2 cursor-pointer transition font-bold text-sm ${active ? 'text-white' : 'text-secondary hover:text-white'}`;
 
   const handleCreate = () => {
     setPlaylistIdToEdit(null); 
@@ -65,15 +88,15 @@ export const Sidebar = () => {
       )}
 
       <div className="flex flex-col gap-2">
-        <div onClick={() => setView({ type: 'HOME' })} className={navClass(isActive('HOME'))}>
+        <div onClick={() => setView({ type: 'HOME' })} className={navClass(isTabActive('HOME'))}>
           <Home size={24} />
           {t('home')}
         </div>
-        <div onClick={() => setView({ type: 'SEARCH' })} className={navClass(isActive('SEARCH'))}>
+        <div onClick={() => setView({ type: 'SEARCH' })} className={navClass(isTabActive('SEARCH'))}>
           <Search size={24} />
           {t('search')}
         </div>
-        <div onClick={() => setView({ type: 'LIBRARY' })} className={navClass(isActive('LIBRARY'))}>
+        <div onClick={() => setView({ type: 'LIBRARY' })} className={navClass(isTabActive('LIBRARY'))}>
           <Library size={24} />
           {t('library')}
         </div>

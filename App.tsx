@@ -58,7 +58,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const NotificationOverlay = () => {
-    const { notifications, dismissNotification } = useStore();
+    const { notifications, dismissNotification, appSettings } = useStore();
+    const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
     if (notifications.length === 0) return null;
 
@@ -67,10 +68,16 @@ const NotificationOverlay = () => {
             {notifications.map(n => (
                 <div 
                     key={n.id} 
-                    className={`p-4 rounded-lg shadow-2xl flex items-center justify-between gap-3 animate-slide-in-bottom pointer-events-auto ${
-                        n.type === 'error' ? 'bg-red-600 text-white' : 
-                        n.type === 'success' ? 'bg-green-600 text-white' : 
-                        'bg-surface-highlight text-white border border-primary'
+                    className={`p-3.5 md:p-4 rounded-2xl md:rounded-lg shadow-2xl flex items-center justify-between gap-3 animate-slide-in-bottom pointer-events-auto transition-all ${
+                        isLiquidGlass
+                          ? n.type === 'error'
+                            ? 'max-md:bg-red-950/70 max-md:backdrop-blur-2xl max-md:border max-md:border-red-400/30 max-md:shadow-[0_12px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-red-600 text-white'
+                            : n.type === 'success'
+                            ? 'max-md:bg-emerald-950/70 max-md:backdrop-blur-2xl max-md:border max-md:border-emerald-400/30 max-md:shadow-[0_12px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-green-600 text-white'
+                            : 'max-md:bg-zinc-900/70 max-md:backdrop-blur-2xl max-md:border max-md:border-white/20 max-md:shadow-[0_12px_32px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-surface-highlight md:border md:border-primary text-white'
+                          : n.type === 'error' ? 'bg-red-600 text-white' : 
+                            n.type === 'success' ? 'bg-green-600 text-white' : 
+                            'bg-surface-highlight text-white border border-primary'
                     }`}
                 >
                     <div className="flex items-center gap-3">
@@ -79,7 +86,7 @@ const NotificationOverlay = () => {
                         {n.type === 'info' && <ShieldAlert size={20}/>}
                         <span className="text-sm font-bold">{n.message}</span>
                     </div>
-                    <button onClick={() => dismissNotification(n.id)} className="text-white/80 hover:text-white">OK</button>
+                    <button onClick={() => dismissNotification(n.id)} className="text-white/80 hover:text-white text-xs md:text-sm font-semibold px-2 py-1 rounded-full max-md:bg-white/10">OK</button>
                 </div>
             ))}
         </div>

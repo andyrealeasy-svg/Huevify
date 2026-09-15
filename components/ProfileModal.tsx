@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2, SlidersHorizontal, Activity } from './Icons.tsx';
+import { X, LogOut, User as UserIcon, Settings, ChevronRight, ArrowLeft, Camera, Palette, Globe, Zap, Music2, Moon, Play, Mic2, ShieldAlert, Database, CheckCircle, UploadCloud, Trash2, SlidersHorizontal, Activity, Sparkles, Layers } from './Icons.tsx';
 import { CustomSelect } from './CustomSelect.tsx';
 import { AppSettings } from '../types.ts';
 import { compressImage } from '../utils/imageCompressor.ts';
@@ -29,6 +29,7 @@ const COLORS = [
 
 export const ProfileModal = () => {
   const { isProfileModalOpen, setProfileModalOpen, currentUser, logout, updateUserProfile, appSettings, updateSettings, setArtistHubOpen, t, isSupabaseConnected, clearAppCache } = useStore();
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   const [view, setView] = useState<ModalView>('MENU');
   const [isStorageReady, setIsStorageReady] = useState<boolean | null>(null);
   const [isClearing, setIsClearing] = useState(false);
@@ -124,7 +125,11 @@ export const ProfileModal = () => {
         <div className="flex flex-col gap-3">
             <button
                 onClick={() => setView('PROFILE_EDIT')}
-                className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
+                className={`flex items-center justify-between w-full p-4 transition text-left text-white group ${
+                  isLiquidGlass
+                    ? 'max-md:rounded-2xl max-md:bg-white/[0.06] max-md:hover:bg-white/[0.12] max-md:border max-md:border-white/10 md:rounded md:bg-surface-highlight/50 md:hover:bg-surface-highlight'
+                    : 'rounded bg-surface-highlight/50 hover:bg-surface-highlight'
+                }`}
             >
                 <div className="flex items-center gap-3">
                     <UserIcon size={20} className="text-secondary group-hover:text-primary transition-colors" />
@@ -135,7 +140,11 @@ export const ProfileModal = () => {
 
             <button
                 onClick={() => setView('APP_SETTINGS')}
-                className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
+                className={`flex items-center justify-between w-full p-4 transition text-left text-white group ${
+                  isLiquidGlass
+                    ? 'max-md:rounded-2xl max-md:bg-white/[0.06] max-md:hover:bg-white/[0.12] max-md:border max-md:border-white/10 md:rounded md:bg-surface-highlight/50 md:hover:bg-surface-highlight'
+                    : 'rounded bg-surface-highlight/50 hover:bg-surface-highlight'
+                }`}
             >
                 <div className="flex items-center gap-3">
                     <Settings size={20} className="text-secondary group-hover:text-primary transition-colors" />
@@ -147,7 +156,11 @@ export const ProfileModal = () => {
             {/* Huevify For Artists Button */}
             <button
                 onClick={handleOpenArtistHub}
-                className="flex items-center justify-between w-full p-4 rounded bg-surface-highlight/50 hover:bg-surface-highlight transition text-left text-white group"
+                className={`flex items-center justify-between w-full p-4 transition text-left text-white group ${
+                  isLiquidGlass
+                    ? 'max-md:rounded-2xl max-md:bg-white/[0.06] max-md:hover:bg-white/[0.12] max-md:border max-md:border-white/10 md:rounded md:bg-surface-highlight/50 md:hover:bg-surface-highlight'
+                    : 'rounded bg-surface-highlight/50 hover:bg-surface-highlight'
+                }`}
             >
                 <div className="flex items-center gap-3">
                     <Mic2 size={20} className="text-secondary group-hover:text-primary transition-colors" />
@@ -282,6 +295,54 @@ export const ProfileModal = () => {
                         { value: 'Russian', label: 'Russian (Русский)' }
                     ]}
                 />
+            </div>
+
+            {/* Appearance & Style / Liquid Glass iOS */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <Sparkles size={18} className="text-primary" />
+                    <h3 className="font-bold">{t('appearanceStyle') || "Внешний вид и оформление"}</h3>
+                </div>
+
+                <div className="p-3.5 bg-surface-highlight rounded-lg border border-white/5 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center shrink-0">
+                                <Layers size={18} className="text-white" />
+                            </div>
+                            <div className="flex flex-col pr-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm text-white">{t('liquidGlassNav') || "Жидкое стекло"}</span>
+                                    {appSettings.liquidGlassNav !== false && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                                            Liquid Glass
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-xs text-secondary leading-snug">
+                                    {t('liquidGlassNavDesc') || "Эффект жидкого стекла для нижних кнопок навигации"}
+                                </span>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={appSettings.liquidGlassNav !== false}
+                                onChange={e => updateSettings({ liquidGlassNav: e.target.checked })}
+                            />
+                            <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+
+                    {/* Status indicator row */}
+                    <div className={`pt-2 border-t border-white/5 flex items-center justify-between text-xs text-secondary transition-opacity duration-200 ${appSettings.liquidGlassNav !== false ? 'opacity-100' : 'opacity-50'}`}>
+                        <span>{t('status') || "Режим"}:</span>
+                        <span className={`font-semibold ${appSettings.liquidGlassNav !== false ? 'text-primary' : 'text-secondary'}`}>
+                            {appSettings.liquidGlassNav !== false ? (t('liquidGlassStyle') || "Liquid Glass") : (t('classicNav') || "Классический")}
+                        </span>
+                    </div>
+                </div>
             </div>
 
             {/* Features */}
@@ -520,7 +581,13 @@ export const ProfileModal = () => {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-      <div className="bg-surface w-full max-w-sm rounded-lg p-6 relative shadow-2xl border border-surface-highlight animate-in fade-in zoom-in duration-200">
+      <div 
+        className={`w-full max-w-sm p-6 relative transition-all duration-200 animate-in fade-in zoom-in ${
+          isLiquidGlass
+            ? 'max-md:bg-[#15151e]/85 max-md:backdrop-blur-3xl max-md:border max-md:border-white/20 max-md:rounded-3xl max-md:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-surface md:rounded-lg md:border md:border-surface-highlight md:shadow-2xl'
+            : 'bg-surface rounded-lg border border-surface-highlight shadow-2xl'
+        }`}
+      >
 
         <button
             onClick={() => setProfileModalOpen(false)}
