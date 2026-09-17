@@ -13,6 +13,8 @@ export interface Track {
   feat?: string;
   hueq?: string; // ISRC equivalent
   mainArtists?: string[]; // Array of additional main artists
+  isUnreleased?: boolean; // For tracks in expected releases that are not yet released
+  dailyPlays?: number; // Optional daily plays count
 }
 
 export interface DailyChartTrack extends Track {
@@ -43,10 +45,16 @@ export interface Album {
   trackIds: string[];
   year: number;
   releaseDate?: string; // ISO string for full date display
+  releaseTime?: string;
   recordLabel?: string;
   type?: ReleaseType;
   mainArtists?: string[]; // Added at album level for better display
   genre?: string; // Primary genre of the release
+  isUpcoming?: boolean; // True for expected release / announcement
+  isAnnouncement?: boolean;
+  announcementDate?: string;
+  announcementTime?: string;
+  hideTrackMetadata?: boolean;
 }
 
 export interface User {
@@ -146,7 +154,14 @@ export interface ReleaseRequest {
   
   // Schedule
   releaseDate: string; // ISO String
+  releaseTime?: string;
   releaseMessage?: string;
+
+  // Expected Release / Announcement fields
+  isAnnouncement?: boolean;
+  hideTrackMetadata?: boolean;
+  announcementDate?: string;
+  announcementTime?: string;
 }
 
 export interface ReleaseDraft {
@@ -166,6 +181,12 @@ export interface ReleaseDraft {
   lastSaved: string; // ISO String
   step: number; // 1, 2, 3
   isEditingOriginalId?: string | null;
+
+  // Expected Release / Announcement fields
+  isAnnouncement?: boolean;
+  hideTrackMetadata?: boolean;
+  announcementDate?: string;
+  announcementTime?: string;
 }
 
 export interface ProfileEditRequest {

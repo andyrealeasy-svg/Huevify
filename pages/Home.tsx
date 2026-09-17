@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext.tsx';
 import { Play, ListMusic, User as UserIcon, Clock } from '../components/Icons.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
+import { TrackRow } from '../components/TrackRow.tsx';
 import { StorageService } from '../services/storage.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 
@@ -34,11 +35,13 @@ export const Home = () => {
   const previewCharts = dailyChart.slice(0, 5);
   
   const latestReleases = useMemo(() => {
-    return [...albums].sort((a, b) => {
-      const dateA = a.releaseDate ? new Date(a.releaseDate).getTime() : new Date(a.year, 0, 1).getTime();
-      const dateB = b.releaseDate ? new Date(b.releaseDate).getTime() : new Date(b.year, 0, 1).getTime();
-      return dateB - dateA;
-    }).slice(0, 5);
+    return [...albums]
+      .filter(a => !a.isUpcoming && !a.isAnnouncement)
+      .sort((a, b) => {
+        const dateA = a.releaseDate ? new Date(a.releaseDate).getTime() : new Date(a.year, 0, 1).getTime();
+        const dateB = b.releaseDate ? new Date(b.releaseDate).getTime() : new Date(b.year, 0, 1).getTime();
+        return dateB - dateA;
+      }).slice(0, 5);
   }, [albums]);
 
   // Top 5 most listened releases in the last 2 weeks (14 days)
@@ -74,6 +77,7 @@ export const Home = () => {
     };
 
     return [...albums]
+      .filter(a => !a.isUpcoming && !a.isAnnouncement)
       .sort((a, b) => {
         const playsA = getAlbum14DayPlays(a);
         const playsB = getAlbum14DayPlays(b);
@@ -210,56 +214,22 @@ export const Home = () => {
           </button>
       </div>
       
-      <div className="flex flex-col gap-2 mb-8 animate-slide-up">
+      <div className="flex flex-col gap-1 mb-8 animate-slide-up">
         {previewCharts.length === 0 ? (
             <div className="text-secondary text-sm p-4 bg-surface/30 rounded-lg flex items-center gap-2">
                 <Clock size={16} className="text-primary" />
                 <span>{t('chartCyclePendingDesc') || 'Суточный учёт в процессе. Обновление чарта ежедневно в 21:00 UTC+3.'}</span>
             </div>
         ) : (
-            previewCharts.map((track, idx) => {
-                const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
-                const isCurrent = currentTrack?.id === track.id;
-                return (
-                <div 
+            previewCharts.map((track, idx) => (
+                <TrackRow 
                     key={track.id} 
-                    className="grid grid-cols-[16px_1fr_60px] md:grid-cols-[16px_1fr_80px_60px] items-center gap-4 p-2 rounded hover:bg-surface-highlight group cursor-pointer"
-                    onClick={() => playTrack(track, previewCharts)}
-                >
-                    <div className="w-4 text-center">
-                        <span className="text-secondary font-mono block group-hover:hidden text-sm">{idx + 1}</span>
-                        <Play size={16} fill="white" className="hidden group-hover:block" />
-                    </div>
-                    
-                    <div className="flex items-center gap-3 md:gap-4 flex-1 overflow-hidden">
-                        <img src={getTrackCover(track)} alt={track.title} className="w-10 h-10 md:w-10 md:h-10 rounded object-cover" />
-                        <div className="flex-1 overflow-hidden min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            {isCurrent && (
-                                <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                            )}
-                            <span className={`font-semibold truncate group-hover:underline text-sm md:text-base ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>
-                                {track.title}
-                            </span>
-                            {track.explicit && <ExplicitBadge />}
-                        </div>
-                        <div className="text-xs text-secondary truncate flex items-center gap-1">
-                            {allArtists.map((a, i) => (
-                                <span key={a}>
-                                    {i > 0 && ", "}
-                                    <span onClick={(e) => { e.stopPropagation(); goToArtist(a); }} className="hover:underline cursor-pointer">{a}</span>
-                                </span>
-                            ))}
-                            {/* Mobile Plays */}
-                            <span className="md:hidden">• +{track.dailyPlays.toLocaleString()}</span>
-                        </div>
-                        </div>
-                    </div>
-
-                    <div className="text-xs text-secondary hidden md:block">+{track.dailyPlays.toLocaleString()}</div>
-                    <div className="text-xs text-secondary text-right">{formatDuration(track.duration)}</div>
-                </div>
-            )})
+                    track={track} 
+                    index={idx} 
+                    queue={previewCharts} 
+                    showDailyPlays={true} 
+                />
+            ))
         )}
       </div>
 

@@ -17,9 +17,23 @@ CREATE TABLE IF NOT EXISTS public.releases (
     additional_main_artists JSONB DEFAULT '[]'::jsonb,
     tracks JSONB NOT NULL DEFAULT '[]'::jsonb,
     release_date TIMESTAMPTZ DEFAULT NOW(),
+    release_time TEXT DEFAULT '',
     release_message TEXT DEFAULT '',
+    is_announcement BOOLEAN DEFAULT FALSE,
+    hide_track_metadata BOOLEAN DEFAULT FALSE,
+    announcement_date TIMESTAMPTZ,
+    announcement_time TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for releases table
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS release_time TEXT DEFAULT '';
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS is_announcement BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS hide_track_metadata BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS announcement_date TIMESTAMPTZ;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS announcement_time TEXT DEFAULT '';
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS deletion_requested BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS additional_main_artists JSONB DEFAULT '[]'::jsonb;
 
 -- 2. Artist Accounts Table
 CREATE TABLE IF NOT EXISTS public.artist_accounts (
@@ -133,8 +147,23 @@ CREATE TABLE IF NOT EXISTS public.release_drafts (
     last_saved TIMESTAMPTZ DEFAULT NOW(),
     step INT DEFAULT 1,
     is_editing_original_id TEXT,
+    is_announcement BOOLEAN DEFAULT FALSE,
+    hide_track_metadata BOOLEAN DEFAULT FALSE,
+    announcement_date TEXT,
+    announcement_time TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for release_drafts table
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS is_announcement BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS hide_track_metadata BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS announcement_date TEXT;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS announcement_time TEXT;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS is_editing_original_id TEXT;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS additional_main_artists JSONB DEFAULT '[]'::jsonb;
+
+-- Migration for user_preferences table
+ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS liked_tracks JSONB DEFAULT '[]'::jsonb;
 
 -- 11. Track Play Logs (Detailed play event log for real-time daily chart analytics)
 CREATE TABLE IF NOT EXISTS public.track_play_logs (

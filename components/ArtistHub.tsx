@@ -4,7 +4,8 @@ import { compressImage } from '../utils/imageCompressor.ts';
 import {
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
-  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save
+  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
+  Megaphone, EyeOff, Eye, Info, CalendarClock
 } from './Icons.tsx';
 import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
 import { CustomSelect } from './CustomSelect.tsx';
@@ -65,6 +66,13 @@ export const ArtistHub = () => {
   const [drafts, setDrafts] = useState<ReleaseDraft[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+
+  // Announcement State (Expected Releases)
+  const [isAnnouncement, setIsAnnouncement] = useState(false);
+  const [hideTrackMetadata, setHideTrackMetadata] = useState(false);
+  const [publishAnnouncementImmediately, setPublishAnnouncementImmediately] = useState(true);
+  const [announcementDate, setAnnouncementDate] = useState("");
+  const [announcementTime, setAnnouncementTime] = useState("00:00");
 
   // Editing Mode
   const [isEditing, setIsEditing] = useState(false);
@@ -184,6 +192,10 @@ export const ArtistHub = () => {
           lastSaved: new Date().toISOString(),
           step: distStep,
           isEditingOriginalId: isEditing ? editingId : null,
+          isAnnouncement,
+          hideTrackMetadata,
+          announcementDate: !publishAnnouncementImmediately && announcementDate ? announcementDate : undefined,
+          announcementTime: !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined
       };
   };
 
@@ -232,6 +244,11 @@ export const ArtistHub = () => {
       setIsEditing(Boolean(draft.isEditingOriginalId));
       setEditingId(draft.isEditingOriginalId || null);
       setActiveDraftId(draft.id);
+      setIsAnnouncement(Boolean(draft.isAnnouncement));
+      setHideTrackMetadata(Boolean(draft.hideTrackMetadata));
+      setPublishAnnouncementImmediately(!draft.announcementDate);
+      setAnnouncementDate(draft.announcementDate || "");
+      setAnnouncementTime(draft.announcementTime || "00:00");
       setLastSavedTime(new Date(draft.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       setView('DISTRIBUTION');
       showNotification(t('resume'), "info");
@@ -269,7 +286,8 @@ export const ArtistHub = () => {
       return () => clearTimeout(timer);
   }, [
       view, distStep, distTitle, distArtistName, distType, distGenre, distLabel,
-      distCovers, distMainArtists, distTracks, distDate, distTime, distMsg, isEditing, editingId
+      distCovers, distMainArtists, distTracks, distDate, distTime, distMsg, isEditing, editingId,
+      isAnnouncement, hideTrackMetadata, publishAnnouncementImmediately, announcementDate, announcementTime
   ]);
 
   // Handle beforeunload and page visibility changes to flush draft save immediately
@@ -630,11 +648,29 @@ export const ArtistHub = () => {
       }
       if (distStep === 2) {
           if (distTracks.length === 0) {
-              showNotification(t('addOneTrack'), "error");
+              showNotification(isAnnouncement ? "Добавьте хотя бы один трек в треклист анонса" : t('addOneTrack'), "error");
+              return;
+          }
+          const untitledIdx = distTracks.findIndex(t => !t.title.trim());
+          if (untitledIdx !== -1) {
+              showNotification(`Укажите название для трека #${untitledIdx + 1}`, "error");
               return;
           }
       }
       setDistStep(prev => prev + 1);
+  };
+
+  const addNewTrack = () => {
+      const nextNum = distTracks.length + 1;
+      const newTrack: DistributionTrack = {
+          title: ``,
+          explicit: false,
+          duration: 180,
+          genre: distGenre || 'Pop',
+          fileUrl: "",
+          mainArtists: []
+      };
+      setDistTracks(prev => [...prev, newTrack]);
   };
 
   const handleSubmitRelease = async () => {
@@ -690,7 +726,12 @@ export const ArtistHub = () => {
           additionalMainArtists: distMainArtists,
           tracks: finalTracks,
           releaseDate: dateTime.toISOString(),
-          releaseMessage: distMsg
+          releaseTime: distTime,
+          releaseMessage: distMsg,
+          isAnnouncement: isAnnouncement,
+          hideTrackMetadata: isAnnouncement ? hideTrackMetadata : false,
+          announcementDate: isAnnouncement && !publishAnnouncementImmediately && announcementDate ? announcementDate : undefined,
+          announcementTime: isAnnouncement && !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined
       };
 
       if (isEditing && editingId) {
@@ -702,7 +743,7 @@ export const ArtistHub = () => {
           showNotification(t('releaseUpdated'), "success");
       } else {
           submitRelease(payload, overrideArtist);
-          showNotification(t('releaseSubmitted'), "success");
+          showNotification(isAnnouncement ? "Анонс альбома успешно создан!" : t('releaseSubmitted'), "success");
       }
 
       // Clear active draft if this release was from a draft
@@ -729,19 +770,30 @@ export const ArtistHub = () => {
       resetDistForm();
   };
 
-  const resetDistForm = () => {
+  const resetDistForm = (forAnnouncement: boolean = false) => {
       setDistStep(1);
       setDistTitle("");
       setDistArtistName("");
+      setDistType(forAnnouncement ? 'Album' : 'Single');
+      setDistGenre("Pop");
+      setDistLabel("");
       setDistTracks([]);
       setDistCovers([]);
       setDistMsg("");
+      setDistDate("");
+      setDistTime("00:00");
       setDistMainArtists([]);
+      setDistMainArtistInput("");
       setTrackArtistInputs({});
       setIsEditing(false);
       setEditingId(null);
       setActiveDraftId(null);
       setLastSavedTime(null);
+      setIsAnnouncement(forAnnouncement);
+      setHideTrackMetadata(false);
+      setPublishAnnouncementImmediately(true);
+      setAnnouncementDate("");
+      setAnnouncementTime("00:00");
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -830,6 +882,12 @@ export const ArtistHub = () => {
       setDistTime(dateObj.toTimeString().slice(0, 5));
 
       setDistMsg(release.releaseMessage || "");
+
+      setIsAnnouncement(Boolean(release.isAnnouncement));
+      setHideTrackMetadata(Boolean(release.hideTrackMetadata));
+      setPublishAnnouncementImmediately(!release.announcementDate);
+      setAnnouncementDate(release.announcementDate || "");
+      setAnnouncementTime(release.announcementTime || "00:00");
 
       setDistStep(1);
       setView('DISTRIBUTION');
@@ -1296,17 +1354,28 @@ export const ArtistHub = () => {
           </div>
 
           {/* Quick Actions Grid for Mod */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 mb-8 shrink-0">
                 <button 
-                  onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} 
+                  onClick={() => { resetDistForm(false); setView('DISTRIBUTION'); }} 
                   className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] max-md:rounded-2xl md:bg-primary md:text-black md:shadow-lg md:hover:shadow-primary/20'
                       : 'bg-primary text-black shadow-lg hover:shadow-primary/20'
                   }`}
                 >
-                    <UploadCloud size={32}/>
-                    {t('uploadRelease')}
+                    <UploadCloud size={30}/>
+                    <span>{t('uploadRelease')}</span>
+                </button>
+                <button 
+                  onClick={() => { resetDistForm(true); setView('DISTRIBUTION'); }} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full border border-purple-500/30 ${
+                    isLiquidGlass
+                      ? 'max-md:bg-purple-600/30 max-md:backdrop-blur-2xl max-md:text-white max-md:shadow-[0_6px_24px_rgba(168,85,247,0.35),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-purple-950/40 md:text-purple-300 md:hover:bg-purple-900/60 md:hover:text-white'
+                      : 'bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 hover:text-white'
+                  }`}
+                >
+                    <Megaphone size={30} className="text-purple-400"/>
+                    <span>Анонс альбома</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_ALL_RELEASES')} 
@@ -1316,8 +1385,8 @@ export const ArtistHub = () => {
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <Database size={32} className="text-secondary"/>
-                    {t('manageReleases')}
+                    <Database size={30} className="text-secondary"/>
+                    <span>{t('manageReleases')}</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_ALL_TRACKS')} 
@@ -1327,8 +1396,8 @@ export const ArtistHub = () => {
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <ListMusic size={32} className="text-secondary"/>
-                    {t('manageTracks')}
+                    <ListMusic size={30} className="text-secondary"/>
+                    <span>{t('manageTracks')}</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_CREDENTIALS')} 
@@ -1338,8 +1407,8 @@ export const ArtistHub = () => {
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <Key size={32} className="text-secondary"/>
-                    {t('artistCreds')}
+                    <Key size={30} className="text-secondary"/>
+                    <span>{t('artistCreds')}</span>
                 </button>
           </div>
 
@@ -1460,6 +1529,7 @@ export const ArtistHub = () => {
                               <div className="flex-1 min-w-0 flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
                                       <div className="font-bold truncate">{r.title}</div>
+                                      {r.isAnnouncement && <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-bold">Анонс</span>}
                                       {r.deletionRequested && <span className="text-[10px] bg-red-500 text-white px-1 rounded font-bold">{t('deleteReq')}</span>}
                                   </div>
                                   <div className="text-xs text-secondary truncate">{r.artistName} • {r.type}</div>
@@ -1573,6 +1643,138 @@ export const ArtistHub = () => {
           {distStep === 1 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
                   <h3 className="text-xl font-bold">{t('step1')}</h3>
+
+                  {/* Announcement Settings Card */}
+                  <div className={`p-4 rounded-xl border flex flex-col gap-3 transition ${
+                    isAnnouncement 
+                      ? 'bg-surface/60 border-white/20 shadow-lg' 
+                      : 'bg-surface/30 border-surface-highlight/60'
+                  }`}>
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isAnnouncement ? 'bg-white text-black' : 'bg-surface-highlight text-secondary'}`}>
+                                  <Megaphone size={18} />
+                              </div>
+                              <div>
+                                  <div className="text-sm font-bold text-white flex items-center gap-2">
+                                      <span>Анонс релиза (Expected Release)</span>
+                                  </div>
+                                  <div className="text-xs text-secondary">Позволяет опубликовать страницу релиза до даты выхода, как в Spotify</div>
+                              </div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                              <input 
+                                type="checkbox" 
+                                checked={isAnnouncement} 
+                                onChange={e => {
+                                    const nextChecked = e.target.checked;
+                                    setIsAnnouncement(nextChecked);
+                                    if (nextChecked && distType === 'Single') {
+                                        setDistType('Album');
+                                    }
+                                }} 
+                                className="sr-only peer" 
+                              />
+                              <div className="w-11 h-6 bg-surface-highlight peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
+                          </label>
+                      </div>
+
+                      {isAnnouncement && (
+                          <div className="pt-3 border-t border-white/10 flex flex-col gap-3 animate-fade-in text-xs">
+                              {/* Custom UI Checkbox for Hiding Track Metadata */}
+                              <div 
+                                onClick={() => setHideTrackMetadata(!hideTrackMetadata)}
+                                className="flex items-start justify-between gap-3 p-3 rounded-lg bg-black/30 hover:bg-black/40 border border-white/10 transition cursor-pointer select-none"
+                              >
+                                  <div className="flex items-start gap-3">
+                                      <div className="mt-0.5 text-secondary">
+                                          {hideTrackMetadata ? <EyeOff size={16} /> : <Eye size={16} />}
+                                      </div>
+                                      <div>
+                                          <div className="font-semibold text-white text-sm">Скрыть названия треков в анонсе</div>
+                                          <div className="text-secondary text-xs leading-relaxed mt-0.5">
+                                              {hideTrackMetadata 
+                                                ? "Названия треков и авторы будут замаскированы (••••••••) до официального релиза" 
+                                                : "Названия треков и приглашенные артисты будут открыто видны в треклисте"}
+                                          </div>
+                                      </div>
+                                  </div>
+                                  <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition ${
+                                    hideTrackMetadata 
+                                      ? 'bg-white border-white text-black' 
+                                      : 'border-white/30 bg-white/5'
+                                  }`}>
+                                      {hideTrackMetadata && <Check size={14} className="stroke-[3]" />}
+                                  </div>
+                              </div>
+
+                              {/* Custom UI Radios for Publishing Timing */}
+                              <div className="flex flex-col gap-2 p-3 rounded-lg bg-black/30 border border-white/10">
+                                  <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                                      <CalendarClock size={16} className="text-secondary" />
+                                      <span>Публикация страницы анонса</span>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                      <div 
+                                        onClick={() => setPublishAnnouncementImmediately(true)}
+                                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                                          publishAnnouncementImmediately
+                                            ? 'bg-white/10 border-white/40 text-white'
+                                            : 'bg-black/20 border-white/5 text-secondary hover:border-white/20'
+                                        }`}
+                                      >
+                                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition ${
+                                            publishAnnouncementImmediately ? 'border-white bg-white' : 'border-white/30'
+                                          }`}>
+                                              {publishAnnouncementImmediately && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                          </div>
+                                          <span className="text-xs font-medium">Сразу после одобрения</span>
+                                      </div>
+
+                                      <div 
+                                        onClick={() => setPublishAnnouncementImmediately(false)}
+                                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition cursor-pointer select-none ${
+                                          !publishAnnouncementImmediately
+                                            ? 'bg-white/10 border-white/40 text-white'
+                                            : 'bg-black/20 border-white/5 text-secondary hover:border-white/20'
+                                        }`}
+                                      >
+                                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition ${
+                                            !publishAnnouncementImmediately ? 'border-white bg-white' : 'border-white/30'
+                                          }`}>
+                                              {!publishAnnouncementImmediately && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                          </div>
+                                          <span className="text-xs font-medium">По расписанию</span>
+                                      </div>
+                                  </div>
+
+                                  {!publishAnnouncementImmediately && (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-white/10">
+                                          <div>
+                                              <label className="text-[10px] uppercase font-bold text-secondary">Дата показа анонса</label>
+                                              <input 
+                                                type="date" 
+                                                value={announcementDate} 
+                                                onChange={e => setAnnouncementDate(e.target.value)} 
+                                                className="w-full p-2 rounded bg-black/40 border border-white/15 text-white text-xs mt-1 focus:border-white/40 focus:outline-none" 
+                                              />
+                                          </div>
+                                          <div>
+                                              <label className="text-[10px] uppercase font-bold text-secondary">Время показа анонса</label>
+                                              <input 
+                                                type="time" 
+                                                value={announcementTime} 
+                                                onChange={e => setAnnouncementTime(e.target.value)} 
+                                                className="w-full p-2 rounded bg-black/40 border border-white/15 text-white text-xs mt-1 focus:border-white/40 focus:outline-none" 
+                                              />
+                                          </div>
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="flex flex-col gap-4">
                           <input 
@@ -1604,7 +1806,7 @@ export const ArtistHub = () => {
                           <CustomSelect
                               value={distType}
                               onChange={val => setDistType(val as any)}
-                              options={['Single', 'EP', 'Album', 'Mixtape']}
+                              options={isAnnouncement ? ['EP', 'Album', 'Mixtape'] : ['Single', 'EP', 'Album', 'Mixtape']}
                           />
                           <CustomSelect
                               value={distGenre}
@@ -1671,7 +1873,7 @@ export const ArtistHub = () => {
                                       isLiquidGlass
                                         ? 'max-md:bg-white/[0.12] max-md:border max-md:border-white/15 max-md:rounded-xl md:bg-surface-highlight'
                                         : 'bg-surface-highlight'
-                                    }`}
+                                    }`} 
                                   >
                                     <Plus size={20}/>
                                   </button>
@@ -1692,9 +1894,18 @@ export const ArtistHub = () => {
           {distStep === 2 && (
               <div className="flex flex-col gap-6 animate-slide-in-right">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <h3 className="text-xl font-bold">{t('step2')}</h3>
+                      <div className="flex items-center gap-2">
+                          <h3 className="text-xl font-bold">{t('step2')}</h3>
+                      </div>
 
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                          <button
+                              type="button"
+                              onClick={addNewTrack}
+                              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                          >
+                              <Plus size={16}/> {isAnnouncement ? "Добавить трек" : t('addTrack')}
+                          </button>
                           <button
                               type="button"
                               onClick={() => {
@@ -1711,16 +1922,18 @@ export const ArtistHub = () => {
                           >
                               <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
                           </button>
-                          <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              className={`flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm ${
-                                isLiquidGlass ? 'max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25)]' : ''
-                              }`}
-                          >
-                              <Plus size={16}/> {t('addTrack')}
-                          </button>
-                          <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
+                          {!isAnnouncement && (
+                              <>
+                                  <button
+                                      type="button"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      className="flex items-center gap-2 bg-surface hover:bg-surface-highlight border border-surface-highlight text-white px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                                  >
+                                      <FileAudio size={16}/> Загрузить аудио
+                                  </button>
+                                  <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
+                              </>
+                          )}
                       </div>
                   </div>
 
@@ -1755,7 +1968,7 @@ export const ArtistHub = () => {
                                               value={track.title}
                                               onChange={e => updateTrack(i, 'title', e.target.value)}
                                               className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
-                                              placeholder={t('trackTitle')}
+                                              placeholder={isAnnouncement ? `Название трека #${i+1}` : t('trackTitle')}
                                           />
                                           {track.existingHueq ? (
                                               <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full font-mono mt-1 inline-flex items-center gap-1 w-fit">
@@ -1764,6 +1977,10 @@ export const ArtistHub = () => {
                                           ) : track.generatedHueq ? (
                                               <span className="text-[10px] text-secondary/70 font-mono mt-1">
                                                   HUEQ: {track.generatedHueq}
+                                              </span>
+                                          ) : isAnnouncement ? (
+                                              <span className="text-[10px] text-secondary font-medium mt-1">
+                                                  {hideTrackMetadata ? "• Метаданные будут скрыты до релиза" : "• Будет показано в анонсе"}
                                               </span>
                                           ) : null}
                                       </div>
@@ -1796,7 +2013,7 @@ export const ArtistHub = () => {
                                               <input type="checkbox" checked={track.explicit} onChange={e => updateTrack(i, 'explicit', e.target.checked)} className="rounded text-primary focus:ring-0"/>
                                               <span className="text-xs font-bold uppercase text-secondary">{t('explicit')}</span>
                                           </label>
-                                          <div className="text-xs text-secondary bg-black/20 px-2 py-1 rounded">{formatDuration(track.duration)}</div>
+                                          <div className="text-xs text-secondary bg-black/20 px-2 py-1 rounded">{formatDuration(track.duration || 180)}</div>
                                       </div>
                                   </div>
 
@@ -1839,21 +2056,23 @@ export const ArtistHub = () => {
                               : 'border-surface-highlight/70 bg-surface/20'
                           }`}>
                               <div className="w-12 h-12 rounded-full bg-surface-highlight/60 flex items-center justify-center text-secondary">
-                                  <FileAudio size={24} />
+                                  {isAnnouncement ? <Megaphone size={24} className="text-secondary" /> : <FileAudio size={24} />}
                               </div>
                               <div className="font-semibold text-white text-sm sm:text-base">
-                                  {t('noTracks') || "Треков пока нет"}
+                                  {isAnnouncement ? "Треклист анонса пуст" : (t('noTracks') || "Треков пока нет")}
                               </div>
                               <p className="text-xs text-secondary max-w-md">
-                                  {t('searchByHueqDesc') || "Загрузите аудиофайл с устройства или используйте HUEQ-код существующего трека без повторной загрузки аудио."}
+                                  {isAnnouncement 
+                                    ? "Добавьте названия треков, которые войдут в альбом. Загружать аудиофайлы для анонса не нужно." 
+                                    : (t('searchByHueqDesc') || "Загрузите аудиофайл с устройства или используйте HUEQ-код существующего трека без повторной загрузки аудио.")}
                               </p>
                               <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
                                   <button
                                       type="button"
-                                      onClick={() => fileInputRef.current?.click()}
+                                      onClick={addNewTrack}
                                       className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
                                   >
-                                      <Plus size={16}/> {t('addTrack')}
+                                      <Plus size={16}/> {isAnnouncement ? "Добавить трек" : t('addTrack')}
                                   </button>
                                   <button
                                       type="button"
@@ -1871,6 +2090,15 @@ export const ArtistHub = () => {
                                   >
                                       <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
                                   </button>
+                                  {!isAnnouncement && (
+                                      <button
+                                          type="button"
+                                          onClick={() => fileInputRef.current?.click()}
+                                          className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
+                                      >
+                                          <FileAudio size={16}/> Загрузить аудио
+                                      </button>
+                                  )}
                               </div>
                           </div>
                       )}
@@ -2096,17 +2324,28 @@ export const ArtistHub = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 w-full shrink-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 w-full shrink-0">
                 <button 
-                  onClick={() => { resetDistForm(); setView('DISTRIBUTION'); }} 
+                  onClick={() => { resetDistForm(false); setView('DISTRIBUTION'); }} 
                   className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] max-md:rounded-2xl md:bg-primary md:text-black md:shadow-lg md:hover:shadow-primary/20'
                       : 'bg-primary text-black shadow-lg hover:shadow-primary/20'
                   }`}
                 >
-                    <UploadCloud size={32}/>
-                    {t('uploadNew')}
+                    <UploadCloud size={30}/>
+                    <span>{t('uploadNew')}</span>
+                </button>
+                <button 
+                  onClick={() => { resetDistForm(true); setView('DISTRIBUTION'); }} 
+                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full border border-purple-500/30 ${
+                    isLiquidGlass
+                      ? 'max-md:bg-purple-600/30 max-md:backdrop-blur-2xl max-md:text-white max-md:shadow-[0_6px_24px_rgba(168,85,247,0.35),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-purple-950/40 md:text-purple-300 md:hover:bg-purple-900/60 md:hover:text-white'
+                      : 'bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 hover:text-white'
+                  }`}
+                >
+                    <Megaphone size={30} className="text-purple-400"/>
+                    <span>Анонс альбома</span>
                 </button>
                 <button 
                   onClick={() => setView('PROFILE_EDIT')} 
@@ -2116,8 +2355,8 @@ export const ArtistHub = () => {
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <Edit size={32} className="text-secondary"/>
-                    {t('editProfile')}
+                    <Edit size={30} className="text-secondary"/>
+                    <span>{t('editProfile')}</span>
                 </button>
                 <button 
                   onClick={() => setView('ARTIST_PICK')} 
@@ -2127,8 +2366,8 @@ export const ArtistHub = () => {
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <ListMusic size={32} className="text-secondary"/>
-                    {t('artistPick')}
+                    <ListMusic size={30} className="text-secondary"/>
+                    <span>{t('artistPick')}</span>
                 </button>
             </div>
 
@@ -2512,13 +2751,26 @@ export const ArtistHub = () => {
                               <div className="text-sm text-secondary">{selectedRelease.type} • {selectedRelease.genre}</div>
                               <div className="text-sm text-secondary">Label: {selectedRelease.label}</div>
                               <div className="text-sm text-secondary">{t('released')}: {new Date(selectedRelease.releaseDate).toLocaleString()}</div>
-                              <div className={`text-xs font-bold uppercase inline-block px-2 py-1 rounded w-fit ${
-                                  selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
-                                  selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-500' :
-                                  selectedRelease.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
-                                  'bg-yellow-500/20 text-yellow-500'
-                              }`}>
-                                  {selectedRelease.status}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                  <div className={`text-xs font-bold uppercase inline-block px-2 py-1 rounded w-fit ${
+                                      selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
+                                      selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-500' :
+                                      selectedRelease.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
+                                      'bg-yellow-500/20 text-yellow-500'
+                                  }`}>
+                                      {selectedRelease.status}
+                                  </div>
+                                  {selectedRelease.isAnnouncement && (
+                                      <div className="text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded flex items-center gap-1">
+                                          <Megaphone size={12} />
+                                          <span>Анонс альбома</span>
+                                          {selectedRelease.hideTrackMetadata && (
+                                              <span className="text-[10px] text-purple-400 font-normal ml-1">
+                                                  (Метаданные скрыты)
+                                              </span>
+                                          )}
+                                      </div>
+                                  )}
                               </div>
                               {selectedRelease.releaseMessage && (
                                   <div className="mt-2 p-2 bg-white/5 rounded text-sm italic text-secondary">

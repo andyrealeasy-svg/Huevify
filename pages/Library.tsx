@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock } from '../components/Icons.tsx';
+import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal } from '../components/Icons.tsx';
 import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
+import { ReleaseCountdown } from '../components/ReleaseCountdown.tsx';
+import { TrackRow } from '../components/TrackRow.tsx';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -15,6 +17,21 @@ const formatPlays = (plays: number) => {
     return new Intl.NumberFormat('en-US').format(plays);
 };
 
+const formatReleaseDateDisplay = (dateString?: string) => {
+    if (!dateString) return '';
+    try {
+        const d = new Date(dateString);
+        if (isNaN(d.getTime())) return dateString;
+        return d.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+    } catch {
+        return dateString;
+    }
+};
+
 export const Library = () => {
   const { 
     view, playlists, tracks, albums, isLiked, toggleLike, playTrack, 
@@ -22,7 +39,7 @@ export const Library = () => {
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
     currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover,
-    currentTrack, isPlaying, t, appSettings
+    currentTrack, isPlaying, t, appSettings, showNotification
   } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
@@ -288,44 +305,17 @@ export const Library = () => {
                        </p>
                    </div>
                ) : (
-                   dailyChart.map((track, idx) => {
-                       const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
-                       const isCurrent = currentTrack?.id === track.id;
-                       
-                       return (
-                       <div key={track.id} className="grid grid-cols-[30px_minmax(0,1fr)_60px] md:grid-cols-[30px_4fr_2fr_1fr_60px] gap-4 px-2 py-3 rounded hover:bg-surface-highlight group items-center">
-                            <div className="flex justify-center text-xl font-bold text-secondary">{idx + 1}</div>
-                            <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                                 <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover shrink-0" alt="" />
-                                 <div className="flex flex-col overflow-hidden min-w-0 flex-1">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                        {isCurrent && (
-                                            <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                                        )}
-                                        <span className={`${isCurrent ? 'text-primary font-bold' : 'text-white font-medium'} truncate`}>{track.title}</span>
-                                        {track.explicit && <ExplicitBadge />}
-                                    </div>
-                                    <div className="text-xs text-secondary truncate">
-                                        {allArtists.map((a, i) => (
-                                            <span key={a}>
-                                                {i > 0 && ", "}
-                                                <span onClick={(e) => { e.stopPropagation(); goToArtist(a); }} className="hover:underline cursor-pointer">{a}</span>
-                                            </span>
-                                        ))}
-                                    </div>
-                                    <span className="text-secondary text-xs md:hidden truncate mt-0.5">{formatPlays(track.dailyPlays)} {t('plays')}</span>
-                                 </div>
-                            </div>
-                            <span className="text-secondary text-sm hidden md:block truncate">{formatPlays(track.dailyPlays)} {t('dailyPlays')}</span>
-                            <span className="text-secondary text-sm hidden md:block">{formatDuration(track.duration)}</span>
-                            <div className="flex items-center gap-3 justify-end">
-                                <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
-                                    <Heart size={16} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
-                                </button>
-                                <button onClick={() => playTrack(track, dailyChart)} className="text-white"><Play size={20} fill="white"/></button>
-                            </div>
-                       </div>
-                   )})
+                   <div className="flex flex-col gap-1">
+                       {dailyChart.map((track, idx) => (
+                           <TrackRow 
+                               key={track.id} 
+                               track={track} 
+                               index={idx} 
+                               queue={dailyChart} 
+                               showDailyPlays={true} 
+                           />
+                       ))}
+                   </div>
                )}
             </div>
         </div>
@@ -364,8 +354,12 @@ export const Library = () => {
         }, 0);
       };
 
-      // Сортировка по дате (новейший первый)
-      const sortedByDate = [...ownAlbums].sort((a, b) => {
+      // Find upcoming expected release for this artist
+      const upcomingAlbums = ownAlbums.filter(a => a.isUpcoming);
+
+      // Released albums sorted by date (newest first)
+      const releasedAlbums = ownAlbums.filter(a => !a.isUpcoming);
+      const sortedByDate = [...releasedAlbums].sort((a, b) => {
         const diff = getAlbumReleaseTime(b) - getAlbumReleaseTime(a);
         if (diff !== 0) return diff;
         return (b.year || 0) - (a.year || 0);
@@ -379,8 +373,10 @@ export const Library = () => {
         ? sortedByDate.filter(a => a.id !== latestRelease.id).sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a)).slice(0, 3)
         : [];
 
-      // Итоговые релизы для отображения в карточке: 1 последний, ещё 3 самых прослушиваемых
-      const discographyPreview = latestRelease ? [latestRelease, ...otherReleasesByPlays] : [];
+      // Итоговые релизы для отображения в карточке:
+      // Ожидаемый релиз(ы) ставится самым верхним 5-м альбомом, затем остальные вышедшие релизы
+      const releasedPreview = latestRelease ? [latestRelease, ...otherReleasesByPlays] : [];
+      const discographyPreview = [...upcomingAlbums, ...releasedPreview].slice(0, 5);
       
       const { monthlyPlays, globalRank } = getArtistStats(artistName);
       
@@ -494,42 +490,14 @@ export const Library = () => {
 
                         <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
                         <div className="flex flex-col gap-1 mb-8">
-                            {topTracks.map((track, idx) => {
-                                const isCurrent = currentTrack?.id === track.id;
-                                return (
-                                <div 
+                            {topTracks.map((track, idx) => (
+                                <TrackRow 
                                     key={track.id} 
-                                    className={`grid grid-cols-[20px_1fr_60px] md:grid-cols-[20px_1fr_60px_60px] items-center gap-4 p-2 transition group cursor-pointer ${
-                                      isLiquidGlass
-                                        ? 'max-md:rounded-xl max-md:hover:bg-white/[0.06] max-md:active:bg-white/[0.1] md:rounded md:hover:bg-surface-highlight'
-                                        : 'rounded hover:bg-surface-highlight'
-                                    }`} 
-                                    onClick={() => playTrack(track, topTracks)}
-                                >
-                                    <div className="w-5 flex justify-center items-center">
-                                        {isCurrent ? (
-                                            <PlayingVisualizer isPlaying={isPlaying} size="sm" />
-                                        ) : (
-                                            <span className="text-secondary text-sm">{idx + 1}</span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                                        <img src={getTrackCover(track)} className="w-10 h-10 rounded-lg object-cover shrink-0" alt=""/>
-                                        <div className="flex flex-col overflow-hidden min-w-0 flex-1">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                {isCurrent && (
-                                                    <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                                                )}
-                                                <span className={`${isCurrent ? 'text-primary font-bold' : 'font-medium text-white'} truncate`}>{track.title}</span>
-                                                {track.explicit && <ExplicitBadge />}
-                                            </div>
-                                            <span className="md:hidden text-xs text-secondary truncate">{formatPlays(track.plays)} {t('plays')}</span>
-                                        </div>
-                                    </div>
-                                    <span className="text-secondary text-sm hidden md:block">{formatPlays(track.plays)}</span>
-                                    <span className="text-secondary text-sm text-right">{formatDuration(track.duration)}</span>
-                                </div>
-                            );})}
+                                    track={track} 
+                                    index={idx} 
+                                    queue={topTracks} 
+                                />
+                            ))}
                         </div>
 
                         {/* Дискография: вертикальный блок сверху вниз */}
@@ -549,9 +517,10 @@ export const Library = () => {
                             ) : (
                                 <div className="flex flex-col gap-2">
                                     {discographyPreview.map((album, idx) => {
-                                        const isLatest = idx === 0 && latestRelease?.id === album.id;
+                                        const isUpcoming = !!album.isUpcoming;
+                                        const isLatest = !isUpcoming && idx === 0 && latestRelease?.id === album.id;
                                         const playsCount = getAlbumPlays(album);
-                                        const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом');
+                                        const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : album.type === 'Mixtape' ? 'Микстейп' : t('album', 'Альбом');
                                         return (
                                             <div 
                                                 key={album.id} 
@@ -569,16 +538,25 @@ export const Library = () => {
                                                             alt={album.title}
                                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                                                         />
-                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                                            <Play size={20} fill="white" className="text-white ml-0.5" />
-                                                        </div>
+                                                        {!isUpcoming && (
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                                <Play size={20} fill="white" className="text-white ml-0.5" />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="flex flex-col overflow-hidden min-w-0">
-                                                        <span className="font-semibold text-white truncate text-base group-hover:underline">
-                                                            {album.title}
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-semibold text-white truncate text-base group-hover:underline">
+                                                                {album.title}
+                                                            </span>
+                                                            {isUpcoming && (
+                                                                <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                                                                    {t('expectedRelease', 'Ожидаемый релиз')}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <span className="text-xs text-secondary truncate mt-0.5">
-                                                            {album.year} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                                                            {album.year || (album.releaseDate ? new Date(album.releaseDate).getFullYear() : '')} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -769,265 +747,341 @@ export const Library = () => {
           </div>
 
           <div className="flex flex-col items-center text-center md:flex-row md:items-end md:text-left gap-6 mt-8 md:mt-8">
-            {/* Cover Art Logic */}
-            <div 
-                className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden animate-appear relative group ${
-                  isLiquidGlass
-                    ? 'max-md:rounded-2xl max-md:border max-md:border-white/20 max-md:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:rounded-md'
-                    : 'rounded-md'
-                } ${
-                  hasMultipleCovers || (isPlaylist && isOwner && !isSystem) ? 'cursor-pointer' : ''
-                }`}
-                onClick={(e) => { 
-                  if (hasMultipleCovers) {
-                    setCoverPickerOpen(true); 
-                  } else if (isPlaylist && isOwner && !isSystem) {
-                    handleEditPlaylist(id, e);
-                  }
-                }}
-            >
-                {isLikedSongs ? (
-                    <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
-                        <Heart size={64} fill="white" className="text-white" />
-                    </div>
-                ) : isHistory ? (
-                    <div className="w-full h-full bg-surface-highlight flex items-center justify-center">
+            {/* Cover Art */}
+            <div className="flex flex-col items-center gap-3 shrink-0">
+              <div 
+                  className={`w-48 h-48 md:w-56 md:h-56 shadow-2xl shrink-0 flex items-center justify-center bg-surface-highlight overflow-hidden animate-appear relative group ${
+                    isLiquidGlass
+                      ? 'max-md:rounded-2xl max-md:border max-md:border-white/20 max-md:shadow-[0_16px_40px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)] md:rounded-md'
+                      : 'rounded-md'
+                  } ${
+                    hasMultipleCovers || (isPlaylist && isOwner && !isSystem) ? 'cursor-pointer' : ''
+                  }`}
+                  onClick={(e) => { 
+                    if (hasMultipleCovers) {
+                      setCoverPickerOpen(true); 
+                    } else if (isPlaylist && isOwner && !isSystem) {
+                      handleEditPlaylist(id, e);
+                    }
+                  }}
+              >
+                  {isLikedSongs ? (
+                      <div className="w-full h-full bg-gradient-to-br from-indigo-700 to-blue-300 flex items-center justify-center">
+                          <Heart size={64} fill="white" className="text-white" />
+                      </div>
+                  ) : isHistory ? (
+                      <div className="w-full h-full bg-surface-highlight flex items-center justify-center">
+                          <ListMusic size={64} className="text-secondary" />
+                      </div>
+                  ) : cover ? (
+                      <>
+                          <img src={cover} alt={title} className="w-full h-full object-cover" />
+                          
+                          {/* Overlay for multiple covers */}
+                          {hasMultipleCovers && (
+                               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                   <span className="text-xs font-bold border border-white px-2 py-1 rounded">{t('changeCover')}</span>
+                               </div>
+                          )}
+                          {/* Overlay for owner playlist photo change */}
+                          {isPlaylist && isOwner && !isSystem && (
+                               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
+                                   <Edit size={28} className="text-white" />
+                                   <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
+                               </div>
+                          )}
+                      </>
+                  ) : (
+                      <>
                         <ListMusic size={64} className="text-secondary" />
-                    </div>
-                ) : cover ? (
-                    <>
-                        <img src={cover} alt={title} className="w-full h-full object-cover" />
-                        
-                        {/* Overlay for multiple covers */}
-                        {hasMultipleCovers && (
-                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                 <span className="text-xs font-bold border border-white px-2 py-1 rounded">{t('changeCover')}</span>
-                             </div>
-                        )}
-                        {/* Overlay for owner playlist photo change */}
                         {isPlaylist && isOwner && !isSystem && (
-                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
-                                 <Edit size={28} className="text-white" />
-                                 <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
-                             </div>
+                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
+                               <Edit size={28} className="text-white" />
+                               <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
+                           </div>
                         )}
-                    </>
-                ) : (
-                    <>
-                      <ListMusic size={64} className="text-secondary" />
-                      {isPlaylist && isOwner && !isSystem && (
-                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition gap-1.5">
-                             <Edit size={28} className="text-white" />
-                             <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded">{t('choosePhoto')}</span>
-                         </div>
-                      )}
-                    </>
-                )}
+                      </>
+                  )}
+              </div>
             </div>
 
-            <div className="flex flex-col gap-2 w-full md:w-auto animate-appear items-center md:items-start">
-              <span className="uppercase text-xs font-bold hidden md:block">
-                  {releaseType}
-              </span>
-              <h1 className="text-3xl md:text-7xl font-bold tracking-tighter leading-tight line-clamp-2">
+            {currentAlbumObj?.isUpcoming ? (
+              <div className="flex flex-col gap-2 w-full md:w-auto animate-appear items-center md:items-start">
+                <span className="text-xs md:text-sm font-bold text-white/80 uppercase tracking-wider">
+                  {currentAlbumObj.type === 'EP' ? 'Мини-альбом' : currentAlbumObj.type === 'Mixtape' ? 'Микстейп' : t('album', 'Альбом')}
+                </span>
+                <h1 className="text-3xl md:text-6xl lg:text-7xl font-black tracking-tight leading-tight line-clamp-2 text-white">
                   {title}
-              </h1>
-              {description && <p className="text-secondary/80 text-sm md:text-base font-medium">{description}</p>}
-              
-              {!isPlaylist && (
-                  <div className="flex flex-wrap justify-center md:justify-start items-center gap-1 font-semibold text-sm md:text-base mt-1 text-white">
-                      {allAlbumArtists.map((art, idx) => (
-                          <span key={art}>
-                              {idx > 0 && ", "}
-                              <span onClick={() => goToArtist(art)} className="hover:underline cursor-pointer">{art}</span>
-                          </span>
-                      ))}
-                      {year && <span className="text-secondary"> • {year}</span>}
-                  </div>
-              )}
-              
-              {isPlaylist && !isSystem && creatorName && (
-                  <div className="flex items-center gap-2 justify-center md:justify-start mt-2">
-                      <div className="w-6 h-6 rounded-full bg-zinc-700 overflow-hidden">
-                          {creatorAvatar ? <img src={creatorAvatar} className="w-full h-full object-cover" /> : <User size={16} className="text-white m-1" />}
+                </h1>
+                {description && <p className="text-secondary/80 text-sm md:text-base font-medium">{description}</p>}
+
+                {(() => {
+                  const primaryArtistAccount = artistAccounts.find(a => (a.artistName || '').toLowerCase() === (currentAlbumObj.artist || '').toLowerCase());
+                  const artistAvatarImg = primaryArtistAccount?.avatar;
+                  return (
+                    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-sm font-semibold text-white mt-1">
+                      <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+                        {artistAvatarImg ? (
+                          <img src={artistAvatarImg} alt={currentAlbumObj.artist} className="w-full h-full object-cover" />
+                        ) : (
+                          <User size={14} className="text-white m-1" />
+                        )}
                       </div>
-                      <span className="font-bold text-sm hover:underline cursor-pointer">{creatorName}</span>
-                  </div>
-              )}
-            </div>
+                      <span onClick={() => goToArtist(currentAlbumObj.artist)} className="font-bold hover:underline cursor-pointer">
+                        {currentAlbumObj.artist}
+                      </span>
+                      <span className="text-secondary">•</span>
+                      <span className="text-white/80">
+                        Дата релиза: {formatReleaseDateDisplay(currentAlbumObj.releaseDate)}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                <div className="mt-3">
+                  <ReleaseCountdown 
+                    targetDate={currentAlbumObj.releaseDate || ''} 
+                    targetTime={currentAlbumObj.releaseTime}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 w-full md:w-auto animate-appear items-center md:items-start">
+                <span className="text-xs md:text-sm font-bold text-white/80 uppercase tracking-wider">
+                  {releaseType}
+                </span>
+                <h1 className="text-3xl md:text-6xl lg:text-7xl font-black tracking-tight leading-tight line-clamp-2 text-white">
+                    {title}
+                </h1>
+                {description && <p className="text-secondary/80 text-sm md:text-base font-medium">{description}</p>}
+                
+                {!isPlaylist && (
+                    (() => {
+                      const primaryArtist = allAlbumArtists[0] || currentAlbumObj?.artist || '';
+                      const primaryArtistAccount = artistAccounts.find(a => (a.artistName || '').toLowerCase() === primaryArtist.toLowerCase());
+                      const artistAvatarImg = primaryArtistAccount?.avatar;
+                      return (
+                        <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 font-semibold text-sm text-white mt-1">
+                          {primaryArtist && (
+                            <div className="w-6 h-6 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+                              {artistAvatarImg ? (
+                                <img src={artistAvatarImg} alt={primaryArtist} className="w-full h-full object-cover" />
+                              ) : (
+                                <User size={14} className="text-white m-1" />
+                              )}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-1">
+                            {allAlbumArtists.map((art, idx) => (
+                                <span key={art}>
+                                    {idx > 0 && ", "}
+                                    <span onClick={() => goToArtist(art)} className="font-bold hover:underline cursor-pointer">{art}</span>
+                                </span>
+                            ))}
+                          </div>
+                          {year && (
+                            <>
+                              <span className="text-secondary">•</span>
+                              <span className="text-white/80">{year}</span>
+                            </>
+                          )}
+                          {items.length > 0 && (
+                            <>
+                              <span className="text-secondary">•</span>
+                              <span className="text-white/80">{items.length} {t('songs')}</span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()
+                )}
+                
+                {isPlaylist && (
+                    <div className="flex items-center gap-2 justify-center md:justify-start mt-1 text-sm font-semibold text-white">
+                        <div className="w-6 h-6 rounded-full bg-zinc-800 overflow-hidden shrink-0">
+                            {creatorAvatar ? <img src={creatorAvatar} className="w-full h-full object-cover" /> : <User size={14} className="text-white m-1" />}
+                        </div>
+                        <span className="font-bold hover:underline cursor-pointer">{creatorName || t('playlist')}</span>
+                        {items.length > 0 && (
+                          <>
+                            <span className="text-secondary">•</span>
+                            <span className="text-white/80">{items.length} {t('songs')}</span>
+                          </>
+                        )}
+                    </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Action Bar */}
-        <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-background">
-          <button 
-             onClick={() => items.length > 0 && playTrack(items[0], items, !isPlaylist ? (currentAlbumObj?.id || id) : undefined)}
-             className={`w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow ${
-               isLiquidGlass
-                 ? 'max-md:bg-primary/95 max-md:active:scale-90 md:hover:scale-105'
-                 : 'hover:scale-105'
-             }`}
-          >
-            <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
-          </button>
-          
-          {!isPlaylist && (
-             <button 
-                onClick={() => toggleAlbumLike(id)} 
-                className={`transition ${
-                  isLiquidGlass
-                    ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
-                    : 'hover:scale-105'
-                }`}
-             >
-                <Heart size={isLiquidGlass ? 24 : 32} fill={isAlbumLiked(id) ? 'currentColor' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
-             </button>
-          )}
+        {currentAlbumObj?.isUpcoming ? (
+          <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-3 animate-appear bg-background">
+            <button 
+              onClick={() => {
+                toggleAlbumLike(id);
+                showNotification(isAlbumLiked(id) ? 'Удалено из медиатеки' : 'Релиз предварительно сохранен в медиатеку', 'success');
+              }}
+              className={`px-6 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 transition select-none ${
+                isAlbumLiked(id)
+                  ? 'bg-transparent text-white border border-white/40 hover:border-white'
+                  : 'bg-white text-black hover:scale-105 active:scale-95 shadow-md'
+              }`}
+            >
+              {isAlbumLiked(id) ? (
+                <>
+                  <span>Предварительно сохранено</span>
+                  <Check size={16} className="text-white stroke-[2.5]" />
+                </>
+              ) : (
+                <span>Предварительно сохранить</span>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-background">
+            {(() => {
+              const playableTracks = items.filter(t => !t.isUnreleased && Boolean(t.url));
 
-          {isPlaylist && isOwner && !isSystem && (
-              <>
+              return (
                 <button 
-                    onClick={(e) => handleEditPlaylist(id, e)} 
-                    className={`transition ${
-                      isLiquidGlass
-                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-white max-md:active:scale-90 md:text-secondary md:hover:text-white md:hover:scale-105'
-                        : 'text-secondary hover:text-white hover:scale-105'
-                    }`} 
-                    title={t('editPlaylist')}
+                   disabled={playableTracks.length === 0}
+                   onClick={() => {
+                     if (playableTracks.length > 0) {
+                       playTrack(playableTracks[0], playableTracks, !isPlaylist ? (currentAlbumObj?.id || id) : undefined);
+                     }
+                   }}
+                   className={`w-12 h-12 md:w-14 md:h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow ${
+                     playableTracks.length === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
+                   } ${
+                     isLiquidGlass
+                       ? 'max-md:bg-primary/95 max-md:active:scale-90 md:hover:scale-105'
+                       : 'hover:scale-105'
+                   }`}
+                   title={t('play')}
                 >
-                    <Edit size={isLiquidGlass ? 22 : 32} />
+                  <Play size={24} fill="black" className="ml-1 text-black md:w-7 md:h-7" />
                 </button>
-                <button 
-                    onClick={() => deletePlaylist(id)} 
-                    className={`transition ${
-                      isLiquidGlass
-                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-secondary max-md:active:scale-90 md:text-secondary md:hover:text-red-500 md:hover:scale-105'
-                        : 'text-secondary hover:text-red-500 hover:scale-105'
-                    }`} 
-                    title={t('deletePlaylist')}
-                >
-                    <Trash2 size={isLiquidGlass ? 22 : 32} />
-                </button>
-              </>
-          )}
-
-          {isPlaylist && !isOwner && !isSystem && isPublic && (
-              <button 
-                  onClick={() => togglePlaylistSave(id)} 
+              );
+            })()}
+            
+            {!isPlaylist && (
+               <button 
+                  onClick={() => toggleAlbumLike(id)} 
                   className={`transition ${
                     isLiquidGlass
                       ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
                       : 'hover:scale-105'
                   }`} 
-                  title={isSavedPlaylist ? t('removeFromLibrary') : t('addToLibrary')}
-              >
-                  {isSavedPlaylist ? (
-                      <CheckCircle size={isLiquidGlass ? 24 : 32} className="text-primary" />
-                  ) : (
-                      <PlusSquare size={isLiquidGlass ? 24 : 32} className="text-secondary hover:text-white" />
-                  )}
-              </button>
-          )}
-        </div>
+               >
+                  <Heart size={isLiquidGlass ? 24 : 32} fill={isAlbumLiked(id) ? 'currentColor' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
+               </button>
+            )}
+
+            {isPlaylist && isOwner && !isSystem && (
+                <>
+                  <button 
+                      onClick={(e) => handleEditPlaylist(id, e)} 
+                      className={`transition ${
+                        isLiquidGlass
+                          ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-white max-md:active:scale-90 md:text-secondary md:hover:text-white md:hover:scale-105'
+                          : 'text-secondary hover:text-white hover:scale-105'
+                      }`} 
+                      title={t('editPlaylist')}
+                  >
+                      <Edit size={isLiquidGlass ? 22 : 32} />
+                  </button>
+                  <button 
+                      onClick={() => deletePlaylist(id)} 
+                      className={`transition ${
+                        isLiquidGlass
+                          ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:text-secondary max-md:active:scale-90 md:text-secondary md:hover:text-red-500 md:hover:scale-105'
+                          : 'text-secondary hover:text-red-500 hover:scale-105'
+                      }`} 
+                      title={t('deletePlaylist')}
+                  >
+                      <Trash2 size={isLiquidGlass ? 22 : 32} />
+                  </button>
+                </>
+            )}
+
+            {isPlaylist && !isOwner && !isSystem && isPublic && (
+                <button 
+                    onClick={() => togglePlaylistSave(id)} 
+                    className={`transition ${
+                      isLiquidGlass
+                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
+                        : 'hover:scale-105'
+                    }`} 
+                    title={isSavedPlaylist ? t('removeFromLibrary') : t('addToLibrary')}
+                >
+                    {isSavedPlaylist ? (
+                        <CheckCircle size={isLiquidGlass ? 24 : 32} className="text-primary" />
+                    ) : (
+                        <PlusSquare size={isLiquidGlass ? 24 : 32} className="text-secondary hover:text-white" />
+                    )}
+                </button>
+            )}
+          </div>
+        )}
 
         {/* List */}
         <div className="px-4 md:px-8 animate-slide-up">
-           <div className="hidden md:grid grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-4 py-2 border-b border-surface-highlight text-secondary text-sm mb-4">
-             <span>#</span>
+           {currentAlbumObj?.isUpcoming && (
+              <h2 className="text-xl md:text-2xl font-bold mb-4 text-white">
+                {t('tracklistPreview', 'Предпросмотр списка треков')}
+              </h2>
+           )}
+           <div className="hidden md:grid grid-cols-[28px_minmax(0,4fr)_minmax(0,2fr)_minmax(0,1fr)_auto] gap-4 px-4 py-2 border-b border-surface-highlight text-secondary text-sm mb-3">
+             <span className="text-center font-mono">#</span>
              <span>{t('trackTitle')}</span>
              <span>{t('plays')}</span>
-             <span><ListMusic size={16} /></span>
-             <span></span>
+             <span className="text-right">{t('duration', 'Длительность')}</span>
+             <span className="w-16"></span>
            </div>
            
-           {items.map((track, idx) => {
-               // Logic: If displaying a track inside an Album View, use the Album's cover, not the Track's canonical cover
-               // This allows "reused" tracks via HUEQ to show the correct context-aware cover art
-               const displayCover = !isPlaylist ? cover : getTrackCover(track, currentAlbumObj?.id);
-
-               const albumArtist = !isPlaylist ? (subtitle.split(' • ')[1] || "") : "";
-               const allTrackArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
-               const isCurrent = currentTrack?.id === track.id;
+           <div className="flex flex-col gap-1">
+             {items.map((track, idx) => {
+               const isUpcomingAlbum = !!currentAlbumObj?.isUpcoming;
+               const hideTrackMetadata = !!currentAlbumObj?.hideTrackMetadata;
+               const isTrackReleased = !track.isUnreleased && Boolean(track.url);
+               const isTrackDisabled = isUpcomingAlbum && !isTrackReleased;
+               const albumCover = !isPlaylist ? cover : undefined;
 
                return (
-             <div 
-                key={track.id} 
-                className={`grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_4fr_2fr_1fr_60px] gap-4 px-2 md:px-4 py-3 transition group items-center ${
-                  isLiquidGlass
-                    ? 'max-md:rounded-xl max-md:hover:bg-white/[0.06] max-md:active:bg-white/[0.1] md:rounded md:hover:bg-surface-highlight'
-                    : 'rounded hover:bg-surface-highlight'
-                }`}
-             >
-               
-               <div className="w-4 flex justify-center">
-                   <span className="text-secondary group-hover:hidden text-sm">{idx + 1}</span>
-                   <button onClick={() => playTrack(track, items, !isPlaylist ? (currentAlbumObj?.id || id) : undefined)} className="hidden group-hover:block text-white"><Play size={12} fill="white"/></button>
-               </div>
-               
-               <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                 <img src={displayCover} className="w-10 h-10 md:hidden rounded-lg object-cover shrink-0 shadow-sm" alt="" />
-                 <div className="flex flex-col overflow-hidden min-w-0 flex-1">
-                   <div className="flex items-center gap-1.5 min-w-0">
-                      {isCurrent && (
-                          <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                      )}
-                      <span className={`${isCurrent ? 'text-primary font-bold' : 'text-white font-medium'} truncate`}>
-                         {track.title}
-                         {track.feat && (
-                             <span className="md:hidden text-secondary font-normal">
-                                 {` (feat. ${track.feat})`}
-                             </span>
-                         )}
-                      </span>
-                      {track.explicit && <ExplicitBadge />}
-                   </div>
-                   
-                   {/* Mobile Artist & Plays Display */}
-                   <div className="md:hidden text-xs text-secondary truncate mt-0.5 flex items-center gap-1">
-                      <span className="truncate">{allTrackArtists.join(', ')}</span>
-                      <span>•</span>
-                      <span>{formatPlays(track.plays)}</span>
-                   </div>
-
-                   <div className="hidden md:block text-secondary text-xs group-hover:text-white truncate">
-                       {allTrackArtists.map((a, i) => (
-                           <span key={a}>
-                               {i > 0 && ", "}
-                               <span onClick={(e) => { e.stopPropagation(); goToArtist(a); }} className="hover:underline cursor-pointer">{a}</span>
-                           </span>
-                       ))}
-                   </div>
-                 </div>
-               </div>
-
-               <span className="text-secondary text-sm hidden md:block truncate">{formatPlays(track.plays)}</span>
-               <span className="text-secondary text-sm hidden md:block">{formatDuration(track.duration)}</span>
-
-               <div className="flex items-center gap-3 justify-end">
-                 <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
-                    <Heart size={16} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
-                 </button>
-                 
-                 <button onClick={(e) => { e.stopPropagation(); openAddToPlaylist(track.id); }} className="text-transparent group-hover:text-secondary hover:text-white" title={t('addToPlaylist')}>
-                    <Plus size={16} />
-                 </button>
-
-                 {isPlaylist && !isLikedSongs && !isHistory && isOwner && (
-                    <button onClick={() => removeFromPlaylist((view as any).id, track.id)} className="text-transparent group-hover:text-secondary hover:text-red-500">
-                      <Trash2 size={16} />
-                    </button>
-                 )}
-               </div>
-             </div>
-           )})}
+                 <TrackRow
+                   key={track.id}
+                   track={track}
+                   index={idx}
+                   queue={items}
+                   contextAlbumId={!isPlaylist ? (currentAlbumObj?.id || (view as any).id) : undefined}
+                   customCover={albumCover}
+                   disabled={isTrackDisabled}
+                   hideMetadata={hideTrackMetadata}
+                   onRemoveFromPlaylist={isPlaylist && !isLikedSongs && !isHistory && isOwner ? () => removeFromPlaylist((view as any).id, track.id) : undefined}
+                 />
+               );
+             })}
+           </div>
 
            {items.length > 0 && (
              <div className="mt-8 pt-8 border-t border-surface-highlight text-secondary text-sm font-medium pb-8 flex flex-col gap-1">
-                 {fullReleaseDate && <p>{t('released')} {new Date(fullReleaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>}
-                 {!fullReleaseDate && year && <p>{t('released')} {year}</p>}
-                 <p>{items.length} {t('songs')}, {totalMinutes} {t('min')}</p>
-                 <p>{formatPlays(totalReleasePlays)} {t('plays')}</p>
-                 <p className="mt-4 text-[10px] uppercase tracking-widest font-bold">© {label}</p>
+                 {currentAlbumObj?.isUpcoming ? (
+                     <>
+                         {currentAlbumObj.releaseDate && <p>{formatReleaseDateDisplay(currentAlbumObj.releaseDate)}</p>}
+                         <p>{items.length} {t('songs')}</p>
+                         {label && <p className="mt-4 text-[10px] uppercase tracking-widest font-bold">© {label}</p>}
+                     </>
+                 ) : (
+                     <>
+                         {fullReleaseDate && <p>{t('released')} {formatReleaseDateDisplay(fullReleaseDate)}</p>}
+                         {!fullReleaseDate && year && <p>{t('released')} {year}</p>}
+                         <p>{items.length} {t('songs')}{totalMinutes > 0 ? `, ${totalMinutes} ${t('min')}` : ''}</p>
+                         <p>{formatPlays(totalReleasePlays)} {t('plays')}</p>
+                         {label && <p className="mt-4 text-[10px] uppercase tracking-widest font-bold">© {label}</p>}
+                     </>
+                 )}
              </div>
            )}
         </div>

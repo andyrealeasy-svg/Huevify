@@ -225,7 +225,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     draftDeleted: "Draft deleted.",
     resumeDraftPrompt: "You have an unsaved draft. Resume working on it?",
     resume: "Resume",
-    discardDraft: "Discard Draft"
+    discardDraft: "Discard Draft",
+    expectedRelease: "Expected Release"
   },
   Russian: {
     home: "Главная",
@@ -442,7 +443,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     draftDeleted: "Черновик удалён.",
     resumeDraftPrompt: "У вас есть несохранённый черновик. Хотите продолжить работу над ним?",
     resume: "Продолжить",
-    discardDraft: "Сбросить черновик"
+    discardDraft: "Сбросить черновик",
+    expectedRelease: "Ожидаемый релиз"
   }
 };
 
@@ -890,9 +892,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               if (!req || !req.tracks) return;
 
               const isLive = req.status === 'LIVE';
-              const isApprovedAndDue = req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= Date.now();
+              const releaseTimestamp = new Date(req.releaseTime ? `${req.releaseDate}T${req.releaseTime}:00` : `${req.releaseDate}T00:00:00`).getTime();
+              const now = Date.now();
+              const isApprovedAndDue = req.status === 'APPROVED' && (!isNaN(releaseTimestamp) ? releaseTimestamp <= now : new Date(req.releaseDate).getTime() <= now) && !req.isAnnouncement;
               
-              if (isLive || isApprovedAndDue) {
+              // Expected release announcement check
+              let isAnnouncementActive = false;
+              if (req.isAnnouncement && (req.status === 'APPROVED' || req.status === 'LIVE')) {
+                  let announcementTimestamp = 0;
+                  if (req.announcementDate) {
+                      const aTime = req.announcementTime || "00:00";
+                      announcementTimestamp = new Date(`${req.announcementDate}T${aTime}:00`).getTime();
+                  }
+                  const announcementDue = !announcementTimestamp || isNaN(announcementTimestamp) || announcementTimestamp <= now;
+                  const releaseInFuture = isNaN(releaseTimestamp) || releaseTimestamp > now;
+                  isAnnouncementActive = announcementDue && releaseInFuture;
+              }
+
+              if (isLive || isApprovedAndDue || isAnnouncementActive) {
                   artistSet.add(req.artistName);
                   if (req.additionalMainArtists) {
                       req.additionalMainArtists.forEach(a => artistSet.add(a));
@@ -911,11 +928,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       covers: req.covers && req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
                       trackIds: [],
                       year: new Date(req.releaseDate).getFullYear(),
-                      releaseDate: req.releaseDate, 
+                      releaseDate: req.releaseDate,
+                      releaseTime: req.releaseTime || "00:00",
                       recordLabel: req.label,
                       type: req.type,
                       mainArtists: req.additionalMainArtists || [],
-                      genre: req.genre
+                      genre: req.genre,
+                      isUpcoming: isAnnouncementActive,
+                      isAnnouncement: req.isAnnouncement,
+                      announcementDate: req.announcementDate,
+                      announcementTime: req.announcementTime,
+                      hideTrackMetadata: req.hideTrackMetadata
                   };
 
                   const newTracksForThisAlbum: Track[] = [];
@@ -938,6 +961,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                                   artist: t.artist || req.artistName, // Use track override or release artist
                                   genre: t.genre || req.genre || mergedTracks[trackIndex].genre,
                                   explicit: t.explicit,
+                                  isUnreleased: false // Previously released tracks remain released!
                               };
                           }
                       } else {
@@ -946,20 +970,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                           const trackLevelArtists = t.mainArtists || [];
                           const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
 
+                          const isUnreleasedTrack = isAnnouncementActive;
+
                           newTracksForThisAlbum.push({
                               id: trackId,
-                              title: t.title,
-                              artist: t.artist || req.artistName, // Use track override or release artist
+                              title: (isAnnouncementActive && req.hideTrackMetadata) ? `Track ${idx + 1}` : t.title,
+                              artist: (isAnnouncementActive && req.hideTrackMetadata) ? req.artistName : (t.artist || req.artistName), // Use track override or release artist
                               album: req.title,
                               cover: req.covers && req.covers.length > 0 ? req.covers[0] : "https://picsum.photos/300", 
-                              duration: t.duration, 
-                              url: t.fileUrl, 
+                              duration: t.duration || 0, 
+                              url: isUnreleasedTrack ? "" : t.fileUrl, 
                               plays: 0,
                               genre: t.genre || req.genre,
-                              explicit: t.explicit,
-                              feat: t.feat,
-                              hueq: t.generatedHueq || t.existingHueq,
-                              mainArtists: combinedMainArtists
+                              explicit: (isAnnouncementActive && req.hideTrackMetadata) ? false : t.explicit,
+                              feat: (isAnnouncementActive && req.hideTrackMetadata) ? undefined : t.feat,
+                              hueq: isAnnouncementActive ? undefined : (t.generatedHueq || t.existingHueq),
+                              mainArtists: (isAnnouncementActive && req.hideTrackMetadata) ? [] : combinedMainArtists,
+                              isUnreleased: isUnreleasedTrack
                           });
                       }
 
@@ -1861,6 +1888,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const tracksWithHueqs = existingReq.tracks.map(t => {
+          if (existingReq.isAnnouncement) {
+              // HUEQ is NOT awarded to tracks in expected releases (announcements)
+              return t;
+          }
           if (t.existingHueq) return t; 
           if (t.generatedHueq) return t;
           return { ...t, generatedHueq: generateHUEQ() }; 
@@ -1877,8 +1908,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       notifySync('ARTIST_DATA_UPDATE');
       
       const req = updatedRequests.find(r => r.id === id);
-      if (req && new Date(req.releaseDate).getTime() <= Date.now()) {
-          refreshLibrary(updatedRequests);
+      if (req) {
+          const isDue = new Date(req.releaseTime ? `${req.releaseDate}T${req.releaseTime}:00` : req.releaseDate).getTime() <= Date.now();
+          if (isDue || req.isAnnouncement) {
+              refreshLibrary(updatedRequests);
+          }
       }
       if (isSupabaseConfigured() && req) {
           SupabaseService.saveRelease(req).catch(e => console.warn('Supabase approve release error:', e));
@@ -2513,6 +2547,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const likedPlaylist = playlists.find(p => p.id === likedId);
     const likedIds = likedPlaylist ? likedPlaylist.tracks : [];
     
+    const upcomingAlbumTrackIds = new Set(
+      albums.filter(a => a.isUpcoming || a.isAnnouncement).flatMap(a => a.trackIds || [])
+    );
+    const upcomingAlbumTitles = albums
+      .filter(a => a.isUpcoming || a.isAnnouncement)
+      .map(a => a.title.trim().toLowerCase());
+
     tracks.forEach(t => {
       let score = 0;
       if (likedIds.includes(t.id)) score += 50;
@@ -2523,12 +2564,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     const topGenres = Object.entries(genreScores).sort(([, a], [, b]) => b - a).slice(0, 3).map(([g]) => g);
     const targetGenres = topGenres.length > 0 ? topGenres : tracks.map(t => t.genre);
-    const candidates = tracks.filter(t => targetGenres.includes(t.genre) && !likedIds.includes(t.id));
+
+    const candidates = tracks.filter(t => {
+      if (!targetGenres.includes(t.genre)) return false;
+      if (likedIds.includes(t.id)) return false;
+      if (t.isUnreleased || !t.url) return false;
+      if (upcomingAlbumTrackIds.has(t.id)) return false;
+      if (t.album && upcomingAlbumTitles.includes(t.album.trim().toLowerCase())) return false;
+      return true;
+    });
+
     // Filter explicit if needed
     const filteredCandidates = appSettings.allowExplicitContent ? candidates : candidates.filter(t => !t.explicit);
     const shuffled = [...filteredCandidates].sort(() => 0.5 - Math.random()).slice(0, 6);
     setRecommendations(shuffled);
-  }, [tracks, playlists, currentUser, appSettings.allowExplicitContent]);
+  }, [tracks, albums, playlists, currentUser, appSettings.allowExplicitContent]);
 
   useEffect(() => {
     if (tracks.length > 0) {

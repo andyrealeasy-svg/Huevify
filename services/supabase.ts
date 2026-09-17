@@ -46,7 +46,12 @@ export const SupabaseService = {
         additionalMainArtists: row.additional_main_artists || [],
         tracks: row.tracks || [],
         releaseDate: row.release_date,
-        releaseMessage: row.release_message
+        releaseTime: row.release_time || undefined,
+        releaseMessage: row.release_message,
+        isAnnouncement: row.is_announcement ?? false,
+        hideTrackMetadata: row.hide_track_metadata ?? false,
+        announcementDate: row.announcement_date || undefined,
+        announcementTime: row.announcement_time || undefined
       }));
     } catch (e) {
       console.warn('Supabase fetchReleases failed:', e);
@@ -57,7 +62,7 @@ export const SupabaseService = {
   async saveRelease(release: ReleaseRequest): Promise<boolean> {
     if (!supabase) return false;
     try {
-      const row = {
+      const row: any = {
         id: release.id,
         artist_id: release.artistId,
         artist_name: release.artistName,
@@ -72,11 +77,26 @@ export const SupabaseService = {
         additional_main_artists: release.additionalMainArtists || [],
         tracks: release.tracks,
         release_date: release.releaseDate,
-        release_message: release.releaseMessage || ''
+        release_time: release.releaseTime || null,
+        release_message: release.releaseMessage || '',
+        is_announcement: release.isAnnouncement || false,
+        hide_track_metadata: release.hideTrackMetadata || false,
+        announcement_date: release.announcementDate || null,
+        announcement_time: release.announcementTime || null
       };
-      const { error } = await supabase.from('releases').upsert(row, { onConflict: 'id' });
+      let { error } = await supabase.from('releases').upsert(row, { onConflict: 'id' });
       if (error) {
         console.warn('Supabase saveRelease error:', error.message);
+        // If some optional columns don't exist yet on remote schema, retry with core fields
+        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column'))) {
+          delete row.is_announcement;
+          delete row.hide_track_metadata;
+          delete row.announcement_date;
+          delete row.announcement_time;
+          delete row.release_time;
+          const retry = await supabase.from('releases').upsert(row, { onConflict: 'id' });
+          if (!retry.error) return true;
+        }
         return false;
       }
       return true;
@@ -480,7 +500,11 @@ export const SupabaseService = {
         releaseMessage: row.release_message || '',
         lastSaved: row.last_saved || row.created_at || new Date().toISOString(),
         step: row.step || 1,
-        isEditingOriginalId: row.is_editing_original_id || null
+        isEditingOriginalId: row.is_editing_original_id || null,
+        isAnnouncement: row.is_announcement ?? false,
+        hideTrackMetadata: row.hide_track_metadata ?? false,
+        announcementDate: row.announcement_date || undefined,
+        announcementTime: row.announcement_time || undefined
       }));
     } catch (e) {
       console.warn('Supabase fetchDrafts failed:', e);
@@ -491,7 +515,7 @@ export const SupabaseService = {
   async saveDraft(draft: ReleaseDraft): Promise<boolean> {
     if (!supabase) return false;
     try {
-      const row = {
+      const row: any = {
         id: draft.id,
         artist_id: draft.artistId,
         artist_name: draft.artistName,
@@ -507,11 +531,24 @@ export const SupabaseService = {
         release_message: draft.releaseMessage || '',
         last_saved: draft.lastSaved || new Date().toISOString(),
         step: draft.step || 1,
-        is_editing_original_id: draft.isEditingOriginalId || null
+        is_editing_original_id: draft.isEditingOriginalId || null,
+        is_announcement: draft.isAnnouncement || false,
+        hide_track_metadata: draft.hideTrackMetadata || false,
+        announcement_date: draft.announcementDate || null,
+        announcement_time: draft.announcementTime || null
       };
-      const { error } = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
+      let { error } = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
       if (error) {
         console.warn('Supabase saveDraft error:', error.message);
+        // Fallback retry without announcement columns if not migrated yet
+        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column'))) {
+          delete row.is_announcement;
+          delete row.hide_track_metadata;
+          delete row.announcement_date;
+          delete row.announcement_time;
+          const retry = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
+          if (!retry.error) return true;
+        }
         return false;
       }
       return true;

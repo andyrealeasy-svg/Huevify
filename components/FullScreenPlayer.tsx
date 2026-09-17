@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../context/StoreContext';
+import { useStore } from '../context/StoreContext.tsx';
 import { 
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, 
   Heart, Plus, ListMusic, Volume, Volume1, Volume2, VolumeX,
-  MoreVertical, Trash2, Disc, User, ArrowLeft, ChevronRight, X
-} from './Icons';
-import { ExplicitBadge } from './ExplicitBadge';
-import { PlayMode, Track } from '../types';
-import { extractColorFromImage, getCachedColor, getHashPalette, ExtractedColors } from '../utils/colorExtractor';
+  MoreVertical
+} from './Icons.tsx';
+import { ExplicitBadge } from './ExplicitBadge.tsx';
+import { PlayMode, Track } from '../types.ts';
+import { extractColorFromImage, getCachedColor, getHashPalette, ExtractedColors } from '../utils/colorExtractor.ts';
+import { TrackMenuModal } from './TrackMenuModal.tsx';
 
 const formatTime = (seconds: number) => {
     if (!seconds) return "0:00";
@@ -418,235 +419,11 @@ export const FullScreenPlayer = () => {
       </div>
 
       {/* Options Menu Bottom Sheet Modal */}
-      {isMenuOpen && (
-        <div 
-          className="fixed inset-0 z-[70] flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => { setIsMenuOpen(false); setMenuView('main'); }}
-        >
-          <div 
-            className={`border-t rounded-t-3xl p-5 w-full max-h-[85vh] flex flex-col shadow-2xl text-white animate-slide-up ${
-              isLiquidGlass
-                ? 'bg-zinc-900/85 backdrop-blur-3xl border-white/20 shadow-[0_-16px_48px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.3)]'
-                : 'bg-[#18181b] border-white/10'
-            }`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Grab pill */}
-            <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-4 shrink-0" />
-
-            {menuView === 'main' && (
-              <>
-                {/* Track mini info header */}
-                <div className="flex items-center gap-3 pb-4 border-b border-white/10 mb-2">
-                  <img 
-                    src={cover} 
-                    alt={currentTrack.title} 
-                    className="w-12 h-12 rounded-lg object-cover shadow-md shrink-0"
-                  />
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-base truncate">{currentTrack.title}</span>
-                      {currentTrack.explicit && <ExplicitBadge size="sm" />}
-                    </div>
-                    <span className="text-xs text-white/60 truncate">{currentTrack.artist}</span>
-                  </div>
-                  <button 
-                    onClick={() => setIsMenuOpen(false)}
-                    className="text-white/60 hover:text-white p-1 rounded-full"
-                    aria-label="Close menu"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-
-                {/* Menu list */}
-                <div className="flex flex-col gap-1 overflow-y-auto">
-                  {/* 1. Добавить в любимые треки */}
-                  <button 
-                    onClick={handleToggleLike}
-                    className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition">
-                      <Heart 
-                        size={18} 
-                        fill={isLiked(currentTrack.id) ? "currentColor" : "none"} 
-                        className={isLiked(currentTrack.id) ? "text-primary" : "text-white/80 group-hover:text-white"} 
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-white/90 group-hover:text-white">
-                      {isLiked(currentTrack.id) ? "Удалить из любимых треков" : "Добавить в любимые треки"}
-                    </span>
-                  </button>
-
-                  {/* 2. Добавить в плейлист */}
-                  <button 
-                    onClick={handleAddToPlaylist}
-                    className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-white/80 group-hover:text-white">
-                      <Plus size={18} />
-                    </div>
-                    <span className="text-sm font-medium text-white/90 group-hover:text-white">
-                      Добавить в плейлист
-                    </span>
-                  </button>
-
-                  {/* 3. Удалить из плейлиста */}
-                  <button 
-                    onClick={handleRemoveFromPlaylist}
-                    className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-red-400">
-                      <Trash2 size={18} />
-                    </div>
-                    <span className="text-sm font-medium text-white/90 group-hover:text-white">
-                      Удалить из плейлиста
-                    </span>
-                  </button>
-
-                  {/* 4. Включить следующим */}
-                  <button 
-                    onClick={handlePlayNext}
-                    className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-white/80 group-hover:text-white">
-                      <ListMusic size={18} />
-                    </div>
-                    <span className="text-sm font-medium text-white/90 group-hover:text-white">
-                      Включить следующим
-                    </span>
-                  </button>
-
-                  {/* 5. Открыть альбом */}
-                  <button 
-                    onClick={handleOpenAlbum}
-                    className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-white/80 group-hover:text-white">
-                      <Disc size={18} />
-                    </div>
-                    <span className="text-sm font-medium text-white/90 group-hover:text-white">
-                      Открыть альбом
-                    </span>
-                  </button>
-
-                  {/* 6. Перейти на страницу артиста */}
-                  <button 
-                    onClick={handleGoToArtistClick}
-                    className="flex items-center justify-between w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
-                  >
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-white/80 group-hover:text-white">
-                        <User size={18} />
-                      </div>
-                      <span className="text-sm font-medium text-white/90 group-hover:text-white truncate">
-                        Перейти на страницу артиста
-                      </span>
-                    </div>
-                    {getTrackArtists(currentTrack).length > 1 && (
-                      <ChevronRight size={18} className="text-white/40 group-hover:text-white shrink-0 ml-2" />
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {menuView === 'artists' && (
-              <>
-                {/* Header for Artist Selection */}
-                <div className="flex items-center gap-3 pb-3 border-b border-white/10 mb-2">
-                  <button 
-                    onClick={() => setMenuView('main')}
-                    className="p-1.5 -ml-1.5 rounded-full hover:bg-white/10 transition text-white/80 hover:text-white"
-                    aria-label="Back to main menu"
-                  >
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h3 className="font-bold text-base text-white">Выберите артиста</h3>
-                </div>
-
-                <div className="flex flex-col gap-1 overflow-y-auto max-h-[50vh]">
-                  {getTrackArtists(currentTrack).map((artistName) => {
-                    const artistTrack = tracks.find(t => t.artist === artistName || (t.mainArtists && t.mainArtists.includes(artistName)));
-                    const artistImg = artistTrack ? getTrackCover(artistTrack) : null;
-                    return (
-                      <button 
-                        key={artistName}
-                        onClick={() => handleSelectArtist(artistName)}
-                        className="flex items-center justify-between w-full p-2.5 rounded-xl hover:bg-white/10 active:bg-white/15 transition group text-left"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {artistImg ? (
-                            <img src={artistImg} alt={artistName} className="w-11 h-11 rounded-full object-cover shrink-0 shadow" />
-                          ) : (
-                            <div className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-                              <User size={20} className="text-white/70" />
-                            </div>
-                          )}
-                          <span className="font-semibold text-white text-base truncate">{artistName}</span>
-                        </div>
-                        <ChevronRight size={18} className="text-white/40 group-hover:text-white shrink-0 ml-2" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {menuView === 'remove_playlist' && (
-              <>
-                {/* Header for Remove Playlist Selection */}
-                <div className="flex items-center gap-3 pb-3 border-b border-white/10 mb-2">
-                  <button 
-                    onClick={() => setMenuView('main')}
-                    className="p-1.5 -ml-1.5 rounded-full hover:bg-white/10 transition text-white/80 hover:text-white"
-                    aria-label="Back to main menu"
-                  >
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h3 className="font-bold text-base text-white">Удалить из плейлиста</h3>
-                </div>
-
-                <div className="flex flex-col gap-1 overflow-y-auto max-h-[50vh]">
-                  {playlists
-                    .filter(p => {
-                      if (p.isSystem || p.id.startsWith('liked') || p.id === 'liked') return false;
-                      const isOwner = currentUser ? p.ownerId === currentUser.id : (!p.ownerId || p.ownerId === 'guest');
-                      return isOwner && p.tracks && p.tracks.includes(currentTrack.id);
-                    })
-                    .map((pl) => (
-                      <button 
-                        key={pl.id}
-                        onClick={() => {
-                          removeFromPlaylist(pl.id, currentTrack.id);
-                          showNotification(`Трек удален из плейлиста "${pl.name}"`, "success");
-                          setIsMenuOpen(false);
-                          setMenuView('main');
-                        }}
-                        className="flex items-center justify-between w-full p-2.5 rounded-xl hover:bg-white/10 active:bg-white/15 transition group text-left"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-11 h-11 bg-white/10 flex items-center justify-center rounded-lg overflow-hidden shrink-0">
-                            {pl.customCover ? (
-                              <img src={pl.customCover} alt={pl.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <ListMusic size={20} className="text-white/70" />
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-white text-base truncate">{pl.name}</span>
-                            <span className="text-xs text-white/60">{pl.tracks.length} {pl.tracks.length === 1 ? 'трек' : 'треков'}</span>
-                          </div>
-                        </div>
-                        <Trash2 size={18} className="text-red-400 shrink-0 ml-2" />
-                      </button>
-                    ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <TrackMenuModal
+        track={currentTrack}
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+      />
 
     </div>
   );

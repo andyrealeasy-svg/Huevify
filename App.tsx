@@ -126,24 +126,29 @@ const AppContent = () => {
     }
 
     return (
-        <div className="flex h-screen w-full bg-black text-white font-sans overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-           <div className="h-16 w-full absolute top-0 left-0 bg-gradient-to-b from-black/20 to-transparent z-20 pointer-events-none" />
-           <MainView />
-           <MobileNav />
-        </main>
-        
-        {/* Modals and Overlays moved outside of main to ensure correct stacking context */}
-        <Player />
-        <FullScreenPlayer />
-        <CreatePlaylistModal />
-        <AddToPlaylistModal />
-        <DeletePlaylistModal />
-        <ProfileModal />
-        <ArtistHub />
-        <NotificationOverlay />
-      </div>
+        <div className="flex flex-col h-screen w-full bg-black text-white font-sans overflow-hidden">
+          {/* Main workspace: Sidebar + Main Content */}
+          <div className="flex-1 flex min-h-0 w-full overflow-hidden relative">
+            <Sidebar />
+            <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+               <div className="h-16 w-full absolute top-0 left-0 bg-gradient-to-b from-black/20 to-transparent z-20 pointer-events-none" />
+               <MainView />
+               <MobileNav />
+            </main>
+          </div>
+          
+          {/* Player bar */}
+          <Player />
+
+          {/* Modals and Overlays moved outside of main to ensure correct stacking context */}
+          <FullScreenPlayer />
+          <CreatePlaylistModal />
+          <AddToPlaylistModal />
+          <DeletePlaylistModal />
+          <ProfileModal />
+          <ArtistHub />
+          <NotificationOverlay />
+        </div>
     );
 };
 

@@ -54,9 +54,9 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
   // 1. Последний релиз
   const latestRelease = sortedOwnAlbums[0] || null;
 
-  // 2. Альбомы (не синглы)
+  // 2. Альбомы (включая микстейпы)
   const albumReleases = useMemo(() => {
-    return sortedOwnAlbums.filter(a => a.type === 'Album' || (!a.type && a.trackIds.length > 1));
+    return sortedOwnAlbums.filter(a => a.type === 'Album' || a.type === 'Mixtape' || (!a.type && a.trackIds.length > 1));
   }, [sortedOwnAlbums]);
 
   // 3. Синглы и EP
@@ -240,20 +240,29 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
                     alt={latestRelease.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                   />
-                  <div 
-                    onClick={(e) => handlePlayAlbum(e, latestRelease)}
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
-                    title="Play"
-                  >
-                    <Play size={20} fill="white" className="text-white ml-0.5" />
-                  </div>
+                  {!latestRelease.isUpcoming && (
+                    <div 
+                      onClick={(e) => handlePlayAlbum(e, latestRelease)}
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                      title="Play"
+                    >
+                      <Play size={20} fill="white" className="text-white ml-0.5" />
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col overflow-hidden min-w-0">
-                  <span className="font-semibold text-white truncate text-base group-hover:underline">
-                    {latestRelease.title}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-white truncate text-base group-hover:underline">
+                      {latestRelease.title}
+                    </span>
+                    {latestRelease.isUpcoming && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                        {t('expectedRelease', 'Ожидаемый релиз')}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-secondary truncate mt-0.5">
-                    {latestRelease.year} • {latestRelease.type === 'EP' ? 'EP' : latestRelease.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом')} • {latestRelease.trackIds.length} {latestRelease.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                    {latestRelease.year} • {latestRelease.type === 'Mixtape' ? 'Микстейп' : latestRelease.type === 'EP' ? 'EP' : latestRelease.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом')} • {latestRelease.trackIds.length} {latestRelease.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
                   </span>
                 </div>
               </div>
@@ -293,20 +302,29 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
                           alt={album.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                         />
-                        <div 
-                          onClick={(e) => handlePlayAlbum(e, album)}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
-                          title="Play"
-                        >
-                          <Play size={20} fill="white" className="text-white ml-0.5" />
-                        </div>
+                        {!album.isUpcoming && (
+                          <div 
+                            onClick={(e) => handlePlayAlbum(e, album)}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                            title="Play"
+                          >
+                            <Play size={20} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col overflow-hidden min-w-0">
-                        <span className="font-semibold text-white truncate text-base group-hover:underline">
-                          {album.title}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white truncate text-base group-hover:underline">
+                            {album.title}
+                          </span>
+                          {album.isUpcoming && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                              {t('expectedRelease', 'Ожидаемый релиз')}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-secondary truncate mt-0.5">
-                          {album.year} • {album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом')} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                          {album.year} • {album.type === 'Mixtape' ? 'Микстейп' : album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом')} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
                         </span>
                       </div>
                     </div>
@@ -350,18 +368,27 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
                           alt={single.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                         />
-                        <div 
-                          onClick={(e) => handlePlayAlbum(e, single)}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
-                          title="Play"
-                        >
-                          <Play size={20} fill="white" className="text-white ml-0.5" />
-                        </div>
+                        {!single.isUpcoming && (
+                          <div 
+                            onClick={(e) => handlePlayAlbum(e, single)}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                            title="Play"
+                          >
+                            <Play size={20} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col overflow-hidden min-w-0">
-                        <span className="font-semibold text-white truncate text-base group-hover:underline">
-                          {single.title}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white truncate text-base group-hover:underline">
+                            {single.title}
+                          </span>
+                          {single.isUpcoming && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                              {t('expectedRelease', 'Ожидаемый релиз')}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-secondary truncate mt-0.5">
                           {single.year} • {releaseType} • {single.trackIds.length} {single.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
                         </span>
@@ -389,7 +416,7 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
 
             <div className="flex flex-col gap-2">
               {appearsOnData.map(({ album }) => {
-                const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом');
+                const releaseType = album.type === 'Mixtape' ? 'Микстейп' : album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : t('album', 'Альбом');
                 return (
                   <div 
                     key={album.id}
@@ -407,18 +434,27 @@ export const ArtistDiscography: React.FC<ArtistDiscographyProps> = ({ artistName
                           alt={album.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                         />
-                        <div 
-                          onClick={(e) => handlePlayAlbum(e, album)}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
-                          title="Play"
-                        >
-                          <Play size={20} fill="white" className="text-white ml-0.5" />
-                        </div>
+                        {!album.isUpcoming && (
+                          <div 
+                            onClick={(e) => handlePlayAlbum(e, album)}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                            title="Play"
+                          >
+                            <Play size={20} fill="white" className="text-white ml-0.5" />
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col overflow-hidden min-w-0">
-                        <span className="font-semibold text-white truncate text-base group-hover:underline">
-                          {album.title}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white truncate text-base group-hover:underline">
+                            {album.title}
+                          </span>
+                          {album.isUpcoming && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                              {t('expectedRelease', 'Ожидаемый релиз')}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-secondary truncate mt-0.5">
                           {album.artist} • {album.year} • {releaseType}
                         </span>

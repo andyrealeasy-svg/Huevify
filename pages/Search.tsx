@@ -3,6 +3,7 @@ import { useStore } from '../context/StoreContext.tsx';
 import { Search as SearchIcon, Play, Heart, ListMusic, User, ArrowLeft, Music2 } from '../components/Icons.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
+import { TrackRow } from '../components/TrackRow.tsx';
 
 const formatDuration = (seconds: number) => {
     // Ensure seconds is an integer to avoid float residuals like .123 showing up in modulo
@@ -141,6 +142,7 @@ export const Search = () => {
       // Find albums whose primary genre matches this genre, sorted by total plays descending
       const genreAlbums = albums
           .filter(a => {
+              if (a.isUpcoming || a.isAnnouncement) return false;
               if (a.type === 'Single') return false;
               const mainGenre = getAlbumMainGenre(a);
               if (!mainGenre) return false;
@@ -157,6 +159,7 @@ export const Search = () => {
       // If no full album, check any release in this genre
       const anyGenreReleases = albums
           .filter(a => {
+              if (a.isUpcoming || a.isAnnouncement) return false;
               const mainGenre = getAlbumMainGenre(a);
               return mainGenre && normalizeGenre(mainGenre) === targetKey;
           })
@@ -169,7 +172,7 @@ export const Search = () => {
       }
 
       // Fallback: If no albums exist at all for this genre, use top track in this genre
-      const genreTracks = tracks.filter(t => normalizeGenre(t.genre) === targetKey || t.genre === genreName || (t.genre && t.genre.includes(genreName)));
+      const genreTracks = tracks.filter(t => !t.isUnreleased && (normalizeGenre(t.genre) === targetKey || t.genre === genreName || (t.genre && t.genre.includes(genreName))));
       if (genreTracks.length === 0) return null;
       const topTrack = [...genreTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0))[0];
       return getTrackCover(topTrack);
@@ -187,6 +190,7 @@ export const Search = () => {
       // Filter tracks by genre and explicit settings, sorted by popularity (plays descending)
       const genreTracks = tracks
           .filter(t => {
+              if (t.isUnreleased) return false;
               const match = normalizeGenre(t.genre) === targetGenreKey || t.genre === genreId || (t.genre && t.genre.includes(genreId));
               if (!appSettings.allowExplicitContent && t.explicit) return false;
               return match;
@@ -197,6 +201,7 @@ export const Search = () => {
       // sorted by total album plays descending (popularity)
       const genreAlbums = albums
           .filter(a => {
+              if (a.isUpcoming || a.isAnnouncement) return false;
               if (a.type === 'Single') return false; 
               const mainGenre = getAlbumMainGenre(a);
               if (!mainGenre) return false;
@@ -395,48 +400,15 @@ export const Search = () => {
                                       </div>
                                   </div>
 
-                                  <div className="flex flex-col gap-2">
-                                      {group.tracks.map((track, idx) => {
-                                          const allArtists = Array.from(new Set([track.artist, ...(track.mainArtists || [])]));
-                                          const isCurrent = currentTrack?.id === track.id;
-                                          return (
-                                          <div 
-                                             key={track.id} 
-                                             className="grid grid-cols-[16px_minmax(0,1fr)_60px] md:grid-cols-[16px_minmax(0,1fr)_100px_60px] items-center gap-4 p-3 rounded hover:bg-surface-highlight group"
-                                          >
-                                             <div className="flex items-center justify-center" onClick={() => playTrack(track, group.tracks)}>
-                                                <div className="text-secondary text-center group-hover:hidden text-sm">{idx + 1}</div>
-                                                <div className="hidden group-hover:block cursor-pointer"><Play size={16} fill="white"/></div>
-                                             </div>
-                                             
-                                             <div className="flex items-center gap-4 overflow-hidden min-w-0" onClick={() => playTrack(track, group.tracks)}>
-                                                <img src={getTrackCover(track)} className="w-10 h-10 rounded object-cover flex-shrink-0" alt="" />
-                                                <div className="flex flex-col overflow-hidden min-w-0 flex-1">
-                                                  <div className="flex items-center gap-1.5 min-w-0 cursor-pointer">
-                                                      {isCurrent && (
-                                                          <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                                                      )}
-                                                      <span className={`font-semibold truncate hover:underline ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>{track.title}</span>
-                                                      {track.explicit && <ExplicitBadge />}
-                                                  </div>
-                                                  <div className="text-sm text-secondary truncate flex items-center gap-1">
-                                                      <span>{allArtists.join(', ')}</span>
-                                                      <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
-                                                  </div>
-                                                </div>
-                                             </div>
-
-                                             <div className="text-secondary text-sm hidden md:block text-right">{formatPlays(track.plays)}</div>
-                                             
-                                             <div className="flex items-center gap-4 justify-end">
-                                                <span className="text-sm text-secondary hidden md:block">{formatDuration(track.duration)}</span>
-                                                <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-transparent group-hover:text-secondary hover:text-white'}`}>
-                                                  <Heart size={18} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
-                                                </button>
-                                             </div>
-                                          </div>
-                                          );
-                                      })}
+                                  <div className="flex flex-col gap-1">
+                                      {group.tracks.map((track, idx) => (
+                                          <TrackRow
+                                              key={track.id}
+                                              track={track}
+                                              index={idx}
+                                              queue={group.tracks}
+                                          />
+                                      ))}
                                   </div>
                               </div>
                           ))}
@@ -500,43 +472,15 @@ export const Search = () => {
            {filteredTracks.length > 0 && (
              <div>
                 <h2 className="text-xl font-bold mb-4">{t('songs')}</h2>
-                <div className="flex flex-col gap-2">
-                 {filteredTracks.map(track => {
-                   const isCurrent = currentTrack?.id === track.id;
-                   return (
-                   <div 
-                     key={track.id} 
-                     className="flex items-center justify-between p-3 rounded hover:bg-surface-highlight group"
-                   >
-                     <div className="flex items-center gap-4 flex-1" onClick={() => playTrack(track, filteredTracks)}>
-                        <div className="relative w-10 h-10 shrink-0">
-                          <img src={getTrackCover(track)} className="w-full h-full object-cover rounded" />
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded opacity-0 group-hover:opacity-100">
-                            <Play size={16} fill="white" />
-                          </div>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 min-w-0 cursor-pointer">
-                              {isCurrent && (
-                                  <PlayingVisualizer size="xs" isPlaying={isPlaying} className="mr-1" />
-                              )}
-                              <span className={`font-semibold truncate ${isCurrent ? 'text-primary font-bold' : 'text-white'}`}>{track.title}</span>
-                              {track.explicit && <ExplicitBadge />}
-                          </div>
-                          <div className="text-sm text-secondary flex items-center gap-1">
-                              <span>{[track.artist, ...(track.mainArtists || [])].filter((v, i, a) => a.indexOf(v) === i).join(', ')}</span>
-                              <span className="md:hidden text-[10px]">• {formatPlays(track.plays)}</span>
-                          </div>
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-4">
-                        <span className="text-sm text-secondary hidden md:block">{formatDuration(track.duration)}</span>
-                        <button onClick={() => toggleLike(track.id)} className={`${isLiked(track.id) ? 'text-primary' : 'text-secondary hover:text-white'}`}>
-                          <Heart size={18} fill={isLiked(track.id) ? 'currentColor' : 'none'} />
-                        </button>
-                     </div>
-                   </div>
-                 );})}
+                <div className="flex flex-col gap-1">
+                 {filteredTracks.map((track, idx) => (
+                   <TrackRow
+                     key={track.id}
+                     track={track}
+                     index={idx}
+                     queue={filteredTracks}
+                   />
+                 ))}
                 </div>
              </div>
            )}
