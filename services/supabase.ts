@@ -656,28 +656,37 @@ export const SupabaseService = {
   async recordPlayLog(trackId: string, userId: string = 'anonymous', playsCount: number = 1, currentBasePlays?: number): Promise<number | null> {
     if (!supabase) return null;
     try {
-      // Anti-stream-farming validation: check if this user/device has already recorded 20 plays for this track in the last 24h
-      const sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // Calculate current 21:00 UTC+3 (18:00 UTC) cycle start timestamp
+      const now = new Date();
+      const cycleStart = new Date(now);
+      cycleStart.setUTCHours(18, 0, 0, 0); // 18:00 UTC is 21:00 UTC+3
+      if (now.getTime() < cycleStart.getTime()) {
+        cycleStart.setUTCDate(cycleStart.getUTCDate() - 1);
+      }
+      const cycleStartISO = cycleStart.toISOString();
+
+      // Anti-stream-farming validation: check streams recorded since the start of the current 21:00 UTC+3 cycle
       const { count, error: countErr } = await supabase
         .from('track_play_logs')
         .select('*', { count: 'exact', head: true })
         .eq('track_id', trackId)
         .eq('user_id', userId || 'anonymous')
-        .gte('created_at', sinceISO);
+        .gte('created_at', cycleStartISO);
 
       if (!countErr && typeof count === 'number' && count >= 20) {
-        console.info(`[Supabase Stream Filter] User/Device "${userId}" reached daily 20 streams limit on track ${trackId}. Filtered.`);
+        console.info(`[Supabase Stream Filter] User/Device "${userId}" reached 20 streams limit for current cycle (since ${cycleStartISO}) on track ${trackId}. Filtered.`);
         return null;
       }
 
       const logId = `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       
-      // 1. Insert timestamped log entry into track_play_logs with the random playsCount (100..10000)
+      // Use provided playsCount (multiplier 100..10000) or generate default multiplier
+      const actualIncrement = playsCount && playsCount > 1 ? playsCount : Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
       const { error: logErr } = await supabase.from('track_play_logs').insert([{
         id: logId,
         track_id: trackId,
         user_id: userId || 'anonymous',
-        plays: playsCount,
+        plays: actualIncrement,
         created_at: new Date().toISOString()
       }]);
 
@@ -685,8 +694,8 @@ export const SupabaseService = {
         console.warn('Supabase recordPlayLog insert error:', logErr.message);
       }
 
-      // 2. Increment total plays in track_plays table
-      return await this.incrementTrackPlay(trackId, playsCount, currentBasePlays);
+      // 2. Increment total plays in track_plays table by actualIncrement
+      return await this.incrementTrackPlay(trackId, actualIncrement, currentBasePlays);
     } catch (e) {
       console.warn('Supabase recordPlayLog failed:', e);
       return null;
@@ -698,21 +707,39 @@ export const SupabaseService = {
     try {
       const { data, error } = await supabase
         .from('track_play_logs')
-        .select('track_id, plays')
+        .select('track_id, user_id, plays, created_at')
         .gte('created_at', fromISO)
-        .lt('created_at', toISO);
+        .lt('created_at', toISO)
+        .order('created_at', { ascending: true });
 
       if (error) {
         console.warn('Supabase fetchDailyPlaysRange error:', error.message);
         return null;
       }
 
-      const map: Record<string, number> = {};
+      // Group streams per user and per track, capping at max 20 counted stream logs per user/device per cycle
+      const userTrackLogs: Record<string, Record<string, number[]>> = {};
       (data || []).forEach((row: any) => {
         if (row.track_id) {
-          map[row.track_id] = (map[row.track_id] || 0) + (Number(row.plays) || 0);
+          const tid = row.track_id;
+          const uid = row.user_id || 'anonymous';
+          const pVal = Number(row.plays) || 1;
+          if (!userTrackLogs[tid]) userTrackLogs[tid] = {};
+          if (!userTrackLogs[tid][uid]) userTrackLogs[tid][uid] = [];
+          userTrackLogs[tid][uid].push(pVal);
         }
       });
+
+      const map: Record<string, number> = {};
+      Object.entries(userTrackLogs).forEach(([tid, userMap]) => {
+        let totalPlays = 0;
+        Object.values(userMap).forEach(userPlaysList => {
+          const validPlays = userPlaysList.slice(0, 20);
+          totalPlays += validPlays.reduce((sum, p) => sum + p, 0);
+        });
+        map[tid] = totalPlays;
+      });
+
       return map;
     } catch (e) {
       console.warn('Supabase fetchDailyPlaysRange failed:', e);

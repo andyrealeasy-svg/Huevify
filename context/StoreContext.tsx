@@ -2069,8 +2069,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!isFromSupabase) {
       const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
       const periodLogs = localLogs.filter(l => l.timestamp >= cycleStart.getTime() && l.timestamp < cycleEnd.getTime());
+      
+      const userTrackLogs: Record<string, number[]> = {};
       periodLogs.forEach(l => {
-        dailyPlaysMap[l.trackId] = (dailyPlaysMap[l.trackId] || 0) + l.plays;
+        const tid = l.trackId;
+        if (!userTrackLogs[tid]) userTrackLogs[tid] = [];
+        userTrackLogs[tid].push(l.plays || 1);
+      });
+      Object.entries(userTrackLogs).forEach(([tid, playsList]) => {
+        const validPlays = playsList.slice(0, 20);
+        dailyPlaysMap[tid] = validPlays.reduce((sum, p) => sum + p, 0);
       });
     }
 
@@ -2791,22 +2799,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentTrack, hasCountedListen, playMode, tracks, isShuffle, appSettings.autoPlay, appSettings.crossfade, appSettings.crossfadeEnabled]);
 
   const checkStreamEligibility = (trackId: string): { eligible: boolean; countInWindow: number; remaining: number } => {
-    const now = Date.now();
-    const windowMs = 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const cycleStartMs = getLatestPublicationPoint(now).getTime();
     const history = StorageService.load<UserStreamRecord[]>('huevify_stream_history', []);
     
     const currentUserId = currentUser?.id ? `user_${currentUser.id}` : '';
     const currentDeviceId = getOrCreateDeviceId();
 
-    const streamsIn24h = history.filter(entry => {
+    // Only count streams recorded within the current 21:00 UTC+3 (18:00 UTC) chart cycle
+    const streamsInCurrentCycle = history.filter(entry => {
       if (entry.trackId !== trackId) return false;
-      if (now - entry.timestamp > windowMs) return false;
+      if (entry.timestamp < cycleStartMs) return false;
       if (currentUserId && entry.userId === currentUserId) return true;
       if (currentDeviceId && entry.deviceId === currentDeviceId) return true;
       return false;
     });
 
-    const count = streamsIn24h.length;
+    const count = streamsInCurrentCycle.length;
     return {
       eligible: count < DAILY_COUNTED_STREAMS_PER_TRACK,
       countInWindow: count,
@@ -2820,8 +2829,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentUserId = currentUser?.id ? `user_${currentUser.id}` : '';
     const currentDeviceId = getOrCreateDeviceId();
 
-    // Prune entries older than 48 hours to maintain fast, compact storage
-    const pruned = history.filter(entry => now - entry.timestamp <= 48 * 60 * 60 * 1000);
+    // Prune entries older than 7 days to maintain clean storage
+    const pruned = history.filter(entry => now - entry.timestamp <= 7 * 24 * 60 * 60 * 1000);
     pruned.push({
       trackId,
       userId: currentUserId,
@@ -2844,10 +2853,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track) return;
     setHasCountedListen(true);
 
-    // Stream filtering: max 20 eligible streams per track from user/device in rolling 24 hours
+    // Stream filtering: max 20 eligible streams per track from user/device in current 21:00 UTC+3 cycle
     const { eligible, countInWindow } = checkStreamEligibility(track.id);
     if (!eligible) {
-      console.info(`[Stream Filter] Track "${track.title}" (${track.id}) stream filtered: 24h limit (${countInWindow}/${DAILY_COUNTED_STREAMS_PER_TRACK}) reached. Public plays not incremented.`);
+      console.info(`[Stream Filter] Track "${track.title}" (${track.id}) stream filtered: cycle limit (${countInWindow}/${DAILY_COUNTED_STREAMS_PER_TRACK}) reached. Public plays not incremented.`);
       return;
     }
 
@@ -2866,7 +2875,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return updated;
     });
 
-    // Save local log for offline/fallback chart calculation and 2-week popular release analytics
+    // Save local log for offline/fallback chart calculation
     const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
     localLogs.push({ trackId: track.id, plays: addedPlays, timestamp: Date.now() });
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
