@@ -2634,14 +2634,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getArtistStats = (artistName: string): ArtistStats => {
     const artistPlayMap: Record<string, number> = {};
     tracks.forEach(t => { 
-        const primary = t.artist;
-        if (primary) artistPlayMap[primary] = (artistPlayMap[primary] || 0) + t.plays;
-        
-        if (t.mainArtists) {
+        const trackArtists = new Set<string>();
+        if (t.artist) trackArtists.add(t.artist);
+        if (Array.isArray(t.mainArtists)) {
             t.mainArtists.forEach(ma => {
-                artistPlayMap[ma] = (artistPlayMap[ma] || 0) + t.plays;
+                if (ma) trackArtists.add(ma);
             });
         }
+        trackArtists.forEach(aName => {
+            artistPlayMap[aName] = (artistPlayMap[aName] || 0) + (t.plays || 0);
+        });
     });
     
     const sortedArtists = Object.entries(artistPlayMap).sort(([, a], [, b]) => b - a);
