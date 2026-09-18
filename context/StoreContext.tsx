@@ -2853,6 +2853,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const handleListenCount = (track: Track) => {
     if (!track) return;
+
+    // Global Rate-Limit: max 1 valid stream per 60 seconds per user/device across all tracks
+    const now = Date.now();
+    const lastGlobalStreamTime = StorageService.load<number>('huevify_last_global_stream_time', 0);
+    if (now - lastGlobalStreamTime < 60000) {
+      console.info(`[Stream Filter] Global rate limit active (max 1 stream per 60s). Track "${track.title}" stream ignored.`);
+      return;
+    }
+
     setHasCountedListen(true);
 
     // Stream filtering: max 20 eligible streams per track from user/device in current 21:00 UTC+3 cycle
@@ -2861,6 +2870,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.info(`[Stream Filter] Track "${track.title}" (${track.id}) stream filtered: cycle limit (${countInWindow}/${DAILY_COUNTED_STREAMS_PER_TRACK}) reached. Public plays not incremented.`);
       return;
     }
+
+    // Save timestamp of successful global stream
+    StorageService.save('huevify_last_global_stream_time', now);
 
     // Record verified stream in local anti-farming history
     recordStreamHistory(track.id);

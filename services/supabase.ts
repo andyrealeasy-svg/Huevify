@@ -665,7 +665,20 @@ export const SupabaseService = {
       }
       const cycleStartISO = cycleStart.toISOString();
 
-      // Anti-stream-farming validation: check streams recorded since the start of the current 21:00 UTC+3 cycle
+      // Anti-stream-farming validation 1: Rate limit - max 1 stream per 60 seconds per user/device
+      const oneMinuteAgoISO = new Date(Date.now() - 60000).toISOString();
+      const { count: recentCount, error: recentErr } = await supabase
+        .from('track_play_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId || 'anonymous')
+        .gte('created_at', oneMinuteAgoISO);
+
+      if (!recentErr && typeof recentCount === 'number' && recentCount > 0) {
+        console.info(`[Supabase Stream Filter] User/Device "${userId}" rate limited: logged stream within last 60s. Filtered.`);
+        return null;
+      }
+
+      // Anti-stream-farming validation 2: check streams recorded since the start of the current 21:00 UTC+3 cycle
       const { count, error: countErr } = await supabase
         .from('track_play_logs')
         .select('*', { count: 'exact', head: true })
