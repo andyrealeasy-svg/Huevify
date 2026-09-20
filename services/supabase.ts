@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft } from '../types';
+import { FilebaseService } from './filebase';
 
 const metaEnv = (import.meta as any).env || {};
 const supabaseUrl = (metaEnv.VITE_SUPABASE_URL || 'https://kzcxbokjnbafaozcmjjg.supabase.co') as string | undefined;
@@ -978,6 +979,23 @@ export const SupabaseService = {
         if (source.startsWith('http://') || source.startsWith('https://')) {
           return source;
         }
+      }
+
+      // Priority 1: Filebase IPFS storage (bypasses Supabase 1GB storage cap)
+      if (FilebaseService.isConfigured()) {
+        try {
+          const filebaseUrl = await FilebaseService.uploadMedia(source, folder, fileNameHint);
+          if (filebaseUrl) {
+            return filebaseUrl;
+          }
+        } catch (fbErr) {
+          console.warn('[Storage] Filebase upload error, falling back to Supabase:', fbErr);
+        }
+      }
+
+      if (!supabase) return null;
+
+      if (typeof source === 'string') {
         if (source.startsWith('data:')) {
           const converted = this.dataUrlToBlob(source);
           if (!converted) return null;
