@@ -1,4 +1,20 @@
 
+export interface LyricsLine {
+  time: number; // in seconds
+  text: string;
+}
+
+export interface TrackLyricsRecord {
+  id?: string;
+  hueq?: string;
+  track_id?: string;
+  artist_id?: string;
+  lyrics?: string;
+  synced_lyrics?: LyricsLine[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -15,6 +31,8 @@ export interface Track {
   mainArtists?: string[]; // Array of additional main artists
   isUnreleased?: boolean; // For tracks in expected releases that are not yet released
   dailyPlays?: number; // Optional daily plays count
+  lyrics?: string;
+  syncedLyrics?: LyricsLine[];
 }
 
 export interface DailyChartTrack extends Track {
@@ -119,6 +137,7 @@ export interface ModeratorAccount {
 }
 
 export interface DistributionTrack {
+  id?: string;
   title: string;
   explicit: boolean;
   feat?: string; // Featured artists
@@ -129,6 +148,10 @@ export interface DistributionTrack {
   existingHueq?: string; // If user inputs an existing code
   generatedHueq?: string; // Assigned by system on approval
   artist?: string; // Track-level artist override
+  isEmpty?: boolean; // When true, represents an empty / unreleased track ("НЕ ВЫШЕЛ")
+  isUnreleased?: boolean;
+  lyrics?: string;
+  syncedLyrics?: LyricsLine[];
 }
 
 export type ReleaseType = 'Single' | 'Album' | 'EP' | 'Mixtape';

@@ -471,18 +471,44 @@ export const Library = () => {
                                         ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded md:bg-surface md:hover:bg-surface-highlight'
                                         : 'rounded bg-surface hover:bg-surface-highlight'
                                     }`}
-                                    onClick={() => pick.id && setView({ type: pick.type as any, id: pick.id })}
+                                    onClick={() => {
+                                        if (!pick.id) return;
+                                        if (pick.type === 'TRACK') {
+                                            const targetTrack = tracks.find(t => t.id === pick.id || (t.hueq && t.hueq.toUpperCase() === pick.id.toUpperCase()));
+                                            if (targetTrack) {
+                                                playTrack(targetTrack);
+                                            } else {
+                                                const byTitle = tracks.find(t => t.artist === artistName && t.title.toLowerCase() === pick.subtitle?.toLowerCase());
+                                                if (byTitle) {
+                                                    playTrack(byTitle);
+                                                }
+                                            }
+                                        } else if (pick.type === 'ALBUM') {
+                                            setView({ type: 'ALBUM', id: pick.id });
+                                        } else if (pick.type === 'PLAYLIST') {
+                                            setView({ type: 'PLAYLIST', id: pick.id });
+                                        }
+                                    }}
                                 >
-                                    <img src={pick.image} className="w-20 h-20 rounded-xl object-cover shadow-lg shrink-0" />
-                                    <div className="flex flex-col justify-center">
+                                    <div className="relative w-20 h-20 shrink-0 group">
+                                        <img src={pick.image} className="w-full h-full rounded-xl object-cover shadow-lg" alt={pick.subtitle || ''} />
+                                        {pick.type === 'TRACK' && (
+                                            <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <Play size={24} fill="white" className="text-white ml-0.5" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col justify-center min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800">
+                                            <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800 shrink-0">
                                                 <img src={artistAccount?.avatar || pick.image} className="w-full h-full object-cover"/>
                                             </div>
-                                            <span className="text-xs text-secondary font-bold">{t('postedBy')} {artistName}</span>
+                                            <span className="text-xs text-secondary font-bold truncate">{t('postedBy')} {artistName}</span>
                                         </div>
-                                        <div className="font-bold group-hover:underline text-lg">{pick.subtitle}</div>
-                                        <div className="text-sm text-secondary">{t('latestRelease')}</div>
+                                        <div className="font-bold group-hover:underline text-lg truncate">{pick.subtitle}</div>
+                                        <div className="text-sm text-secondary">
+                                            {pick.type === 'TRACK' ? 'Трек' : pick.type === 'PLAYLIST' ? 'Плейлист' : (t('latestRelease') || 'Релиз')}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

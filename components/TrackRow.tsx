@@ -67,8 +67,8 @@ export const TrackRow: React.FC<TrackRowProps> = ({
 
   const isCurrent = currentTrack?.id === track.id;
   const isTrackLiked = isLiked(track.id);
-  const isTrackUnreleased = track.isUnreleased || !track.url;
-  const isRowDisabled = disabled || (isTrackUnreleased && !track.url);
+  const isTrackUnreleased = Boolean(track.isUnreleased);
+  const isRowDisabled = Boolean(disabled || (isTrackUnreleased && !track.url));
 
   // Cover image
   const coverUrl = customCover || getTrackCover(track, contextAlbumId);
@@ -243,7 +243,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
 
             {!isRowDisabled && track.explicit && <ExplicitBadge />}
 
-            {isRowDisabled && (
+            {isRowDisabled && isTrackUnreleased && (
               <span className="text-[10px] uppercase font-bold text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 shrink-0">
                 {t('unreleased', 'Не вышел')}
               </span>

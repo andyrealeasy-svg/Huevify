@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume, Volume1, Volume2, VolumeX, Heart, Plus, ListMusic, MoreHorizontal } from './Icons.tsx';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume, Volume1, Volume2, VolumeX, Heart, Plus, ListMusic, MoreHorizontal, Mic2 } from './Icons.tsx';
 import { PlayMode } from '../types.ts';
 import { extractColorFromImage } from '../utils/colorExtractor.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
@@ -18,7 +18,8 @@ export const Player = () => {
     currentTrack, isPlaying, togglePlay, nextTrack, prevTrack, 
     progress, duration, seek, volume, setVolume, playMode, toggleRepeat,
     isLiked, toggleLike, setMobilePlayerOpen, isShuffle, toggleShuffle,
-    openAddToPlaylist, goToArtist, getTrackCover, t, appSettings, tracks, playTrack
+    openAddToPlaylist, goToArtist, getTrackCover, t, appSettings, tracks, playTrack,
+    isFullScreenLyricsOpen, toggleFullScreenLyrics
   } = useStore();
 
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
@@ -317,6 +318,22 @@ export const Player = () => {
               style={{ width: `${volume * 100}%` }}
             />
         </div>
+
+        {/* Fullscreen Lyrics Toggle Button on Desktop */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFullScreenLyrics();
+          }}
+          className={`transition p-1.5 rounded-full hover:bg-white/10 active:scale-95 ${
+            isFullScreenLyricsOpen ? 'text-primary' : 'text-secondary hover:text-white'
+          }`}
+          title={isFullScreenLyricsOpen ? "Закрыть текст песни" : "Текст песни"}
+          aria-label="Текст песни"
+        >
+          <Mic2 size={20} />
+        </button>
 
         {/* Three Dots Button for Current Track on Desktop */}
         <button

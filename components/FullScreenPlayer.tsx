@@ -3,7 +3,7 @@ import { useStore } from '../context/StoreContext.tsx';
 import { 
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, 
   Heart, Plus, ListMusic, Volume, Volume1, Volume2, VolumeX,
-  MoreVertical
+  MoreVertical, Mic2, Maximize2
 } from './Icons.tsx';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
 import { PlayMode, Track } from '../types.ts';
@@ -24,7 +24,7 @@ export const FullScreenPlayer = () => {
     playMode, toggleRepeat, isLiked, toggleLike, openAddToPlaylist,
     isShuffle, toggleShuffle, volume, setVolume, goToArtist, getTrackCover,
     albums, playlists, removeFromPlaylist, playNext, setView, view,
-    currentUser, showNotification, tracks, appSettings
+    currentUser, showNotification, tracks, appSettings, setFullScreenLyricsOpen
   } = useStore();
 
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
@@ -114,6 +114,20 @@ export const FullScreenPlayer = () => {
   };
 
   const allArtists = getTrackArtists(currentTrack);
+
+  // Active lyrics calculations
+  const syncedLyrics = currentTrack?.syncedLyrics || [];
+  const hasSyncedLyrics = syncedLyrics.length > 0;
+  let activeIndex = -1;
+  if (hasSyncedLyrics) {
+    for (let i = 0; i < syncedLyrics.length; i++) {
+      if (progress >= syncedLyrics[i].time) {
+        activeIndex = i;
+      } else {
+        break;
+      }
+    }
+  }
 
   const handleToggleLike = () => {
     if (!currentTrack) return;
@@ -210,7 +224,7 @@ export const FullScreenPlayer = () => {
   return (
     <div 
         id="fullscreen-player"
-        className={`fixed inset-0 z-[60] flex flex-col p-6 transition-transform duration-300 ease-in-out md:hidden overflow-hidden ${isMobilePlayerOpen ? 'translate-y-0' : 'translate-y-[100%]'}`}
+        className={`fixed inset-0 z-[60] flex flex-col p-5 sm:p-6 transition-transform duration-300 ease-in-out md:hidden overflow-y-auto overscroll-y-contain ${isMobilePlayerOpen ? 'translate-y-0' : 'translate-y-[100%]'}`}
         style={{
           background: palette.gradient,
           transition: 'background 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.3s ease-in-out'
@@ -218,13 +232,13 @@ export const FullScreenPlayer = () => {
     >
       {/* Ambient Radial Glow matching the cover art */}
       <div 
-        className="absolute inset-0 pointer-events-none transition-all duration-700 opacity-60"
+        className="fixed inset-0 pointer-events-none transition-all duration-700 opacity-60"
         style={{
           background: palette.glow
         }}
       />
 
-      <div className="relative z-10 flex flex-col h-full justify-between">
+      <div className="relative z-10 flex flex-col min-h-[calc(100vh-48px)] justify-between max-w-md mx-auto w-full">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
           <button 
@@ -415,6 +429,75 @@ export const FullScreenPlayer = () => {
                 style={{ width: `${volume * 100}%` }}
               />
            </div>
+        </div>
+      </div>
+
+      {/* SPOTIFY-STYLE LYRICS PREVIEW CARD (When user scrolls down) */}
+      <div className="relative z-10 max-w-md mx-auto w-full mt-6 mb-8">
+        <div 
+          onClick={() => setFullScreenLyricsOpen(true)}
+          className={`p-5 rounded-2xl border transition-all duration-200 relative overflow-hidden cursor-pointer group ${
+            isLiquidGlass
+              ? 'bg-black/30 backdrop-blur-2xl border-white/15 hover:border-white/25'
+              : 'bg-black/50 backdrop-blur-xl border-white/10 hover:border-white/20'
+          }`}
+        >
+          {/* Header of lyrics card */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <Mic2 size={16} className="text-zinc-300" />
+              <span>Текст песни</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFullScreenLyricsOpen(true);
+              }}
+              className="p-1.5 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 transition text-white"
+              title="Открыть на весь экран"
+              aria-label="Открыть на весь экран"
+            >
+              <Maximize2 size={16} />
+            </button>
+          </div>
+
+          {/* Real-time moving lyrics fragment */}
+          <div className="flex flex-col gap-2 min-h-[90px] justify-center">
+            {hasSyncedLyrics ? (
+              syncedLyrics
+                .slice(Math.max(0, (activeIndex >= 0 ? activeIndex : 0) - 1), Math.max(0, (activeIndex >= 0 ? activeIndex : 0) + 3))
+                .map((line, idx) => {
+                  const isCurrent = line.time === syncedLyrics[activeIndex]?.time;
+                  return (
+                    <p
+                      key={idx}
+                      className={`transition-all duration-200 leading-snug line-clamp-2 ${
+                        isCurrent
+                          ? 'text-base sm:text-lg font-bold text-white'
+                          : 'text-xs sm:text-sm font-medium text-white/40'
+                      }`}
+                    >
+                      {line.text}
+                    </p>
+                  );
+                })
+            ) : currentTrack.lyrics ? (
+              <p className="text-xs sm:text-sm font-medium text-white/80 line-clamp-4 leading-relaxed">
+                {currentTrack.lyrics.split('\n').filter(Boolean).slice(0, 4).join('\n')}
+              </p>
+            ) : (
+              <div className="text-xs text-zinc-400 py-2">
+                Текст песни пока не добавлен. Нажмите, чтобы открыть окно текста.
+              </div>
+            )}
+          </div>
+
+          {/* Tap hint footer */}
+          <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between text-[11px] text-zinc-400">
+            <span>Нажмите для перехода в полноэкранный режим</span>
+            <Maximize2 size={12} className="text-zinc-400" />
+          </div>
         </div>
       </div>
 

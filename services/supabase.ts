@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft } from '../types';
+import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft, LyricsLine, TrackLyricsRecord } from '../types';
 import { FilebaseService } from './filebase';
 
 const metaEnv = (import.meta as any).env || {};
@@ -1092,5 +1092,199 @@ export const SupabaseService = {
 
     const { data: publicData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
     return publicData.publicUrl;
+  },
+
+  // --- TRACK LYRICS (Live synced lyrics table) ---
+  async fetchLyricsByHueq(hueq: string): Promise<{ lyrics?: string; syncedLyrics?: LyricsLine[] } | null> {
+    if (!supabase || !hueq) return null;
+    try {
+      const clean = hueq.trim().toUpperCase();
+      const { data, error } = await supabase
+        .from('track_lyrics')
+        .select('*')
+        .or(`hueq.eq.${clean},hueq.eq.${hueq.trim()}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Supabase fetchLyricsByHueq error:', error.message);
+        return null;
+      }
+      if (!data) return null;
+
+      return {
+        lyrics: data.lyrics || undefined,
+        syncedLyrics: data.synced_lyrics || undefined
+      };
+    } catch (e) {
+      console.warn('Supabase fetchLyricsByHueq failed:', e);
+      return null;
+    }
+  },
+
+  async fetchLyricsByTrackId(trackId: string): Promise<{ lyrics?: string; syncedLyrics?: LyricsLine[] } | null> {
+    if (!supabase || !trackId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('track_lyrics')
+        .select('*')
+        .eq('track_id', trackId.trim())
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Supabase fetchLyricsByTrackId error:', error.message);
+        return null;
+      }
+      if (!data) return null;
+
+      return {
+        lyrics: data.lyrics || undefined,
+        syncedLyrics: data.synced_lyrics || undefined
+      };
+    } catch (e) {
+      console.warn('Supabase fetchLyricsByTrackId failed:', e);
+      return null;
+    }
+  },
+
+  async fetchLyrics(query: { hueq?: string; trackId?: string }): Promise<{ lyrics?: string; syncedLyrics?: LyricsLine[] } | null> {
+    if (!supabase) return null;
+    if (query.hueq) {
+      const res = await this.fetchLyricsByHueq(query.hueq);
+      if (res && (res.lyrics || res.syncedLyrics)) return res;
+    }
+    if (query.trackId) {
+      const res = await this.fetchLyricsByTrackId(query.trackId);
+      if (res && (res.lyrics || res.syncedLyrics)) return res;
+    }
+    return null;
+  },
+
+  async saveTrackLyrics(data: {
+    hueq?: string;
+    trackId?: string;
+    artistId?: string;
+    lyrics?: string;
+    syncedLyrics?: LyricsLine[];
+  }): Promise<{ success: boolean; error?: string }> {
+    if (!supabase) return { success: false, error: 'Supabase is not configured' };
+    try {
+      const cleanHueq = data.hueq?.trim().toUpperCase() || null;
+      const cleanTrackId = data.trackId?.trim() || null;
+      
+      if (!cleanHueq && !cleanTrackId) {
+        console.warn('saveTrackLyrics: Neither hueq nor trackId provided');
+        return { success: false, error: 'Neither hueq nor trackId provided' };
+      }
+
+      const row: any = {
+        hueq: cleanHueq,
+        track_id: cleanTrackId,
+        artist_id: data.artistId || null,
+        lyrics: data.lyrics || null,
+        synced_lyrics: data.syncedLyrics && data.syncedLyrics.length > 0 ? data.syncedLyrics : null,
+        updated_at: new Date().toISOString()
+      };
+
+      // 1. Direct upsert attempt if hueq is available
+      if (cleanHueq) {
+        const { error: upsertErr } = await supabase
+          .from('track_lyrics')
+          .upsert(row, { onConflict: 'hueq' });
+
+        if (!upsertErr) {
+          console.log('[Supabase] Successfully upserted track_lyrics for hueq:', cleanHueq);
+          return { success: true };
+        }
+        console.warn('[Supabase] saveTrackLyrics upsert attempt error:', upsertErr.message);
+        
+        // If RLS blocked it
+        if (upsertErr.message?.toLowerCase().includes('row-level security') || upsertErr.code === '42501') {
+          return { success: false, error: `RLS policy blocked: ${upsertErr.message}` };
+        }
+      }
+
+      // 2. Select -> Update / Insert fallback
+      let existingId: string | null = null;
+      if (cleanHueq) {
+        const { data: existing, error: findErr } = await supabase
+          .from('track_lyrics')
+          .select('id')
+          .or(`hueq.eq.${cleanHueq},hueq.eq.${data.hueq?.trim()}`)
+          .limit(1)
+          .maybeSingle();
+        
+        if (findErr) {
+          console.warn('[Supabase] Find existing track_lyrics error:', findErr.message);
+        }
+        if (existing?.id) existingId = existing.id;
+      }
+
+      if (!existingId && cleanTrackId) {
+        const { data: existing } = await supabase
+          .from('track_lyrics')
+          .select('id')
+          .eq('track_id', cleanTrackId)
+          .limit(1)
+          .maybeSingle();
+        if (existing?.id) existingId = existing.id;
+      }
+
+      if (existingId) {
+        const { error: updateErr } = await supabase
+          .from('track_lyrics')
+          .update(row)
+          .eq('id', existingId);
+
+        if (!updateErr) {
+          console.log('[Supabase] Successfully updated track_lyrics (id:', existingId, ')');
+          return { success: true };
+        }
+        console.warn('[Supabase] saveTrackLyrics update error:', updateErr.message);
+        return { success: false, error: updateErr.message };
+      } else {
+        const { error: insertErr } = await supabase
+          .from('track_lyrics')
+          .insert([row]);
+
+        if (!insertErr) {
+          console.log('[Supabase] Successfully inserted track_lyrics for hueq:', cleanHueq);
+          return { success: true };
+        }
+        console.warn('[Supabase] saveTrackLyrics insert error:', insertErr.message);
+        return { success: false, error: insertErr.message };
+      }
+    } catch (e: any) {
+      console.warn('[Supabase] saveTrackLyrics exception:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  },
+
+  async fetchAllTrackLyrics(): Promise<Record<string, { lyrics?: string; syncedLyrics?: LyricsLine[] }>> {
+    if (!supabase) return {};
+    try {
+      const { data, error } = await supabase.from('track_lyrics').select('*');
+      if (error) {
+        console.warn('Supabase fetchAllTrackLyrics error:', error.message);
+        return {};
+      }
+      const map: Record<string, { lyrics?: string; syncedLyrics?: LyricsLine[] }> = {};
+      (data || []).forEach((row: any) => {
+        const item = {
+          lyrics: row.lyrics || undefined,
+          syncedLyrics: row.synced_lyrics || undefined
+        };
+        if (row.hueq) {
+          map[row.hueq] = item;
+          map[row.hueq.toUpperCase()] = item;
+        }
+        if (row.track_id) map[row.track_id] = item;
+      });
+      return map;
+    } catch (e) {
+      console.warn('Supabase fetchAllTrackLyrics failed:', e);
+      return {};
+    }
   }
 };

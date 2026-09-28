@@ -4,16 +4,33 @@ import { compressImage } from '../utils/imageCompressor.ts';
 import {
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
-  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
-  Megaphone, EyeOff, Eye, Info, CalendarClock
+  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, Pause, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
+  Megaphone, EyeOff, Eye, Info, CalendarClock, GripVertical, Music, ChevronLeft, ChevronRight, Sliders, ArrowUpDown, MoreHorizontal
 } from './Icons.tsx';
 import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
 import { CustomSelect } from './CustomSelect.tsx';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { StorageService } from '../services/storage.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
+import { LyricsSyncModal } from './LyricsSyncModal.tsx';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
+
+export const CLASSIC_GENRES = ['Поп', 'Рэп/Хип-Хоп', 'РнБ', 'Электроника'] as const;
+
+export const normalizeClassicGenre = (g?: string): string => {
+  if (!g) return 'Поп';
+  const trimmed = g.trim();
+  if (trimmed === 'Поп' || trimmed === 'Рэп/Хип-Хоп' || trimmed === 'РнБ' || trimmed === 'Электроника') {
+    return trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('pop') || lower.includes('поп')) return 'Поп';
+  if (lower.includes('rap') || lower.includes('hip') || lower.includes('рэп')) return 'Рэп/Хип-Хоп';
+  if (lower.includes('r&b') || lower.includes('rnb') || lower.includes('рнб')) return 'РнБ';
+  if (lower.includes('electr') || lower.includes('dance') || lower.includes('электрон')) return 'Электроника';
+  return 'Поп';
+};
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -28,9 +45,10 @@ export const ArtistHub = () => {
     releaseRequests, profileEditRequests, approveArtist, rejectArtist,
     approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
     submitRelease, updateReleaseRequest, getArtistStats, submitProfileEdit, hasModerator, existingArtists,
-    deleteRelease, getTrackByHueq, tracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
+    deleteRelease, getTrackByHueq, tracks, setTracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
     changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t,
-    appSettings
+    appSettings,
+    currentTrack, setCurrentTrack, isPlaying, playTrack, togglePlay
   } = useStore();
 
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
@@ -55,7 +73,7 @@ export const ArtistHub = () => {
   const [distTitle, setDistTitle] = useState("");
   const [distArtistName, setDistArtistName] = useState(""); // For Mods to override
   const [distType, setDistType] = useState<ReleaseType>('Single');
-  const [distGenre, setDistGenre] = useState("Pop");
+  const [distGenre, setDistGenre] = useState<string>("Поп");
   const [distLabel, setDistLabel] = useState("");
   const [distCovers, setDistCovers] = useState<string[]>([]);
   const [distMainArtists, setDistMainArtists] = useState<string[]>([]);
@@ -98,6 +116,13 @@ export const ArtistHub = () => {
 
   // Release Detail Modal State
   const [selectedRelease, setSelectedRelease] = useState<ReleaseRequest | null>(null);
+  const [previewTracks, setPreviewTracks] = useState<DistributionTrack[]>([]);
+
+  useEffect(() => {
+      if (selectedRelease) {
+          setPreviewTracks(selectedRelease.tracks || []);
+      }
+  }, [selectedRelease]);
 
   // HUEQ Track Loading State (Step 2)
   const [isHueqModalOpen, setIsHueqModalOpen] = useState(false);
@@ -105,9 +130,19 @@ export const ArtistHub = () => {
   const [hueqLookupError, setHueqLookupError] = useState("");
   const [previewTrackFromHueq, setPreviewTrackFromHueq] = useState<Track | null>(null);
 
+  // New Distribution Track UI states
+  const [isAddTrackMenuOpen, setIsAddTrackMenuOpen] = useState(false);
+  const [expandedTrackIdx, setExpandedTrackIdx] = useState<number | null>(null);
+  const [lyricsModalTrackIdx, setLyricsModalTrackIdx] = useState<number | null>(null);
+  const [draggedTrackIdx, setDraggedTrackIdx] = useState<number | null>(null);
+  const [dragOverTrackIdx, setDragOverTrackIdx] = useState<number | null>(null);
+  const [trackToAttachAudioIdx, setTrackToAttachAudioIdx] = useState<number | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const attachAudioInputRef = useRef<HTMLInputElement>(null);
+  const touchDragRef = useRef<{ fromIdx: number; currentOverIdx: number | null }>({ fromIdx: -1, currentOverIdx: null });
 
   // Initialize view based on login state
   useEffect(() => {
@@ -232,7 +267,7 @@ export const ArtistHub = () => {
       setDistTitle(draft.title || "");
       setDistArtistName(draft.artistName || "");
       setDistType(draft.type || 'Single');
-      setDistGenre(draft.genre || 'Pop');
+      setDistGenre(draft.genre ? normalizeClassicGenre(draft.genre) : 'Поп');
       setDistLabel(draft.label || "");
       setDistCovers(draft.covers || []);
       setDistMainArtists(draft.additionalMainArtists || []);
@@ -479,20 +514,157 @@ export const ArtistHub = () => {
       });
   };
 
-  const moveTrack = (index: number, direction: 'up' | 'down') => {
-      if (direction === 'up' && index > 0) {
-          setDistTracks(prev => {
-              const newTracks = [...prev];
-              [newTracks[index], newTracks[index - 1]] = [newTracks[index - 1], newTracks[index]];
-              return newTracks;
-          });
-      } else if (direction === 'down' && index < distTracks.length - 1) {
-          setDistTracks(prev => {
-              const newTracks = [...prev];
-              [newTracks[index], newTracks[index + 1]] = [newTracks[index + 1], newTracks[index]];
-              return newTracks;
-          });
+  // Drag and Drop reordering (mouse & touch)
+  const reorderTracks = (fromIdx: number, toIdx: number) => {
+      if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= distTracks.length || toIdx >= distTracks.length) return;
+      setDistTracks(prev => {
+          const next = [...prev];
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, moved);
+          return next;
+      });
+      // Adjust expanded track index if needed
+      if (expandedTrackIdx === fromIdx) {
+          setExpandedTrackIdx(toIdx);
+      } else if (expandedTrackIdx !== null) {
+          if (fromIdx < expandedTrackIdx && toIdx >= expandedTrackIdx) {
+              setExpandedTrackIdx(expandedTrackIdx - 1);
+          } else if (fromIdx > expandedTrackIdx && toIdx <= expandedTrackIdx) {
+              setExpandedTrackIdx(expandedTrackIdx + 1);
+          }
       }
+  };
+
+  // HTML5 Drag Events (Desktop Mouse)
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+      e.dataTransfer.setData('text/plain', idx.toString());
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggedTrackIdx(idx);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragOverTrackIdx !== idx) {
+          setDragOverTrackIdx(idx);
+      }
+  };
+
+  const handleDrop = (e: React.DragEvent, idx: number) => {
+      e.preventDefault();
+      if (draggedTrackIdx !== null && draggedTrackIdx !== idx) {
+          reorderTracks(draggedTrackIdx, idx);
+      }
+      setDraggedTrackIdx(null);
+      setDragOverTrackIdx(null);
+  };
+
+  const handleDragEnd = () => {
+      setDraggedTrackIdx(null);
+      setDragOverTrackIdx(null);
+  };
+
+  // Touch Events (Mobile Finger Drag)
+  const handleTouchStart = (e: React.TouchEvent, idx: number) => {
+      touchDragRef.current = { fromIdx: idx, currentOverIdx: idx };
+      setDraggedTrackIdx(idx);
+      setDragOverTrackIdx(idx);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(20); } catch {}
+      }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (touchDragRef.current.fromIdx === -1) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+
+      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+      const cardEl = targetEl?.closest('[data-track-idx]');
+      if (cardEl) {
+          const targetStr = cardEl.getAttribute('data-track-idx');
+          if (targetStr !== null) {
+              const targetIdx = parseInt(targetStr, 10);
+              if (!isNaN(targetIdx) && targetIdx !== touchDragRef.current.currentOverIdx) {
+                  touchDragRef.current.currentOverIdx = targetIdx;
+                  setDragOverTrackIdx(targetIdx);
+              }
+          }
+      }
+  };
+
+  const handleTouchEnd = () => {
+      const { fromIdx, currentOverIdx } = touchDragRef.current;
+      if (fromIdx !== -1 && currentOverIdx !== null && fromIdx !== currentOverIdx) {
+          reorderTracks(fromIdx, currentOverIdx);
+      }
+      touchDragRef.current = { fromIdx: -1, currentOverIdx: null };
+      setDraggedTrackIdx(null);
+      setDragOverTrackIdx(null);
+  };
+
+  // Add Empty Track ("НЕ ВЫШЕЛ")
+  const addEmptyTrack = () => {
+      const newTrack: DistributionTrack = {
+          title: "",
+          explicit: false,
+          duration: 0,
+          genre: distGenre || 'Pop',
+          fileUrl: "",
+          mainArtists: [],
+          isEmpty: true,
+          isUnreleased: true
+      };
+      setDistTracks(prev => {
+          const next = [...prev, newTrack];
+          setExpandedTrackIdx(next.length - 1);
+          return next;
+      });
+      setIsAddTrackMenuOpen(false);
+      showNotification("Пустой трек добавлен (будет отображаться как «НЕ ВЫШЕЛ»)", "info");
+  };
+
+  // Attach audio to a specific track
+  const handleAttachAudioToTrack = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || trackToAttachAudioIdx === null) return;
+
+      showNotification(`Загрузка аудио для трека...`, "info");
+      try {
+          const duration = await getAudioDuration(file);
+          let finalUrl: string | null = null;
+          if (isSupabaseConfigured()) {
+              try {
+                  finalUrl = await SupabaseService.uploadMedia(file, 'tracks', file.name);
+              } catch (err) {
+                  console.warn("Storage audio upload error:", err);
+              }
+          }
+          if (!finalUrl) {
+              try {
+                  finalUrl = URL.createObjectURL(file);
+              } catch {}
+          }
+          setDistTracks(prev => {
+              const next = [...prev];
+              if (next[trackToAttachAudioIdx]) {
+                  next[trackToAttachAudioIdx] = {
+                      ...next[trackToAttachAudioIdx],
+                      fileUrl: finalUrl || "",
+                      duration: duration,
+                      isEmpty: false,
+                      isUnreleased: false,
+                      title: next[trackToAttachAudioIdx].title || file.name.replace(/\.[^/.]+$/, "")
+                  };
+              }
+              return next;
+          });
+          showNotification("Аудиофайл успешно прикреплен к треку!", "success");
+      } catch (err) {
+          showNotification("Ошибка при загрузке аудиофайла", "error");
+      }
+      e.target.value = '';
+      setTrackToAttachAudioIdx(null);
   };
 
   // Track Artist Tag Handlers
@@ -661,14 +833,14 @@ export const ArtistHub = () => {
   };
 
   const addNewTrack = () => {
-      const nextNum = distTracks.length + 1;
       const newTrack: DistributionTrack = {
           title: ``,
           explicit: false,
           duration: 180,
           genre: distGenre || 'Pop',
           fileUrl: "",
-          mainArtists: []
+          mainArtists: [],
+          generatedHueq: generateHUEQ()
       };
       setDistTracks(prev => [...prev, newTrack]);
   };
@@ -775,7 +947,7 @@ export const ArtistHub = () => {
       setDistTitle("");
       setDistArtistName("");
       setDistType(forAnnouncement ? 'Album' : 'Single');
-      setDistGenre("Pop");
+      setDistGenre("Поп");
       setDistLabel("");
       setDistTracks([]);
       setDistCovers([]);
@@ -794,6 +966,11 @@ export const ArtistHub = () => {
       setPublishAnnouncementImmediately(true);
       setAnnouncementDate("");
       setAnnouncementTime("00:00");
+      setIsAddTrackMenuOpen(false);
+      setExpandedTrackIdx(null);
+      setDraggedTrackIdx(null);
+      setDragOverTrackIdx(null);
+      setTrackToAttachAudioIdx(null);
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -863,11 +1040,14 @@ export const ArtistHub = () => {
 
       setDistTitle(release.title);
       setDistType(release.type);
-      setDistGenre(release.genre);
+      setDistGenre(normalizeClassicGenre(release.genre));
       setDistLabel(release.label || release.recordLabel || "");
       setDistCovers(release.covers);
       setDistMainArtists(release.additionalMainArtists || release.mainArtists || []);
-      setDistTracks(release.tracks || []);
+      setDistTracks((release.tracks || []).map((t: any) => ({
+          ...t,
+          generatedHueq: t.generatedHueq || t.existingHueq || generateHUEQ()
+      })));
 
       // If mod, allow editing artist name
       if (currentModerator) {
@@ -1131,17 +1311,20 @@ export const ArtistHub = () => {
           status: 'LIVE' as const,
           covers: a.covers,
           label: a.recordLabel,
-          tracks: a.trackIds.map(tid => {
-              const t = tracks.find(tr => tr.id === tid);
+          tracks: a.trackIds.map((tid, idx) => {
+              const t = tracks.find(tr => tr.id === tid) || 
+                        tracks.find(tr => tr.album?.toLowerCase() === a.title.toLowerCase() && tr.artist?.toLowerCase() === a.artist?.toLowerCase());
               return {
-                  title: t?.title || "",
+                  title: t?.title || `Трек ${idx + 1}`,
                   explicit: t?.explicit || false,
-                  duration: t?.duration || 0,
+                  duration: t?.duration || 180,
                   mainArtists: t?.mainArtists || [],
-                  fileUrl: "",
-                  artist: t?.artist,
-                  existingHueq: t?.hueq, // Mapped for display
-                  generatedHueq: t?.hueq // Map both just in case
+                  fileUrl: t?.url || "",
+                  artist: t?.artist || a.artist,
+                  existingHueq: t?.hueq,
+                  generatedHueq: t?.hueq,
+                  isEmpty: false,
+                  isUnreleased: false
               };
           })
       }));
@@ -1599,7 +1782,7 @@ export const ArtistHub = () => {
   );
 
   const renderDistribution = () => (
-      <div className={`w-full max-w-4xl p-6 md:p-8 rounded-xl shadow-2xl animate-zoom-in relative max-h-[90vh] overflow-y-auto ${
+      <div className={`w-full max-w-4xl p-4 sm:p-6 md:p-8 rounded-2xl shadow-2xl animate-zoom-in relative mb-12 ${
         isLiquidGlass
           ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
           : 'bg-surface border border-surface-highlight'
@@ -1809,9 +1992,9 @@ export const ArtistHub = () => {
                               options={isAnnouncement ? ['EP', 'Album', 'Mixtape'] : ['Single', 'EP', 'Album', 'Mixtape']}
                           />
                           <CustomSelect
-                              value={distGenre}
+                              value={normalizeClassicGenre(distGenre)}
                               onChange={val => setDistGenre(val)}
-                              options={['Pop', 'Rap/Hip-Hop', 'R&B', 'Electronic/Dance']}
+                              options={CLASSIC_GENRES as any}
                           />
                           <input 
                             type="text" 
@@ -1892,19 +2075,27 @@ export const ArtistHub = () => {
           )}
 
           {distStep === 2 && (
-              <div className="flex flex-col gap-6 animate-slide-in-right">
+              <div className="flex flex-col gap-5 animate-slide-in-right">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                          <h3 className="text-xl font-bold">{t('step2')}</h3>
+                      <div>
+                          <h3 className="text-xl font-bold flex items-center gap-2">
+                              <span>{t('step2')}</span>
+                              <span className="text-xs font-normal text-secondary bg-white/10 px-2 py-0.5 rounded-full">
+                                  {distTracks.length} {distTracks.length === 1 ? 'трек' : distTracks.length < 5 ? 'трека' : 'треков'}
+                              </span>
+                          </h3>
+                          <p className="text-xs text-secondary mt-0.5">
+                              Перетаскивайте треки мышью или пальцем для изменения порядка
+                          </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
                           <button
                               type="button"
-                              onClick={addNewTrack}
-                              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
+                              onClick={() => setIsAddTrackMenuOpen(true)}
+                              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 active:scale-95 transition text-sm shadow-sm"
                           >
-                              <Plus size={16}/> {isAnnouncement ? "Добавить трек" : t('addTrack')}
+                              <Plus size={16}/> Добавить трек
                           </button>
                           <button
                               type="button"
@@ -1914,143 +2105,341 @@ export const ArtistHub = () => {
                                   setPreviewTrackFromHueq(null);
                                   setIsHueqModalOpen(true);
                               }}
-                              className={`flex items-center gap-2 text-white border px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm ${
+                              className={`flex items-center gap-2 text-white border px-3.5 py-2 rounded-full font-bold hover:scale-105 active:scale-95 transition text-xs sm:text-sm shadow-sm ${
                                 isLiquidGlass
                                   ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 md:bg-surface md:hover:bg-surface-highlight md:border-surface-highlight md:hover:border-white/20'
                                   : 'bg-surface hover:bg-surface-highlight border-surface-highlight hover:border-white/20'
                               }`}
                           >
-                              <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
+                              <Search size={15}/> По HUEQ
                           </button>
-                          {!isAnnouncement && (
-                              <>
-                                  <button
-                                      type="button"
-                                      onClick={() => fileInputRef.current?.click()}
-                                      className="flex items-center gap-2 bg-surface hover:bg-surface-highlight border border-surface-highlight text-white px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow-sm"
-                                  >
-                                      <FileAudio size={16}/> Загрузить аудио
-                                  </button>
-                                  <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
-                              </>
-                          )}
                       </div>
                   </div>
 
-                  <div className="flex flex-col gap-4 max-h-[360px] overflow-y-auto">
-                      {distTracks.map((track, i) => (
-                          <div 
-                            key={i} 
-                            className={`p-4 rounded flex flex-col gap-3 ${
-                              isLiquidGlass
-                                ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-xl md:bg-surface-highlight'
-                                : 'bg-surface-highlight'
-                            }`}
-                          >
-                              <div className="flex justify-between items-start">
-                                  <div className="flex items-center gap-3">
-                                      <div className="flex flex-col gap-1 mr-2">
-                                          {i > 0 && (
-                                              <button onClick={() => moveTrack(i, 'up')} className="text-secondary hover:text-white p-1">
-                                                  <ChevronUp size={16}/>
-                                              </button>
-                                          )}
-                                          {i < distTracks.length - 1 && (
-                                              <button onClick={() => moveTrack(i, 'down')} className="text-secondary hover:text-white p-1">
-                                                  <ChevronDown size={16}/>
-                                              </button>
-                                          )}
+                  {/* Hidden inputs */}
+                  <input type="file" ref={fileInputRef} className="hidden" accept="audio/*" multiple onChange={handleFileUpload} />
+                  <input type="file" ref={attachAudioInputRef} className="hidden" accept="audio/*" onChange={handleAttachAudioToTrack} />
+
+                  {/* Track Cards List (no internal scroll, stacks vertically) */}
+                  <div className="flex flex-col gap-3">
+                      {distTracks.map((track, i) => {
+                          const isEmptyTrack = Boolean(track.isEmpty || track.isUnreleased || !track.fileUrl);
+                          const isExpanded = expandedTrackIdx === i;
+                          const isBeingDragged = draggedTrackIdx === i;
+                          const isDragOver = dragOverTrackIdx === i && draggedTrackIdx !== i;
+
+                          return (
+                              <div 
+                                key={i}
+                                data-track-idx={i}
+                                onDragOver={(e) => handleDragOver(e, i)}
+                                onDrop={(e) => handleDrop(e, i)}
+                                className={`p-3.5 sm:p-4 rounded-xl border transition-all flex flex-col gap-3 ${
+                                  isBeingDragged 
+                                    ? 'opacity-40 scale-[0.98] border-dashed border-white/40' 
+                                    : isDragOver
+                                      ? 'border-primary ring-2 ring-primary/40 bg-primary/10'
+                                      : isLiquidGlass
+                                        ? 'bg-white/[0.06] backdrop-blur-xl border-white/10 hover:border-white/20'
+                                        : 'bg-surface-highlight border-white/5 hover:border-white/15'
+                                }`}
+                              >
+                                  {/* Card Top Row */}
+                                  <div className="flex items-center justify-between gap-2.5">
+                                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                          {/* Touch / Mouse Drag Handle */}
+                                          <div
+                                              draggable
+                                              onDragStart={(e) => handleDragStart(e, i)}
+                                              onDragEnd={handleDragEnd}
+                                              onTouchStart={(e) => handleTouchStart(e, i)}
+                                              onTouchMove={handleTouchMove}
+                                              onTouchEnd={handleTouchEnd}
+                                              onTouchCancel={handleTouchEnd}
+                                              className="cursor-grab active:cursor-grabbing touch-none p-1 text-zinc-500 hover:text-white active:text-primary transition shrink-0 select-none flex items-center justify-center rounded hover:bg-white/5"
+                                              title="Перетащите курсором или пальцем для изменения порядка"
+                                          >
+                                              <GripVertical size={20} />
+                                          </div>
+
+                                          {/* Track Number */}
+                                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
+                                              {i + 1}
+                                          </div>
+
+                                          {/* Title & Status preview */}
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                              {!isExpanded ? (
+                                                  <div 
+                                                      onClick={() => setExpandedTrackIdx(i)}
+                                                      className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+                                                  >
+                                                      <span className="font-bold text-sm sm:text-base text-white truncate">
+                                                          {track.title || <span className="text-secondary/60 italic font-normal">Без названия</span>}
+                                                      </span>
+                                                      {isEmptyTrack ? (
+                                                          <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800/90 border border-zinc-700/80 px-2 py-0.5 rounded tracking-wide shrink-0">
+                                                              НЕ ВЫШЕЛ
+                                                          </span>
+                                                      ) : (
+                                                          <span className="text-[10px] font-semibold text-secondary bg-black/40 px-2 py-0.5 rounded border border-white/5 shrink-0 flex items-center gap-1">
+                                                              <FileAudio size={12} className="text-primary"/>
+                                                              <span>{formatDuration(track.duration || 180)}</span>
+                                                          </span>
+                                                      )}
+                                                      {track.explicit && (
+                                                          <span className="text-[9px] font-black text-black bg-zinc-300 px-1 rounded shrink-0">
+                                                              E
+                                                          </span>
+                                                      )}
+                                                  </div>
+                                              ) : (
+                                                  <input
+                                                      type="text"
+                                                      value={track.title}
+                                                      onChange={e => updateTrack(i, 'title', e.target.value)}
+                                                      className="bg-transparent border-b border-white/30 focus:border-white focus:outline-none font-bold text-base sm:text-lg w-full text-white placeholder-secondary/50 py-0.5"
+                                                      placeholder={isEmptyTrack ? `Название трека (НЕ ВЫШЕЛ)` : t('trackTitle')}
+                                                      autoFocus={isExpanded && !track.title}
+                                                  />
+                                              )}
+                                          </div>
                                       </div>
-                                      <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center text-xs font-bold text-secondary">{i+1}</div>
-                                      <div className="flex flex-col w-full">
-                                          <input
-                                              type="text"
-                                              value={track.title}
-                                              onChange={e => updateTrack(i, 'title', e.target.value)}
-                                              className="bg-transparent border-b border-secondary/50 focus:border-white focus:outline-none font-bold text-lg w-full"
-                                              placeholder={isAnnouncement ? `Название трека #${i+1}` : t('trackTitle')}
-                                          />
-                                          {track.existingHueq ? (
-                                              <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full font-mono mt-1 inline-flex items-center gap-1 w-fit">
-                                                  ✓ HUEQ: {track.existingHueq}
+
+                                      {/* Right Action buttons */}
+                                      <div className="flex items-center gap-1 shrink-0">
+                                          {/* Lyrics Button */}
+                                          <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setLyricsModalTrackIdx(i);
+                                              }}
+                                              className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition border ${
+                                                  track.syncedLyrics && track.syncedLyrics.length > 0
+                                                      ? 'bg-white/10 border-white/20 text-white'
+                                                      : track.lyrics
+                                                          ? 'bg-white/10 border-white/15 text-zinc-300 hover:text-white'
+                                                          : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'
+                                              }`}
+                                              title="Текст песни"
+                                          >
+                                              <Mic2 size={13} className={track.syncedLyrics && track.syncedLyrics.length > 0 ? "text-white" : "text-zinc-400"} />
+                                              <span className="hidden sm:inline">
+                                                  {track.syncedLyrics && track.syncedLyrics.length > 0
+                                                      ? "Текст (синхр.)"
+                                                      : track.lyrics
+                                                          ? "Изменить текст"
+                                                          : "Добавить текст"}
                                               </span>
-                                          ) : track.generatedHueq ? (
-                                              <span className="text-[10px] text-secondary/70 font-mono mt-1">
-                                                  HUEQ: {track.generatedHueq}
+                                              <span className="sm:hidden">
+                                                  {track.syncedLyrics && track.syncedLyrics.length > 0 ? "Текст (синхр.)" : "Текст"}
                                               </span>
-                                          ) : isAnnouncement ? (
-                                              <span className="text-[10px] text-secondary font-medium mt-1">
-                                                  {hideTrackMetadata ? "• Метаданные будут скрыты до релиза" : "• Будет показано в анонсе"}
-                                              </span>
-                                          ) : null}
+                                          </button>
+
+                                          <button
+                                              type="button"
+                                              onClick={() => setExpandedTrackIdx(isExpanded ? null : i)}
+                                              className={`p-1.5 rounded-lg text-secondary hover:text-white transition flex items-center gap-1 text-xs font-medium ${isExpanded ? 'bg-white/10 text-white' : 'hover:bg-white/5'}`}
+                                              title={isExpanded ? "Свернуть" : "Настроить трек"}
+                                          >
+                                              {isExpanded ? <ChevronUp size={18} /> : <Sliders size={17} />}
+                                          </button>
+                                          <button
+                                              type="button"
+                                              onClick={() => {
+                                                  setDistTracks(distTracks.filter((_, idx) => idx !== i));
+                                                  if (expandedTrackIdx === i) setExpandedTrackIdx(null);
+                                              }}
+                                              className="p-1.5 rounded-lg text-red-500/80 hover:text-red-400 hover:bg-red-500/10 transition"
+                                              title="Удалить трек"
+                                          >
+                                              <Trash2 size={18} />
+                                          </button>
                                       </div>
                                   </div>
-                                  <button onClick={() => setDistTracks(distTracks.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-400"><Trash2 size={20}/></button>
-                              </div>
 
-                              {currentModerator && (
-                                  <input
-                                      type="text"
-                                      value={track.artist || ""}
-                                      onChange={e => updateTrack(i, 'artist', e.target.value)}
-                                      className="bg-black/40 p-2 rounded text-sm text-primary font-bold focus:outline-none border border-transparent focus:border-primary"
-                                      placeholder="Primary Artist (Override)"
-                                  />
-                              )}
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div className="flex flex-col gap-2">
-                                      <input
-                                          type="text"
-                                          value={track.existingHueq || ""}
-                                          onChange={e => updateTrack(i, 'existingHueq', e.target.value)}
-                                          onBlur={e => handleHueqBlur(i, e.target.value)}
-                                          placeholder="HUEQ Code (Optional)"
-                                          className="bg-black/20 p-2 rounded text-sm w-full font-mono text-secondary focus:text-white focus:outline-none border border-transparent focus:border-primary"
-                                      />
-                                      <div className="flex items-center gap-4">
-                                          <label className="flex items-center gap-2 cursor-pointer">
-                                              <input type="checkbox" checked={track.explicit} onChange={e => updateTrack(i, 'explicit', e.target.checked)} className="rounded text-primary focus:ring-0"/>
-                                              <span className="text-xs font-bold uppercase text-secondary">{t('explicit')}</span>
-                                          </label>
-                                          <div className="text-xs text-secondary bg-black/20 px-2 py-1 rounded">{formatDuration(track.duration || 180)}</div>
+                                  {/* Collapsed summary line */}
+                                  {!isExpanded && (
+                                      <div 
+                                          onClick={() => setExpandedTrackIdx(i)}
+                                          className="flex items-center justify-between text-xs text-secondary pl-9 sm:pl-10 cursor-pointer pt-0.5"
+                                      >
+                                          <div className="flex items-center gap-2 truncate">
+                                              <span className="text-zinc-400 truncate">
+                                                  {track.artist || (track.mainArtists && track.mainArtists.length > 0 ? track.mainArtists.join(', ') : (currentArtist?.artistName || 'Основной артист'))}
+                                              </span>
+                                              {track.genre && <span className="text-zinc-600">•</span>}
+                                              {track.genre && <span className="text-zinc-500">{track.genre}</span>}
+                                              {track.existingHueq && (
+                                                  <span className="text-[10px] text-green-400/90 font-mono">
+                                                      HUEQ: {track.existingHueq}
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <span className="text-[11px] text-secondary hover:text-white underline ml-2 shrink-0">
+                                              Настроить
+                                          </span>
                                       </div>
-                                  </div>
+                                  )}
 
-                                  <div className="flex flex-col gap-2">
-                                      <CustomSelect
-                                        value={track.genre || 'Pop'}
-                                        onChange={val => updateTrack(i, 'genre', val)}
-                                        options={['Pop', 'Rap/Hip-Hop', 'R&B', 'Electronic/Dance']}
-                                        buttonClassName="bg-black text-sm p-2"
-                                      />
+                                  {/* Expanded Full Edit Mode */}
+                                  {isExpanded && (
+                                      <div className="flex flex-col gap-3 pt-2 border-t border-white/10 pl-1 sm:pl-2 animate-fade-in text-xs">
+                                          {/* Empty Track Banner / Audio status */}
+                                          {isEmptyTrack ? (
+                                              <div className="p-2.5 rounded-lg bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                  <div className="flex items-center gap-2 text-zinc-300">
+                                                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                                                      <span>Пустой трек — в треклисте отобразится как <strong>НЕ ВЫШЕЛ</strong></span>
+                                                  </div>
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                          setTrackToAttachAudioIdx(i);
+                                                          attachAudioInputRef.current?.click();
+                                                      }}
+                                                      className="text-primary hover:text-primary/80 font-bold flex items-center gap-1.5 shrink-0 hover:underline text-xs"
+                                                  >
+                                                      <FileAudio size={14} /> Прикрепить аудио
+                                                  </button>
+                                              </div>
+                                          ) : (
+                                              <div className="p-2.5 rounded-lg bg-black/30 border border-white/5 flex items-center justify-between text-zinc-300">
+                                                  <div className="flex items-center gap-2">
+                                                      <FileAudio size={16} className="text-primary" />
+                                                      <span className="font-semibold text-white">Аудиофайл прикреплен</span>
+                                                  </div>
+                                                  <div className="font-mono text-zinc-400">{formatDuration(track.duration || 180)}</div>
+                                              </div>
+                                          )}
 
-                                      <div className="flex flex-col">
-                                          <label className="text-[10px] uppercase font-bold text-secondary mb-1">{t('trackLevelArtist')}</label>
-                                          <div className="flex gap-2 mb-1">
+                                           {/* Lyrics Section in Expanded Card */}
+                                           <div className="p-2.5 sm:p-3 rounded-xl bg-black/30 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                               <div className="flex items-center gap-2.5 min-w-0">
+                                                   <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${track.syncedLyrics && track.syncedLyrics.length > 0 ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/70'}`}>
+                                                       <Mic2 size={14} />
+                                                   </div>
+                                                   <div className="flex flex-col min-w-0">
+                                                       <span className="font-bold text-white text-xs truncate">
+                                                           {track.syncedLyrics && track.syncedLyrics.length > 0
+                                                               ? `Текст синхронизирован (${track.syncedLyrics.length} строк)`
+                                                               : track.lyrics
+                                                                   ? "Текст песни добавлен (без синхронизации)"
+                                                                   : "Текст песни не добавлен"}
+                                                       </span>
+                                                       <span className="text-[10px] sm:text-[11px] text-secondary truncate">
+                                                           {track.syncedLyrics && track.syncedLyrics.length > 0
+                                                               ? "Синхронизирован со звучанием аудио трека"
+                                                               : "Добавьте текст трека и синхронизируйте со звучанием в стиле Spotify"}
+                                                       </span>
+                                                   </div>
+                                               </div>
+                                               <button
+                                                   type="button"
+                                                   onClick={() => setLyricsModalTrackIdx(i)}
+                                                   className="px-3 py-1.5 rounded-full bg-white text-black font-bold hover:bg-zinc-200 active:scale-95 transition text-xs shrink-0 flex items-center justify-center gap-1.5 shadow"
+                                               >
+                                                   <FileText size={13} />
+                                                   <span>{track.lyrics || track.syncedLyrics ? "Редактировать текст" : "Добавить текст"}</span>
+                                               </button>
+                                           </div>
+
+                                          {currentModerator && (
                                               <input
                                                   type="text"
-                                                  value={trackArtistInputs[i] || ""}
-                                                  onChange={e => setTrackArtistInputs({...trackArtistInputs, [i]: e.target.value})}
-                                                  placeholder={t('artist')}
-                                                  className="flex-1 bg-black/20 p-2 rounded text-sm text-secondary focus:text-white focus:outline-none border border-transparent focus:border-primary"
+                                                  value={track.artist || ""}
+                                                  onChange={e => updateTrack(i, 'artist', e.target.value)}
+                                                  className="bg-black/40 p-2.5 rounded-lg text-sm text-primary font-bold focus:outline-none border border-white/10 focus:border-primary"
+                                                  placeholder="Primary Artist (Override)"
                                               />
-                                              <button onClick={() => addTrackArtist(i)} className="bg-surface p-2 rounded hover:bg-white hover:text-black"><Plus size={16}/></button>
+                                          )}
+
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                              <div className="flex flex-col gap-2.5">
+                                                  <input
+                                                      type="text"
+                                                      value={track.existingHueq || ""}
+                                                      onChange={e => updateTrack(i, 'existingHueq', e.target.value)}
+                                                      onBlur={e => handleHueqBlur(i, e.target.value)}
+                                                      placeholder="HUEQ Code (Опционально)"
+                                                      className="bg-black/30 p-2.5 rounded-lg text-xs w-full font-mono text-secondary focus:text-white focus:outline-none border border-white/10 focus:border-primary"
+                                                  />
+
+                                                  <div className="flex items-center gap-4 py-1">
+                                                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                          <input 
+                                                              type="checkbox" 
+                                                              checked={track.explicit} 
+                                                              onChange={e => updateTrack(i, 'explicit', e.target.checked)} 
+                                                              className="rounded text-primary focus:ring-0"
+                                                          />
+                                                          <span className="text-xs font-bold uppercase text-secondary">{t('explicit')}</span>
+                                                      </label>
+                                                      {!isEmptyTrack && (
+                                                          <div className="text-xs text-secondary bg-black/30 px-2 py-1 rounded">
+                                                              {formatDuration(track.duration || 180)}
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              </div>
+
+                                              <div className="flex flex-col gap-2.5">
+                                                  <CustomSelect
+                                                      value={normalizeClassicGenre(track.genre)}
+                                                      onChange={val => updateTrack(i, 'genre', val)}
+                                                      options={CLASSIC_GENRES as any}
+                                                      buttonClassName="bg-black/40 text-xs p-2.5 rounded-lg border border-white/10"
+                                                  />
+
+                                                  <div className="flex flex-col">
+                                                      <label className="text-[10px] uppercase font-bold text-secondary mb-1">Приглашенные артисты</label>
+                                                      <div className="flex gap-2 mb-1.5">
+                                                          <input
+                                                              type="text"
+                                                              value={trackArtistInputs[i] || ""}
+                                                              onChange={e => setTrackArtistInputs({...trackArtistInputs, [i]: e.target.value})}
+                                                              placeholder={t('artist')}
+                                                              className="flex-1 bg-black/30 p-2 rounded-lg text-xs text-secondary focus:text-white focus:outline-none border border-white/10 focus:border-primary"
+                                                          />
+                                                          <button 
+                                                              type="button" 
+                                                              onClick={() => addTrackArtist(i)} 
+                                                              className="bg-surface-highlight p-2 rounded-lg hover:bg-white hover:text-black transition"
+                                                          >
+                                                              <Plus size={16}/>
+                                                          </button>
+                                                      </div>
+                                                      <div className="flex flex-wrap gap-1.5">
+                                                          {(track.mainArtists || []).map((art, idx) => (
+                                                              <span key={idx} className="bg-primary/20 text-primary px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                                                  {art} <button type="button" onClick={() => removeTrackArtist(i, art)}><X size={10}/></button>
+                                                              </span>
+                                                          ))}
+                                                      </div>
+                                                  </div>
+                                              </div>
                                           </div>
-                                          <div className="flex flex-wrap gap-2">
-                                              {(track.mainArtists || []).map((art, idx) => (
-                                                  <span key={idx} className="bg-primary/20 text-primary px-2 py-1 rounded text-[10px] flex items-center gap-1">
-                                                      {art} <button onClick={() => removeTrackArtist(i, art)}><X size={10}/></button>
-                                                  </span>
-                                              ))}
+
+                                          {/* "Готово" button */}
+                                          <div className="flex justify-end pt-2 border-t border-white/10">
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setExpandedTrackIdx(null)}
+                                                  className="px-6 py-2 bg-white text-black font-bold text-xs sm:text-sm rounded-full hover:bg-zinc-200 active:scale-95 transition shadow"
+                                              >
+                                                  Готово
+                                              </button>
                                           </div>
                                       </div>
-                                  </div>
+                                  )}
                               </div>
-                          </div>
-                      ))}
+                          );
+                      })}
+
+                      {/* Empty state when no tracks added yet */}
                       {distTracks.length === 0 && (
-                          <div className={`text-center py-10 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 ${
+                          <div className={`text-center py-10 px-4 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3.5 ${
                             isLiquidGlass
                               ? 'max-md:bg-white/[0.04] max-md:border-white/15 max-md:rounded-2xl md:border-surface-highlight/70 md:bg-surface/20'
                               : 'border-surface-highlight/70 bg-surface/20'
@@ -2063,16 +2452,23 @@ export const ArtistHub = () => {
                               </div>
                               <p className="text-xs text-secondary max-w-md">
                                   {isAnnouncement 
-                                    ? "Добавьте названия треков, которые войдут в альбом. Загружать аудиофайлы для анонса не нужно." 
-                                    : (t('searchByHueqDesc') || "Загрузите аудиофайл с устройства или используйте HUEQ-код существующего трека без повторной загрузки аудио.")}
+                                    ? "Добавьте треки в треклист. Вы можете добавить аудиофайлы или пустые треки (НЕ ВЫШЕЛ)." 
+                                    : "Добавьте аудиофайл с устройства, создайте пустой трек (НЕ ВЫШЕЛ) или используйте HUEQ-код существующего трека."}
                               </p>
-                              <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
+                              <div className="flex flex-wrap items-center justify-center gap-2.5 mt-2">
                                   <button
                                       type="button"
-                                      onClick={addNewTrack}
-                                      className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-bold hover:scale-105 active:scale-95 transition text-sm shadow"
                                   >
-                                      <Plus size={16}/> {isAnnouncement ? "Добавить трек" : t('addTrack')}
+                                      <FileAudio size={16}/> Аудио
+                                  </button>
+                                  <button
+                                      type="button"
+                                      onClick={addEmptyTrack}
+                                      className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white px-4 py-2 rounded-full font-bold hover:scale-105 active:scale-95 transition text-sm shadow"
+                                  >
+                                      <Clock size={16} className="text-zinc-400" /> Пустой трек
                                   </button>
                                   <button
                                       type="button"
@@ -2082,23 +2478,49 @@ export const ArtistHub = () => {
                                           setPreviewTrackFromHueq(null);
                                           setIsHueqModalOpen(true);
                                       }}
-                                      className={`flex items-center gap-2 text-white border px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow ${
+                                      className={`flex items-center gap-2 text-white border px-4 py-2 rounded-full font-bold hover:scale-105 active:scale-95 transition text-sm shadow ${
                                         isLiquidGlass
                                           ? 'max-md:bg-white/[0.1] max-md:border-white/15 md:bg-surface md:hover:bg-surface-highlight md:border-surface-highlight'
                                           : 'bg-surface hover:bg-surface-highlight border-surface-highlight'
                                       }`}
                                   >
-                                      <Search size={16}/> {t('addByHueq') || "Добавить по HUEQ"}
+                                      <Search size={16}/> По HUEQ
                                   </button>
-                                  {!isAnnouncement && (
-                                      <button
-                                          type="button"
-                                          onClick={() => fileInputRef.current?.click()}
-                                          className="flex items-center gap-2 bg-surface hover:bg-surface-highlight text-white border border-surface-highlight px-4 py-2 rounded-full font-bold hover:scale-105 transition text-sm shadow"
-                                      >
-                                          <FileAudio size={16}/> Загрузить аудио
-                                      </button>
-                                  )}
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Quick Add Card at bottom of list */}
+                      {distTracks.length > 0 && (
+                          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 p-4 border-2 border-dashed border-white/15 rounded-xl hover:border-white/30 transition bg-white/[0.02] mt-1">
+                              <span className="text-xs text-secondary font-medium">Добавить трек:</span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                      type="button"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white text-black font-bold text-xs hover:scale-105 active:scale-95 transition shadow-sm"
+                                  >
+                                      <FileAudio size={14} /> Аудио
+                                  </button>
+                                  <button
+                                      type="button"
+                                      onClick={addEmptyTrack}
+                                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white font-semibold text-xs hover:scale-105 active:scale-95 transition"
+                                  >
+                                      <Clock size={14} className="text-zinc-400" /> Пустой трек
+                                  </button>
+                                  <button
+                                      type="button"
+                                      onClick={() => {
+                                          setHueqInput("");
+                                          setHueqLookupError("");
+                                          setPreviewTrackFromHueq(null);
+                                          setIsHueqModalOpen(true);
+                                      }}
+                                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-secondary hover:text-white font-semibold text-xs hover:scale-105 active:scale-95 transition"
+                                  >
+                                      <Search size={14} /> По HUEQ
+                                  </button>
                               </div>
                           </div>
                       )}
@@ -2169,64 +2591,95 @@ export const ArtistHub = () => {
                       </div>
 
                       <div className="mt-2 border-t border-surface-highlight pt-4">
-                          <h4 className="text-sm font-bold text-secondary uppercase mb-2">Release Preview</h4>
+                          <h4 className="text-sm font-bold text-secondary uppercase mb-2">Предпросмотр релиза</h4>
                           <div className="flex flex-col gap-2">
-                              {distTracks.map((track, idx) => (
-                                  <div 
-                                    key={idx} 
-                                    className={`flex justify-between items-center p-2 rounded ${
-                                      isLiquidGlass ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
-                                    }`}
-                                  >
-                                      <span className="font-bold text-sm">{track.title}</span>
-                                      <span className="font-mono text-[10px] text-secondary/70 border border-secondary/30 px-2 py-0.5 rounded select-all hover:text-white hover:border-white transition-colors cursor-text" title="HUEQ">
-                                          {track.existingHueq || track.generatedHueq}
-                                      </span>
-                                  </div>
-                              ))}
+                              {distTracks.map((track, idx) => {
+                                  const isEmptyTrack = Boolean((track.isEmpty || track.isUnreleased) && !track.fileUrl);
+                                  const hueq = track.existingHueq || track.generatedHueq;
+                                  return (
+                                      <div 
+                                        key={idx} 
+                                        className={`flex justify-between items-center p-2.5 rounded-xl border ${
+                                          isLiquidGlass ? 'max-md:bg-white/[0.05] max-md:border-white/10 md:bg-surface-highlight md:border-surface-highlight' : 'bg-surface-highlight border-white/5'
+                                        }`}
+                                      >
+                                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                              <span className="text-xs text-secondary font-mono w-5 text-center shrink-0">{idx + 1}</span>
+                                              <span className="font-bold text-sm text-white truncate">{track.title || "Без названия"}</span>
+                                              {track.explicit && <ExplicitBadge />}
+                                              {isEmptyTrack && (
+                                                  <span className="text-[9px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700/80 px-1.5 py-0.2 rounded uppercase shrink-0">
+                                                      НЕ ВЫШЕЛ
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                                              {hueq && (
+                                                  <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded select-all" title="HUEQ">
+                                                      HUEQ: {hueq}
+                                                  </span>
+                                              )}
+                                              <span className="text-xs text-secondary font-mono">
+                                                  {isEmptyTrack ? '—' : formatDuration(track.duration || 180)}
+                                              </span>
+                                          </div>
+                                      </div>
+                                  );
+                              })}
                           </div>
                       </div>
                   </div>
               </div>
           )}
 
-          <div className="flex flex-wrap justify-between items-center gap-4 mt-8 pt-8 border-t border-surface-highlight">
+          <div className="flex flex-wrap justify-between items-center gap-3 mt-8 pt-6 border-t border-surface-highlight">
               {distStep > 1 ? (
-                  <button onClick={() => setDistStep(distStep - 1)} className="px-6 py-2 rounded-full font-bold text-white hover:bg-white/10 transition">{t('back')}</button>
+                  <button 
+                      type="button"
+                      onClick={() => setDistStep(distStep - 1)} 
+                      className="px-5 py-2.5 rounded-full font-bold text-white hover:bg-white/10 transition text-sm flex items-center gap-1.5"
+                  >
+                      <ChevronLeft size={18} />
+                      <span>{t('back')}</span>
+                  </button>
               ) : <div></div>}
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                   {/* Save to Draft button available on Step 3 or anywhere */}
                   <button
+                      type="button"
                       onClick={() => {
                           saveCurrentDraft(true);
                           if (currentModerator) setView('MOD_DASH');
                           else setView('ARTIST_DASH');
                       }}
-                      className={`px-5 py-2 rounded-full font-bold text-white transition flex items-center gap-2 border shadow-sm ${
+                      className={`px-4 py-2 rounded-full font-semibold text-xs sm:text-sm text-secondary hover:text-white transition flex items-center gap-1.5 border shadow-sm ${
                         isLiquidGlass
                           ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 md:bg-surface-highlight md:hover:bg-zinc-700 md:border-white/10'
                           : 'bg-surface-highlight hover:bg-zinc-700 border-white/10'
                       }`}
                       title={t('saveDraft')}
                   >
-                      <Bookmark size={16} className="text-primary" />
+                      <Bookmark size={15} className="text-primary" />
                       <span>{t('saveDraft')}</span>
                   </button>
 
                   {distStep < 3 ? (
                       <button 
+                        type="button"
                         onClick={handleNextStep} 
-                        className={`px-8 py-2 rounded-full font-bold bg-white text-black hover:scale-105 transition ${
+                        className={`px-7 py-2.5 rounded-full font-bold bg-white text-black hover:scale-105 active:scale-95 transition text-sm flex items-center gap-1.5 ${
                           isLiquidGlass ? 'max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25)]' : ''
                         }`}
                       >
-                        {t('next')}
+                        <span>{t('next')}</span>
+                        <ChevronRight size={18} />
                       </button>
                   ) : (
                       <button 
+                        type="button"
                         onClick={handleSubmitRelease} 
-                        className={`px-8 py-2 rounded-full font-bold bg-primary text-black hover:scale-105 transition ${
+                        className={`px-7 py-2.5 rounded-full font-bold bg-primary text-black hover:scale-105 active:scale-95 transition text-sm ${
                           isLiquidGlass
                             ? 'max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:shadow-lg md:shadow-primary/20'
                             : 'shadow-lg shadow-primary/20'
@@ -2260,16 +2713,19 @@ export const ArtistHub = () => {
             label: a.recordLabel || "",
             covers: a.covers,
             additionalMainArtists: a.mainArtists,
-            tracks: a.trackIds.map(tid => {
-                const t = tracks.find(tr => tr.id === tid);
+            tracks: a.trackIds.map((tid, idx) => {
+                const t = tracks.find(tr => tr.id === tid) || 
+                          tracks.find(tr => tr.album?.toLowerCase() === a.title.toLowerCase() && (tr.artist?.toLowerCase() === a.artist?.toLowerCase() || tr.artist?.toLowerCase() === currentArtist.artistName?.toLowerCase()));
                 return {
-                    title: t?.title || "",
+                    title: t?.title || `Трек ${idx + 1}`,
                     explicit: t?.explicit || false,
-                    duration: t?.duration || 0,
+                    duration: t?.duration || 180,
                     mainArtists: t?.mainArtists || [],
                     feat: t?.feat,
                     existingHueq: t?.hueq,
-                    fileUrl: ""
+                    fileUrl: t?.url || "",
+                    isEmpty: false,
+                    isUnreleased: false
                 };
             }),
             releaseDate: a.releaseDate || new Date(a.year, 0, 1).toISOString(),
@@ -2728,89 +3184,382 @@ export const ArtistHub = () => {
 
   const renderReleaseDetailModal = () => {
       if(!selectedRelease) return null;
-      return (
-          <div className="fixed inset-0 bg-black/80 z-[250] flex items-center justify-center p-4">
-              <div className={`w-full max-w-2xl rounded-xl p-6 relative shadow-2xl animate-zoom-in max-h-[90vh] overflow-hidden flex flex-col ${
-                isLiquidGlass
-                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
-                  : 'bg-surface border border-surface-highlight'
-              }`}>
-                  {/* Header */}
-                  <div className="flex justify-between items-center mb-6 shrink-0">
-                      <h2 className="text-2xl font-bold">{t('releaseTitle')}</h2>
-                      <button onClick={() => setSelectedRelease(null)} className="text-secondary hover:text-white"><X size={24}/></button>
-                  </div>
 
-                  <div className="overflow-y-auto flex-1 pr-2">
-                      {/* Album Info */}
-                      <div className="flex flex-col sm:flex-row gap-6 mb-6">
-                          <img src={selectedRelease.covers[0]} className="w-36 h-36 sm:w-40 sm:h-40 rounded shadow-lg object-cover bg-zinc-800 shrink-0" />
-                          <div className="flex flex-col gap-2">
-                              <h3 className="text-2xl sm:text-3xl font-bold">{selectedRelease.title}</h3>
-                              <div className="text-secondary font-bold">{selectedRelease.artistName}</div>
-                              <div className="text-sm text-secondary">{selectedRelease.type} • {selectedRelease.genre}</div>
-                              <div className="text-sm text-secondary">Label: {selectedRelease.label}</div>
-                              <div className="text-sm text-secondary">{t('released')}: {new Date(selectedRelease.releaseDate).toLocaleString()}</div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                  <div className={`text-xs font-bold uppercase inline-block px-2 py-1 rounded w-fit ${
-                                      selectedRelease.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
-                                      selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-500' :
-                                      selectedRelease.status === 'REJECTED' ? 'bg-red-500/20 text-red-500' :
-                                      'bg-yellow-500/20 text-yellow-500'
-                                  }`}>
-                                      {selectedRelease.status}
-                                  </div>
-                                  {selectedRelease.isAnnouncement && (
-                                      <div className="text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded flex items-center gap-1">
-                                          <Megaphone size={12} />
-                                          <span>Анонс альбома</span>
-                                          {selectedRelease.hideTrackMetadata && (
-                                              <span className="text-[10px] text-purple-400 font-normal ml-1">
-                                                  (Метаданные скрыты)
-                                              </span>
-                                          )}
-                                      </div>
-                                  )}
-                              </div>
-                              {selectedRelease.releaseMessage && (
-                                  <div className="mt-2 p-2 bg-white/5 rounded text-sm italic text-secondary">
-                                      {t('trackNote')} {selectedRelease.releaseMessage}
-                                  </div>
-                              )}
-                          </div>
+      const artistAccount = artistAccounts.find(a => a.artistName?.toLowerCase() === selectedRelease.artistName?.toLowerCase());
+      const artistAvatar = artistAccount?.avatar || selectedRelease.covers?.[0] || "";
+      const releaseYear = selectedRelease.releaseDate ? new Date(selectedRelease.releaseDate).getFullYear() : 2026;
+      const count = previewTracks.length;
+      const trackCountText = `${count} ${count === 1 ? 'трек' : (count >= 2 && count <= 4) ? 'трека' : 'треков'}`;
+      const totalSeconds = previewTracks.reduce((acc, t) => acc + (t.duration || 180), 0);
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      const totalDurationText = totalMinutes > 0 ? `${totalMinutes} мин.` : `${totalSeconds} сек.`;
+
+      const statusBadgeClass =
+        selectedRelease.status === 'LIVE' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+        selectedRelease.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+        selectedRelease.status === 'REJECTED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+        'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+
+      const statusText =
+        selectedRelease.status === 'LIVE' ? 'В сети' :
+        selectedRelease.status === 'APPROVED' ? 'Одобрен' :
+        selectedRelease.status === 'REJECTED' ? 'Отклонен' :
+        'На модерации';
+
+      // Find if any track in this release is playing right now
+      const isReleasePlaying = isPlaying && currentTrack && previewTracks.some(t => {
+          const matchingTrack = tracks.find(tr => tr.id === currentTrack.id);
+          return currentTrack.title === t.title || (matchingTrack && matchingTrack.title === t.title);
+      });
+
+      const handleTogglePlayRelease = () => {
+          if (isReleasePlaying) {
+              togglePlay();
+              return;
+          }
+          // Find first playable track
+          const firstPlayable = previewTracks.find(t => !t.isEmpty && !t.isUnreleased && (t.fileUrl || tracks.some(tr => tr.title.toLowerCase() === t.title.toLowerCase())));
+          if (!firstPlayable) {
+              showNotification('В этом релизе пока нет доступных аудиофайлов', 'info');
+              return;
+          }
+          const matchingTrack = tracks.find(t => 
+              t.title.trim().toLowerCase() === firstPlayable.title.trim().toLowerCase() && 
+              (t.artist.trim().toLowerCase() === (firstPlayable.artist || selectedRelease.artistName).trim().toLowerCase() ||
+               t.album?.trim().toLowerCase() === selectedRelease.title.trim().toLowerCase())
+          );
+          const trackToPlay: Track = matchingTrack || {
+              id: `preview_${selectedRelease.id}_0`,
+              title: firstPlayable.title,
+              artist: firstPlayable.artist || selectedRelease.artistName,
+              album: selectedRelease.title,
+              cover: selectedRelease.covers[0],
+              duration: firstPlayable.duration || 180,
+              url: firstPlayable.fileUrl,
+              plays: 0,
+              explicit: firstPlayable.explicit,
+              genre: normalizeClassicGenre(firstPlayable.genre || selectedRelease.genre)
+          };
+          playTrack(trackToPlay);
+      };
+
+      const canEdit = !selectedRelease.id.startsWith('alb_');
+      const canDelete = selectedRelease.id.startsWith('rel_') || currentModerator;
+
+      const isApprovedOrLive = selectedRelease.status === 'LIVE' || selectedRelease.status === 'APPROVED';
+      const isReleaseOut = selectedRelease.status === 'LIVE' || 
+          Boolean(selectedRelease.releaseDate && new Date(selectedRelease.releaseDate).getTime() <= Date.now());
+
+      return (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[250] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-fade-in" onClick={() => setSelectedRelease(null)}>
+              <div 
+                  className={`w-full max-w-lg md:max-w-2xl rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 md:p-8 relative shadow-[0_24px_64px_rgba(0,0,0,0.85)] border border-white/10 max-h-[92vh] sm:max-h-[90vh] overflow-y-auto flex flex-col animate-zoom-in scrollbar-thin ${
+                    isLiquidGlass
+                      ? 'bg-zinc-950/95 backdrop-blur-3xl'
+                      : 'bg-zinc-950'
+                  }`}
+                  onClick={e => e.stopPropagation()}
+              >
+                  {/* Mobile drag handle bar */}
+                  <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-3 sm:hidden shrink-0"></div>
+
+                  {/* Close Button */}
+                  <button 
+                      type="button"
+                      onClick={() => setSelectedRelease(null)} 
+                      className="absolute top-3 right-3 sm:top-4 sm:right-4 text-zinc-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition z-20"
+                      title="Закрыть"
+                  >
+                      <X size={20}/>
+                  </button>
+
+                  {/* Album Header & Cover Hero */}
+                  <div className="flex flex-col items-center text-center mt-1">
+                      <div className="relative group">
+                          <img 
+                              src={selectedRelease.covers[0]} 
+                              alt={selectedRelease.title} 
+                              className="w-36 h-36 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.7)] object-cover bg-zinc-900 border border-white/10 transition-transform duration-300" 
+                          />
+                          {selectedRelease.covers.length > 1 && (
+                              <span className="absolute bottom-2.5 right-2.5 bg-black/75 backdrop-blur-md text-[11px] font-bold text-white px-2.5 py-0.5 rounded-full border border-white/15 shadow">
+                                  +{selectedRelease.covers.length - 1}
+                              </span>
+                          )}
                       </div>
 
-                      <h4 className="font-bold mb-3 border-b border-surface-highlight pb-2">{t('step2')}</h4>
-                      <div className="flex flex-col gap-2">
-                          {selectedRelease.tracks.map((track, idx) => (
-                              <div 
-                                key={idx} 
-                                className={`flex justify-between items-center p-2 rounded ${
-                                  isLiquidGlass ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 md:hover:bg-surface-highlight' : 'hover:bg-surface-highlight'
-                                }`}
+                      {/* Release Type (uppercase tracking-widest) */}
+                      <div className="text-[11px] sm:text-xs uppercase font-extrabold tracking-[0.2em] text-zinc-400 mt-4 sm:mt-5">
+                          {selectedRelease.type || 'ALBUM'}
+                      </div>
+
+                      {/* Release Title */}
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white mt-1.5 tracking-tight px-2 leading-tight break-words text-center">
+                          {selectedRelease.title}
+                      </h2>
+
+                      {/* Artist, Year, Tracks line */}
+                      <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 text-xs sm:text-sm text-zinc-300 mt-2 text-center">
+                          <div className="flex items-center gap-1.5 font-bold text-white">
+                              {artistAvatar ? (
+                                  <img 
+                                      src={artistAvatar} 
+                                      alt={selectedRelease.artistName} 
+                                      className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/10" 
+                                  />
+                              ) : (
+                                  <div className="w-5 h-5 rounded-full bg-surface-highlight flex items-center justify-center text-[10px] text-zinc-400 shrink-0">
+                                      <User size={12} />
+                                  </div>
+                              )}
+                              <span>{selectedRelease.artistName}</span>
+                          </div>
+                          <span className="text-zinc-500">•</span>
+                          <span>{releaseYear}</span>
+                          <span className="text-zinc-500">•</span>
+                          <span>{trackCountText}</span>
+                          <span className="text-zinc-500 hidden sm:inline">•</span>
+                          <span className="text-zinc-400 hidden sm:inline">{totalDurationText}</span>
+                      </div>
+
+                      {/* Badges: Status, Genre, Label */}
+                      <div className="flex items-center justify-center flex-wrap gap-1.5 sm:gap-2 mt-3">
+                          <span className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider ${statusBadgeClass}`}>
+                              {selectedRelease.status === 'LIVE' ? 'LIVE' : statusText}
+                          </span>
+                          {selectedRelease.genre && (
+                              <span className="px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-white/[0.08] text-zinc-200 border border-white/10">
+                                  {normalizeClassicGenre(selectedRelease.genre)}
+                              </span>
+                          )}
+                          {selectedRelease.label && (
+                              <span className="px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-white/[0.08] text-zinc-200 border border-white/10 max-w-[200px] truncate" title={`Лейбл: ${selectedRelease.label}`}>
+                                  {selectedRelease.label}
+                              </span>
+                          )}
+                          {selectedRelease.isAnnouncement && (
+                              <span className="px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1.5">
+                                  <Megaphone size={12} />
+                                  <span>Анонс</span>
+                              </span>
+                          )}
+                      </div>
+
+                      {/* Header Controls: Play, Edit, Delete */}
+                      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 mt-4 sm:mt-5">
+                          <button
+                              type="button"
+                              onClick={handleTogglePlayRelease}
+                              className="flex items-center gap-2 bg-primary text-black font-bold px-5 sm:px-6 py-2 sm:py-2.5 rounded-full hover:scale-105 active:scale-95 transition text-xs sm:text-sm shadow-md"
+                          >
+                              {isReleasePlaying ? <Pause size={16} fill="black" /> : <Play size={16} fill="black" className="ml-0.5" />}
+                              <span>{isReleasePlaying ? 'Пауза' : 'Слушать'}</span>
+                          </button>
+
+                          {canEdit && (
+                              <button
+                                  type="button"
+                                  onClick={() => {
+                                      handleEditRelease(selectedRelease);
+                                      setSelectedRelease(null);
+                                  }}
+                                  className="p-2 sm:p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95"
+                                  title="Редактировать релиз"
                               >
-                                  <div className="flex items-center gap-3">
-                                      <span className="text-secondary text-sm w-6">{idx + 1}</span>
-                                      <div className="flex flex-col min-w-0">
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                              <span className="font-bold text-sm truncate">{track.title}</span>
-                                              {track.explicit && <ExplicitBadge />}
+                                  <Edit size={16} />
+                              </button>
+                          )}
+
+                          {canDelete && (
+                              <button
+                                  type="button"
+                                  onClick={() => {
+                                      if (confirm(`Удалить релиз "${selectedRelease.title}"?`)) {
+                                          deleteRelease(selectedRelease.id);
+                                          setSelectedRelease(null);
+                                      }
+                                  }}
+                                  className="p-2 sm:p-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition active:scale-95"
+                                  title="Удалить релиз"
+                              >
+                                  <Trash2 size={16} />
+                              </button>
+                          )}
+                      </div>
+
+                      {selectedRelease.releaseMessage && (
+                          <div className="mt-3 sm:mt-4 p-2.5 sm:p-3 rounded-xl bg-white/5 border border-white/5 text-xs italic text-zinc-400 max-w-md mx-auto text-center">
+                              "{selectedRelease.releaseMessage}"
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Tracks Section */}
+                  <div className="mt-6 sm:mt-8 flex flex-col gap-2.5 sm:gap-3">
+                      <div className="flex items-center justify-between px-1">
+                          <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                              <span>Треки</span>
+                              <span className="text-xs text-zinc-400 font-normal">({previewTracks.length})</span>
+                          </h3>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 sm:gap-2">
+                          {previewTracks.map((track, idx) => {
+                              const isAnnounce = Boolean(selectedRelease.isAnnouncement);
+                              const isHiddenMeta = Boolean(selectedRelease.hideTrackMetadata && isAnnounce);
+                              const displayTitle = isHiddenMeta ? `Track ${idx + 1}` : (track.title?.trim() || `Трек ${idx + 1}`);
+                              const displayArtist = isHiddenMeta ? selectedRelease.artistName : (track.artist || selectedRelease.artistName || "Артист");
+
+                              // Comprehensive HUEQ lookup: existing, generated, or matched in library
+                              const matchingStoreTrack = tracks.find(t => 
+                                  t.title?.trim().toLowerCase() === track.title?.trim().toLowerCase() && 
+                                  (t.artist?.trim().toLowerCase() === (track.artist || selectedRelease.artistName)?.trim().toLowerCase() ||
+                                   t.album?.trim().toLowerCase() === selectedRelease.title?.trim().toLowerCase())
+                              );
+                              const trackHueq = track.generatedHueq || track.existingHueq || (track as any).hueq || matchingStoreTrack?.hueq;
+
+                              const hasAudio = Boolean(track.fileUrl || matchingStoreTrack?.url);
+                              const isStoreTrackReleased = Boolean(matchingStoreTrack && !matchingStoreTrack.isUnreleased);
+
+                              // Track is ONLY unreleased if:
+                              // 1) The release has NOT yet come out (not LIVE and release date not passed),
+                              // 2) Track has NO playable audio,
+                              // 3) Track is NOT already released in the store catalog,
+                              // 4) AND was explicitly created as an unreleased/empty placeholder!
+                              const isUnreleasedTrack = !isReleaseOut && !hasAudio && !isStoreTrackReleased && Boolean(
+                                  track.isEmpty || track.isUnreleased || (isAnnounce && !hasAudio)
+                              );
+
+                              const isThisTrackPlaying = isPlaying && currentTrack && (
+                                  currentTrack.title === track.title && 
+                                  (currentTrack.artist === (track.artist || selectedRelease.artistName) || (matchingStoreTrack && currentTrack.id === matchingStoreTrack.id))
+                              );
+
+                              const playableUrl = track.fileUrl || matchingStoreTrack?.url;
+                              const trackDuration = track.duration || matchingStoreTrack?.duration || 180;
+
+                              const handlePlayTrackRow = (e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  if (isUnreleasedTrack || !playableUrl) {
+                                      showNotification('Аудиофайл не прикреплен к этому треку', 'info');
+                                      return;
+                                  }
+                                  if (isThisTrackPlaying) {
+                                      togglePlay();
+                                      return;
+                                  }
+                                  const trackToPlay: Track = matchingStoreTrack || {
+                                      id: `prev_${selectedRelease.id}_${idx}`,
+                                      title: track.title || displayTitle,
+                                      artist: track.artist || selectedRelease.artistName,
+                                      album: selectedRelease.title,
+                                      cover: selectedRelease.covers[0],
+                                      duration: trackDuration,
+                                      url: playableUrl,
+                                      plays: 0,
+                                      explicit: track.explicit,
+                                      hueq: trackHueq,
+                                      genre: normalizeClassicGenre(track.genre || selectedRelease.genre)
+                                  };
+                                  playTrack(trackToPlay);
+                              };
+
+                              return (
+                                  <div
+                                      key={idx}
+                                      onClick={handlePlayTrackRow}
+                                      className={`flex items-center justify-between p-2 sm:p-2.5 md:p-3 rounded-xl sm:rounded-2xl transition group relative cursor-pointer gap-2 ${
+                                          isThisTrackPlaying
+                                            ? 'bg-white/[0.09] border border-primary/40 ring-1 ring-primary/30'
+                                            : isLiquidGlass
+                                              ? 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/10'
+                                              : 'bg-zinc-900/60 hover:bg-zinc-900 border border-white/5 hover:border-white/15'
+                                      }`}
+                                  >
+                                      {/* Left: Index / Play, Cover, Title & Artist */}
+                                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                          {/* Track Number / Play toggle button */}
+                                          <div className="w-5 text-center shrink-0 flex items-center justify-center">
+                                              {isThisTrackPlaying ? (
+                                                  <Pause size={13} fill="currentColor" className="text-primary" />
+                                              ) : (
+                                                  <span className="text-xs text-zinc-500 font-mono group-hover:text-white transition">
+                                                      {idx + 1}
+                                                  </span>
+                                              )}
                                           </div>
-                                          <span className="text-xs text-secondary flex flex-wrap items-center gap-1">
-                                              <span>{track.artist || selectedRelease.artistName}</span>
+
+                                          {/* Small Thumbnail */}
+                                          <img 
+                                              src={selectedRelease.covers[0]} 
+                                              alt={displayTitle} 
+                                              className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg object-cover bg-zinc-800 shrink-0 border border-white/5 shadow-sm" 
+                                          />
+
+                                          {/* Title and Artist */}
+                                          <div className="flex flex-col min-w-0 flex-1 justify-center overflow-hidden">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                  <span className={`font-bold text-xs sm:text-sm truncate ${isThisTrackPlaying ? 'text-primary' : 'text-white'}`}>
+                                                      {displayTitle}
+                                                  </span>
+                                                  {!isHiddenMeta && track.explicit && <ExplicitBadge />}
+                                                  {isUnreleasedTrack && (
+                                                      <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded uppercase shrink-0">
+                                                          НЕ ВЫШЕЛ
+                                                      </span>
+                                                  )}
+                                              </div>
+                                              <span className="text-[11px] sm:text-xs text-zinc-400 truncate mt-0.5">
+                                                  {displayArtist}
+                                                  {track.feat && <span className="text-zinc-500"> (feat. {track.feat})</span>}
+                                              </span>
+                                          </div>
+                                      </div>
+
+                                      {/* Right: HUEQ CODE (напротив трека, visible on mobile and desktop), Duration, Actions */}
+                                      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                                          {/* HUEQ Code Pill (Opposite the track, always visible on mobile & desktop) */}
+                                          {trackHueq && !isHiddenMeta && (
+                                              <div 
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      navigator.clipboard?.writeText(trackHueq);
+                                                      showNotification(`HUEQ код скопирован: ${trackHueq}`, 'success');
+                                                  }}
+                                                  className="flex items-center gap-1 font-mono text-[10px] sm:text-xs text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-95 border border-emerald-500/30 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md transition cursor-pointer select-all shrink-0 shadow-sm"
+                                                  title="Нажмите, чтобы скопировать HUEQ код"
+                                              >
+                                                  <span className="text-[8px] sm:text-[9px] text-emerald-500 font-sans font-bold">HUEQ</span>
+                                                  <span className="tracking-wide font-semibold">{trackHueq}</span>
+                                              </div>
+                                          )}
+
+                                          {/* Duration */}
+                                          <span className="text-[11px] sm:text-xs text-zinc-400 font-mono w-8 sm:w-10 text-right shrink-0">
+                                              {isUnreleasedTrack ? '—' : formatDuration(trackDuration)}
                                           </span>
+
+                                          {/* Options / Copy button */}
+                                          <button 
+                                              type="button" 
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  if (trackHueq) {
+                                                      navigator.clipboard?.writeText(trackHueq);
+                                                      showNotification(`HUEQ код скопирован: ${trackHueq}`, 'success');
+                                                  } else {
+                                                      showNotification(`${displayTitle} • ${displayArtist}`, 'info');
+                                                  }
+                                              }}
+                                              className="text-zinc-500 hover:text-white p-1 rounded-full hover:bg-white/5 transition shrink-0"
+                                              title={trackHueq ? "Скопировать HUEQ" : "Опции трека"}
+                                          >
+                                              <MoreHorizontal size={16} />
+                                          </button>
                                       </div>
                                   </div>
-                                  <div className="flex items-center gap-4">
-                                      {(track.generatedHueq || track.existingHueq || (track as any).hueq) && (
-                                          <span className="font-mono text-[10px] text-secondary/70 border border-secondary/30 px-2 py-0.5 rounded select-all hover:text-white hover:border-white transition-colors cursor-text" title="HUEQ / ISRC">
-                                              {track.generatedHueq || track.existingHueq || (track as any).hueq}
-                                          </span>
-                                      )}
-                                      <span className="text-xs text-secondary w-10 text-right font-mono">{formatDuration(track.duration)}</span>
-                                  </div>
-                              </div>
-                          ))}
+                              );
+                          })}
                       </div>
                   </div>
               </div>
@@ -3064,6 +3813,101 @@ export const ArtistHub = () => {
       );
   };
 
+  const renderAddTrackMenu = () => (
+      <div 
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[260] flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setIsAddTrackMenuOpen(false)}
+      >
+          <div 
+              className={`w-full max-w-sm rounded-2xl p-5 sm:p-6 shadow-2xl border flex flex-col gap-4 animate-zoom-in ${
+                  isLiquidGlass 
+                    ? 'bg-zinc-900/95 backdrop-blur-2xl border-white/20 text-white shadow-[0_12px_40px_rgba(0,0,0,0.7)]' 
+                    : 'bg-surface border-surface-highlight text-white'
+              }`}
+              onClick={e => e.stopPropagation()}
+          >
+              <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                  <h4 className="font-bold text-base sm:text-lg">Добавить трек</h4>
+                  <button 
+                      type="button" 
+                      onClick={() => setIsAddTrackMenuOpen(false)} 
+                      className="text-secondary hover:text-white p-1 rounded-full hover:bg-white/10 transition"
+                  >
+                      <X size={18} />
+                  </button>
+              </div>
+
+              <p className="text-xs text-secondary leading-relaxed">
+                  Выберите, какой трек вы хотите добавить: с аудиофайлом или пустой (для анонса):
+              </p>
+
+              <div className="flex flex-col gap-2.5">
+                  <button
+                      type="button"
+                      onClick={() => {
+                          setIsAddTrackMenuOpen(false);
+                          fileInputRef.current?.click();
+                      }}
+                      className="flex items-center gap-3.5 p-3.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/25 transition text-left group"
+                  >
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                          <FileAudio size={22} />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                          <span className="font-bold text-sm text-white group-hover:text-primary transition">Аудио</span>
+                          <span className="text-xs text-secondary truncate">Загрузить аудиофайл с устройства (.mp3, .wav)</span>
+                      </div>
+                  </button>
+
+                  <button
+                      type="button"
+                      onClick={addEmptyTrack}
+                      className="flex items-center gap-3.5 p-3.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/25 transition text-left group"
+                  >
+                      <div className="w-10 h-10 rounded-xl bg-zinc-800 text-zinc-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition border border-zinc-700/60">
+                          <Clock size={20} />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-white group-hover:text-zinc-200 transition">Пустой трек</span>
+                              <span className="text-[10px] font-bold text-zinc-400 bg-zinc-800 border border-zinc-700 px-1.5 py-0.2 rounded uppercase">НЕ ВЫШЕЛ</span>
+                          </div>
+                          <span className="text-xs text-secondary truncate">Вместо трека показывается НЕ ВЫШЕЛ в треклисте</span>
+                      </div>
+                  </button>
+
+                  <button
+                      type="button"
+                      onClick={() => {
+                          setIsAddTrackMenuOpen(false);
+                          setHueqInput("");
+                          setHueqLookupError("");
+                          setPreviewTrackFromHueq(null);
+                          setIsHueqModalOpen(true);
+                      }}
+                      className="flex items-center gap-3.5 p-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition text-left group"
+                  >
+                      <div className="w-10 h-10 rounded-xl bg-surface-highlight text-secondary flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                          <Search size={18} />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                          <span className="font-bold text-sm text-white">По коду HUEQ</span>
+                          <span className="text-xs text-secondary truncate">Использовать уже выпущенный трек</span>
+                      </div>
+                  </button>
+              </div>
+
+              <button
+                  type="button"
+                  onClick={() => setIsAddTrackMenuOpen(false)}
+                  className="w-full py-2.5 text-xs text-secondary hover:text-white font-medium rounded-xl hover:bg-white/5 transition mt-1"
+              >
+                  Отмена
+              </button>
+          </div>
+      </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-black z-[200] animate-fade-in flex flex-col">
         <button
@@ -3077,7 +3921,7 @@ export const ArtistHub = () => {
         {view === 'ARTIST_DASH' && renderArtistDash()}
         {view === 'MOD_DASH' && renderModDash()}
         {view === 'DISTRIBUTION' && (
-            <div className="flex items-center justify-center flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-y-auto w-full min-h-0 py-4 sm:py-6 px-3 sm:px-6 flex justify-center items-start">
                 {renderDistribution()}
             </div>
         )}
@@ -3103,6 +3947,61 @@ export const ArtistHub = () => {
         {/* Overlays */}
         {selectedRelease && renderReleaseDetailModal()}
         {isHueqModalOpen && renderHueqImportModal()}
+        {isAddTrackMenuOpen && renderAddTrackMenu()}
+        {lyricsModalTrackIdx !== null && distTracks[lyricsModalTrackIdx] && (
+            <LyricsSyncModal
+                isOpen={lyricsModalTrackIdx !== null}
+                track={distTracks[lyricsModalTrackIdx]}
+                trackIndex={lyricsModalTrackIdx}
+                artistName={distArtistName || currentArtist?.artistName}
+                onClose={() => setLyricsModalTrackIdx(null)}
+                onSave={async (lyrics, syncedLyrics) => {
+                    const trk = distTracks[lyricsModalTrackIdx];
+                    if (!trk) return;
+                    const trackHueq = (trk.existingHueq || trk.generatedHueq || generateHUEQ()).trim().toUpperCase();
+                    
+                    updateTrack(lyricsModalTrackIdx, 'lyrics', lyrics);
+                    updateTrack(lyricsModalTrackIdx, 'syncedLyrics', syncedLyrics);
+                    updateTrack(lyricsModalTrackIdx, 'generatedHueq', trackHueq);
+
+                    // Update live in store if track exists in player/library
+                    setTracks(prev => prev.map(t => {
+                        if ((t.hueq && t.hueq.toUpperCase() === trackHueq) || (trk.id && t.id === trk.id)) {
+                            return { ...t, lyrics, syncedLyrics };
+                        }
+                        return t;
+                    }));
+                    if (currentTrack && ((currentTrack.hueq && currentTrack.hueq.toUpperCase() === trackHueq) || (trk.id && currentTrack.id === trk.id))) {
+                        setCurrentTrack(prev => prev ? { ...prev, lyrics, syncedLyrics } : null);
+                    }
+                    
+                    if (isSupabaseConfigured()) {
+                        try {
+                            const res = await SupabaseService.saveTrackLyrics({
+                                hueq: trackHueq,
+                                trackId: trk.id || (editingId ? `dist_trk_${editingId}_${lyricsModalTrackIdx}` : undefined),
+                                artistId: currentArtist?.id || (currentModerator ? 'mod' : 'unknown'),
+                                lyrics: lyrics || undefined,
+                                syncedLyrics: syncedLyrics
+                            });
+                            if (!res.success) {
+                                console.warn("Supabase track_lyrics save error:", res.error);
+                                if (res.error?.toLowerCase().includes('row-level security') || res.error?.includes('42501')) {
+                                    showNotification("RLS блокирует запись в track_lyrics в Supabase. Отключите RLS или добавьте политику доступа.", "error");
+                                    return;
+                                } else if (res.error) {
+                                    showNotification(`Ошибка сохранения в базу: ${res.error}`, "error");
+                                    return;
+                                }
+                            }
+                        } catch (e: any) {
+                            console.warn("Save lyrics to Supabase error:", e);
+                        }
+                    }
+                    showNotification(syncedLyrics ? "Текст трека синхронизирован и сохранен в базу!" : "Текст трека сохранен в базу!", "success");
+                }}
+            />
+        )}
     </div>
   );
 };

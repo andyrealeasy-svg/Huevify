@@ -4,10 +4,12 @@ import { Sidebar } from './components/Sidebar.tsx';
 import { Player } from './components/Player.tsx';
 import { MobileNav } from './components/MobileNav.tsx';
 import { FullScreenPlayer } from './components/FullScreenPlayer.tsx';
+import { FullScreenLyrics } from './components/FullScreenLyrics.tsx';
 import { CreatePlaylistModal } from './components/CreatePlaylistModal.tsx';
 import { AddToPlaylistModal } from './components/AddToPlaylistModal.tsx';
 import { DeletePlaylistModal } from './components/DeletePlaylistModal.tsx';
 import { ProfileModal } from './components/ProfileModal.tsx';
+import { QueueModal } from './components/QueueModal.tsx';
 import { ArtistHub } from './components/ArtistHub.tsx';
 import { Auth } from './components/Auth.tsx';
 import { Home } from './pages/Home.tsx';
@@ -142,10 +144,12 @@ const AppContent = () => {
 
           {/* Modals and Overlays moved outside of main to ensure correct stacking context */}
           <FullScreenPlayer />
+          <FullScreenLyrics />
           <CreatePlaylistModal />
           <AddToPlaylistModal />
           <DeletePlaylistModal />
           <ProfileModal />
+          <QueueModal />
           <ArtistHub />
           <NotificationOverlay />
         </div>

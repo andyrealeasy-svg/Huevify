@@ -479,6 +479,8 @@ interface StoreContextType {
   recentlyPlayed: Track[];
   followedArtists: string[];
   currentTrack: Track | null;
+  setCurrentTrack: React.Dispatch<React.SetStateAction<Track | null>>;
+  setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
   isPlaying: boolean;
   playMode: PlayMode;
   isShuffle: boolean;
@@ -549,6 +551,19 @@ interface StoreContextType {
   
   isMobilePlayerOpen: boolean;
   setMobilePlayerOpen: (isOpen: boolean) => void;
+  
+  isFullScreenLyricsOpen: boolean;
+  setFullScreenLyricsOpen: (isOpen: boolean) => void;
+  toggleFullScreenLyrics: () => void;
+  
+  isQueueOpen: boolean;
+  setQueueOpen: (isOpen: boolean) => void;
+  toggleQueue: () => void;
+  shuffleQueue: Track[];
+  reshuffleQueue: () => void;
+  getUpcomingTracks: () => Track[];
+  removeFromQueue: (trackId: string) => void;
+  clearQueue: () => void;
   
   isAddToPlaylistOpen: boolean;
   trackIdToAdd: string | null;
@@ -740,6 +755,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCreatePlaylistOpen, setCreatePlaylistOpen] = useState(false);
   const [playlistIdToEdit, setPlaylistIdToEdit] = useState<string | null>(null);
   const [isMobilePlayerOpen, setMobilePlayerOpen] = useState(false);
+  const [isFullScreenLyricsOpen, setFullScreenLyricsOpen] = useState(false);
+  const toggleFullScreenLyrics = () => setFullScreenLyricsOpen(prev => !prev);
+  const [isQueueOpen, setQueueOpen] = useState(false);
+  const toggleQueue = () => setQueueOpen(prev => !prev);
+  const [shuffleQueue, setShuffleQueue] = useState<Track[]>([]);
   const [isAddToPlaylistOpen, setAddToPlaylistOpen] = useState(false);
   const [trackIdToAdd, setTrackIdToAdd] = useState<string | null>(null);
   const [isProfileModalOpen, setProfileModalOpen] = useState(false);
@@ -818,6 +838,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           broadcastChannelRef.current?.close();
       };
   }, [currentUser]);
+
+  // --- Live Lyrics Sync from Supabase track_lyrics table ---
+  useEffect(() => {
+    if (!currentTrack || !isSupabaseConfigured()) return;
+    let isCancelled = false;
+
+    const syncLiveLyrics = async () => {
+      try {
+        const live = await SupabaseService.fetchLyrics({
+          hueq: currentTrack.hueq,
+          trackId: currentTrack.id
+        });
+        if (!isCancelled && live && (live.lyrics || live.syncedLyrics)) {
+          setCurrentTrack(prev => {
+            if (!prev || (prev.id !== currentTrack.id && prev.hueq !== currentTrack.hueq)) return prev;
+            return {
+              ...prev,
+              lyrics: live.lyrics || prev.lyrics,
+              syncedLyrics: live.syncedLyrics || prev.syncedLyrics
+            };
+          });
+        }
+      } catch (e) {
+        // silent fallback
+      }
+    };
+
+    syncLiveLyrics();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentTrack?.id, currentTrack?.hueq]);
 
   const notifySync = (type: 'PLAYLISTS_UPDATE' | 'TRACKS_UPDATE' | 'ARTIST_DATA_UPDATE' | 'SETTINGS_UPDATE') => {
       try {
@@ -961,7 +1014,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                                   artist: t.artist || req.artistName, // Use track override or release artist
                                   genre: t.genre || req.genre || mergedTracks[trackIndex].genre,
                                   explicit: t.explicit,
-                                  isUnreleased: false // Previously released tracks remain released!
+                                  isUnreleased: false, // Previously released tracks remain released!
+                                  lyrics: t.lyrics || mergedTracks[trackIndex].lyrics,
+                                  syncedLyrics: t.syncedLyrics || mergedTracks[trackIndex].syncedLyrics
                               };
                           }
                       } else {
@@ -970,7 +1025,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                           const trackLevelArtists = t.mainArtists || [];
                           const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
 
-                          const isUnreleasedTrack = isAnnouncementActive;
+                          const isUnreleasedTrack = isAnnouncementActive || Boolean(t.isEmpty) || Boolean(t.isUnreleased) || !t.fileUrl;
 
                           newTracksForThisAlbum.push({
                               id: trackId,
@@ -984,9 +1039,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               genre: t.genre || req.genre,
                               explicit: (isAnnouncementActive && req.hideTrackMetadata) ? false : t.explicit,
                               feat: (isAnnouncementActive && req.hideTrackMetadata) ? undefined : t.feat,
-                              hueq: isAnnouncementActive ? undefined : (t.generatedHueq || t.existingHueq),
+                              hueq: (isAnnouncementActive || isUnreleasedTrack) ? undefined : (t.generatedHueq || t.existingHueq),
                               mainArtists: (isAnnouncementActive && req.hideTrackMetadata) ? [] : combinedMainArtists,
-                              isUnreleased: isUnreleasedTrack
+                              isUnreleased: isUnreleasedTrack,
+                              lyrics: t.lyrics,
+                              syncedLyrics: t.syncedLyrics
                           });
                       }
 
@@ -1746,8 +1803,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!artistId || !artistName) return;
 
+      // Ensure tracks have HUEQs if applicable
+      const tracksWithHueqs = (releaseData.tracks || []).map(t => ({
+          ...t,
+          generatedHueq: t.generatedHueq || t.existingHueq || generateHUEQ()
+      }));
+
       const newRelease: ReleaseRequest = {
           ...releaseData,
+          tracks: tracksWithHueqs,
           id: `rel_${Date.now()}`,
           artistId: artistId,
           artistName: artistName,
@@ -1774,6 +1838,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (isSupabaseConfigured()) {
           SupabaseService.saveRelease(newRelease).catch(e => console.warn('Supabase save release error:', e));
+          // Save lyrics for each track to track_lyrics table
+          if (newRelease.tracks && newRelease.tracks.length > 0) {
+              newRelease.tracks.forEach((trk, idx) => {
+                  const trkHueq = (trk.existingHueq || trk.generatedHueq || '').trim().toUpperCase();
+                  const trkId = `dist_trk_${newRelease.id}_${idx}`;
+                  if (trk.lyrics || (trk.syncedLyrics && trk.syncedLyrics.length > 0)) {
+                      SupabaseService.saveTrackLyrics({
+                          hueq: trkHueq || undefined,
+                          trackId: trkId,
+                          artistId: newRelease.artistId,
+                          lyrics: trk.lyrics,
+                          syncedLyrics: trk.syncedLyrics
+                      }).catch(e => console.warn('Save lyrics error on submitRelease:', e));
+                  }
+              });
+          }
       }
   };
 
@@ -1793,6 +1873,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           StorageService.save('huevify_release_requests', updated);
           notifySync('ARTIST_DATA_UPDATE');
           refreshLibrary(updated);
+          if (isSupabaseConfigured()) {
+              SupabaseService.saveRelease(newRequest).catch(e => console.warn('Supabase update legacy release error:', e));
+              if (newRequest.tracks && newRequest.tracks.length > 0) {
+                  newRequest.tracks.forEach((trk, idx) => {
+                      const trkHueq = (trk.existingHueq || trk.generatedHueq || '').trim().toUpperCase();
+                      const trkId = `dist_trk_${newRequest.id}_${idx}`;
+                      if (trk.lyrics || (trk.syncedLyrics && trk.syncedLyrics.length > 0)) {
+                          SupabaseService.saveTrackLyrics({
+                              hueq: trkHueq || undefined,
+                              trackId: trkId,
+                              artistId: newRequest.artistId,
+                              lyrics: trk.lyrics,
+                              syncedLyrics: trk.syncedLyrics
+                          }).catch(() => {});
+                      }
+                  });
+              }
+          }
           return;
       }
 
@@ -1808,6 +1906,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (isSupabaseConfigured() && req) {
           SupabaseService.saveRelease(req).catch(e => console.warn('Supabase update release error:', e));
+          if (req.tracks && req.tracks.length > 0) {
+              req.tracks.forEach((trk, idx) => {
+                  const trkHueq = (trk.existingHueq || trk.generatedHueq || '').trim().toUpperCase();
+                  const trkId = `dist_trk_${req.id}_${idx}`;
+                  if (trk.lyrics || (trk.syncedLyrics && trk.syncedLyrics.length > 0)) {
+                      SupabaseService.saveTrackLyrics({
+                          hueq: trkHueq || undefined,
+                          trackId: trkId,
+                          artistId: req.artistId,
+                          lyrics: trk.lyrics,
+                          syncedLyrics: trk.syncedLyrics
+                      }).catch(() => {});
+                  }
+              });
+          }
       }
   };
 
@@ -1888,8 +2001,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const tracksWithHueqs = existingReq.tracks.map(t => {
-          if (existingReq.isAnnouncement) {
-              // HUEQ is NOT awarded to tracks in expected releases (announcements)
+          if (existingReq.isAnnouncement || t.isEmpty || t.isUnreleased || !t.fileUrl) {
+              // HUEQ is NOT awarded to tracks in expected releases (announcements) or empty tracks
               return t;
           }
           if (t.existingHueq) return t; 
@@ -1916,6 +2029,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (isSupabaseConfigured() && req) {
           SupabaseService.saveRelease(req).catch(e => console.warn('Supabase approve release error:', e));
+          if (req.tracks && req.tracks.length > 0) {
+              req.tracks.forEach((trk, idx) => {
+                  const trkHueq = (trk.existingHueq || trk.generatedHueq || '').trim().toUpperCase();
+                  const trkId = `dist_trk_${req.id}_${idx}`;
+                  if (trk.lyrics || (trk.syncedLyrics && trk.syncedLyrics.length > 0)) {
+                      SupabaseService.saveTrackLyrics({
+                          hueq: trkHueq || undefined,
+                          trackId: trkId,
+                          artistId: req.artistId,
+                          lyrics: trk.lyrics,
+                          syncedLyrics: trk.syncedLyrics
+                      }).catch(() => {});
+                  }
+              });
+          }
       }
   };
   const rejectRelease = (id: string) => {
@@ -2985,7 +3113,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // When playing in a mixed playlist, charts, or user playlist, chosenAlbumId is null
     setActivePlaybackAlbumId(chosenAlbumId);
 
+    // Check if track is being played within the same active playlist/queue context
+    const isSamePlaylistContext = Boolean(
+      (currentQueue.length > 0 && currentQueue.some(t => t.id === track.id)) ||
+      (newQueue && newQueue.length > 0 && currentQueue.length === newQueue.length && newQueue.every((t, i) => t.id === currentQueue[i]?.id))
+    );
+
     // Set or preserve active playback queue
+    let effectiveQueue = newQueue && newQueue.length > 0 ? newQueue : currentQueue;
     if (newQueue && newQueue.length > 0) {
         setCurrentQueue(newQueue);
     } else {
@@ -2993,10 +3128,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const contextQueue = getViewQueue();
             if (contextQueue.some(t => t.id === track.id)) {
                 setCurrentQueue(contextQueue);
+                effectiveQueue = contextQueue;
             } else {
                 setCurrentQueue(tracks);
+                effectiveQueue = tracks;
             }
         }
+    }
+
+    if (isShuffle) {
+      if (isSamePlaylistContext && shuffleQueue.length > 0) {
+        updateShuffleQueueOnTrackChange(track, effectiveQueue);
+      } else {
+        const shuffledFromPlaylist = buildShuffleQueue(track, effectiveQueue);
+        setShuffleQueue(shuffledFromPlaylist);
+      }
     }
 
     // Save to User Specific Recent
@@ -3142,16 +3288,131 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return album ? activePlaybackAlbumId : undefined;
   };
 
+  const buildShuffleQueue = (startTrack?: Track | null, sourceQueue?: Track[]): Track[] => {
+    // Strictly use the tracks from the active playlist / album queue
+    let pool = sourceQueue && sourceQueue.length > 0 ? sourceQueue : getQueue();
+    pool = pool.filter(t => !t.isUnreleased && Boolean(t.url));
+    if (!appSettings.allowExplicitContent) {
+      pool = pool.filter(t => !t.explicit);
+    }
+    const currentId = startTrack?.id || currentTrack?.id;
+    if (currentId) {
+      pool = pool.filter(t => t.id !== currentId);
+    }
+    if (pool.length === 0) return [];
+    
+    // Fisher-Yates shuffle strictly within playlist tracks
+    const shuffled = [...pool];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, 25);
+  };
+
+  const updateShuffleQueueOnTrackChange = (playedTrack: Track, targetPlaylistQueue: Track[]) => {
+    setShuffleQueue(prevQueue => {
+      if (prevQueue.length === 0) {
+        return buildShuffleQueue(playedTrack, targetPlaylistQueue);
+      }
+
+      // Remove the played track from the active shuffle queue
+      const remaining = prevQueue.filter(t => t.id !== playedTrack.id);
+
+      // Find tracks from playlist that are NOT in remaining and NOT playedTrack
+      const existingIds = new Set(remaining.map(t => t.id));
+      existingIds.add(playedTrack.id);
+
+      const missingInQueue = targetPlaylistQueue.filter(t => 
+        !t.isUnreleased && 
+        Boolean(t.url) && 
+        !existingIds.has(t.id) &&
+        (appSettings.allowExplicitContent || !t.explicit)
+      );
+
+      if (missingInQueue.length === 0) {
+        return remaining;
+      }
+
+      // Shuffle missing tracks before appending to the tail end
+      const shuffledMissing = [...missingInQueue];
+      for (let i = shuffledMissing.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledMissing[i], shuffledMissing[j]] = [shuffledMissing[j], shuffledMissing[i]];
+      }
+
+      // Append strictly to the END of the queue
+      return [...remaining, ...shuffledMissing].slice(0, 25);
+    });
+  };
+
+  const reshuffleQueue = () => {
+    const playlistQueue = currentQueue.length > 0 ? currentQueue : getViewQueue();
+    const newShuffled = buildShuffleQueue(currentTrack, playlistQueue);
+    setShuffleQueue(newShuffled);
+    setIsShuffle(true);
+    const count = newShuffled.length;
+    showNotification(`Перемешано треков в плейлисте: ${count}`, "info");
+  };
+
+  const getUpcomingTracks = (): Track[] => {
+    if (isShuffle) {
+      if (shuffleQueue.length === 0 && currentTrack) {
+        const playlistQueue = currentQueue.length > 0 ? currentQueue : getViewQueue();
+        const initial = buildShuffleQueue(currentTrack, playlistQueue);
+        setShuffleQueue(initial);
+        return initial;
+      }
+      return shuffleQueue;
+    }
+    const queue = getQueue();
+    if (!currentTrack) return queue;
+    const currentIdx = queue.findIndex(t => t.id === currentTrack.id);
+    if (currentIdx === -1) return queue;
+    return queue.slice(currentIdx + 1);
+  };
+
+  const removeFromQueue = (trackId: string) => {
+    if (isShuffle) {
+      setShuffleQueue(prev => prev.filter(t => t.id !== trackId));
+    } else {
+      setCurrentQueue(prev => prev.filter(t => t.id !== trackId));
+    }
+  };
+
+  const clearQueue = () => {
+    if (isShuffle) {
+      setShuffleQueue([]);
+    } else {
+      setCurrentQueue(currentTrack ? [currentTrack] : []);
+    }
+  };
+
   const nextTrack = () => {
+    if (isShuffle) {
+      let activeShuffled = shuffleQueue;
+      const playlistQueue = currentQueue.length > 0 ? currentQueue : getViewQueue();
+      if (activeShuffled.length === 0) {
+        activeShuffled = buildShuffleQueue(currentTrack, playlistQueue);
+      }
+      if (activeShuffled.length > 0) {
+        const nextTrk = activeShuffled[0];
+        const remaining = activeShuffled.slice(1);
+        if (remaining.length === 0 && playMode === PlayMode.CONTEXT) {
+          const refilled = buildShuffleQueue(nextTrk, playlistQueue);
+          setShuffleQueue(refilled);
+        } else {
+          setShuffleQueue(remaining);
+        }
+        playTrack(nextTrk, playlistQueue, getNextAlbumContext(nextTrk));
+        return;
+      }
+    }
+
     const queue = getQueue();
     if (queue.length === 0) {
         setIsPlaying(false);
         getActiveAudio().pause();
-        return;
-    }
-    if (isShuffle) {
-        const randomTrack = queue[Math.floor(Math.random() * queue.length)];
-        playTrack(randomTrack, queue, getNextAlbumContext(randomTrack));
         return;
     }
     const idx = queue.findIndex(t => t.id === currentTrack?.id);
@@ -3170,6 +3431,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const playNext = (trackToQueue: Track) => {
+    if (isShuffle) {
+      setShuffleQueue(prev => [trackToQueue, ...prev.filter(t => t.id !== trackToQueue.id)]);
+      return;
+    }
     const queue = getQueue();
     const currentIdx = queue.findIndex(t => t.id === currentTrack?.id);
     const newQueue = [...queue];
@@ -3203,7 +3468,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     else if (playMode === PlayMode.CONTEXT) setPlayMode(PlayMode.ONE);
     else setPlayMode(PlayMode.OFF);
   };
-  const toggleShuffle = () => setIsShuffle(!isShuffle);
+  const toggleShuffle = () => {
+    setIsShuffle(prev => {
+      const next = !prev;
+      if (next) {
+        const playlistQueue = currentQueue.length > 0 ? currentQueue : getViewQueue();
+        const initial = buildShuffleQueue(currentTrack, playlistQueue);
+        setShuffleQueue(initial);
+      } else {
+        setShuffleQueue([]);
+      }
+      return next;
+    });
+  };
 
   const syncPlaylists = (newGlobalPlaylists: Playlist[], directlySavedPlaylist?: Playlist) => {
       StorageService.save('huevify_playlists', newGlobalPlaylists);
@@ -3471,9 +3748,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
       approveArtist, rejectArtist, approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
       releaseRequests, profileEditRequests, hasModerator, existingArtists, getTrackByHueq,
-      tracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, currentQueue, isPlaying, playMode, isShuffle, volume, progress, duration, view,
+      tracks, setTracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, setCurrentTrack, currentQueue, isPlaying, playMode, isShuffle, volume, progress, duration, view,
       isCreatePlaylistOpen, setCreatePlaylistOpen, playlistIdToEdit, setPlaylistIdToEdit,
       isMobilePlayerOpen, setMobilePlayerOpen,
+      isFullScreenLyricsOpen, setFullScreenLyricsOpen, toggleFullScreenLyrics,
+      isQueueOpen, setQueueOpen, toggleQueue, shuffleQueue, reshuffleQueue, getUpcomingTracks, removeFromQueue, clearQueue,
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
       isDeleteModalOpen, playlistToDelete, openDeleteModal, closeDeleteModal, confirmDeletePlaylist,
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,

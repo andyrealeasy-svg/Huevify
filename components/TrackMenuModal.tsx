@@ -26,7 +26,8 @@ export const TrackMenuModal: React.FC<TrackMenuModalProps> = ({
   const { 
     isLiked, toggleLike, openAddToPlaylist, removeFromPlaylist, 
     playlists, currentUser, showNotification, goToArtist, 
-    albums, setView, getTrackCover, tracks, t, appSettings, playNext 
+    albums, setView, getTrackCover, tracks, t, appSettings, playNext,
+    setQueueOpen, isShuffle, getUpcomingTracks 
   } = useStore();
 
   const [menuView, setMenuView] = useState<'main' | 'artists' | 'remove_playlist'>('main');
@@ -216,7 +217,30 @@ export const TrackMenuModal: React.FC<TrackMenuModalProps> = ({
                 </button>
               )}
 
-              {/* 4. Включить следующим */}
+              {/* 4. Очередь воспроизведения */}
+              <button 
+                onClick={() => {
+                  onClose();
+                  setQueueOpen(true);
+                }}
+                className="flex items-center justify-between w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition text-primary">
+                    <ListMusic size={18} />
+                  </div>
+                  <span className="text-sm font-medium text-white/90 group-hover:text-white">
+                    {t('queue', 'Очередь')}
+                  </span>
+                </div>
+                {isShuffle && (
+                  <span className="text-[11px] font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                    25 треков
+                  </span>
+                )}
+              </button>
+
+              {/* 5. Включить следующим */}
               <button 
                 onClick={handlePlayNext}
                 className="flex items-center gap-3.5 w-full py-3 px-2 rounded-xl text-left hover:bg-white/10 active:bg-white/15 transition group"
