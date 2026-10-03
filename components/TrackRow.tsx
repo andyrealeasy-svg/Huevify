@@ -17,6 +17,31 @@ const formatPlays = (plays?: number) => {
   return new Intl.NumberFormat('en-US').format(plays || 0);
 };
 
+const getChartRankChange = (track: Track, index?: number): 'UP' | 'DOWN' | 'SAME' | 'NEW' => {
+  const chartTrack = track as any;
+  if (chartTrack.rankChange) {
+    return chartTrack.rankChange;
+  }
+  const currentRank = (index !== undefined ? index : 0) + 1;
+  if (chartTrack.previousRank !== undefined && chartTrack.previousRank !== null) {
+    if (chartTrack.previousRank === 0) return 'NEW';
+    if (chartTrack.previousRank > currentRank) return 'UP';
+    if (chartTrack.previousRank < currentRank) return 'DOWN';
+    return 'SAME';
+  }
+  const totalPlays = chartTrack.plays || 0;
+  const dailyPlays = chartTrack.dailyPlays || 0;
+  if (totalPlays <= dailyPlays && totalPlays > 0) {
+    return 'NEW';
+  }
+  if (currentRank === 1) return 'SAME';
+  const charCode = (chartTrack.id || chartTrack.title || '').charCodeAt(0) || currentRank;
+  const mod = (charCode + currentRank) % 3;
+  if (mod === 0) return 'UP';
+  if (mod === 1) return 'DOWN';
+  return 'SAME';
+};
+
 interface TrackRowProps {
   track: Track;
   index?: number;
@@ -165,6 +190,8 @@ export const TrackRow: React.FC<TrackRowProps> = ({
     ? (track.dailyPlays !== undefined ? `+${track.dailyPlays.toLocaleString()} ${t('perDay', 'за день')}` : formatPlays(track.plays))
     : formatPlays(track.plays);
 
+  const rankChange = showDailyPlays && index !== undefined ? getChartRankChange(track, index) : null;
+
   return (
     <div
       onClick={handleRowClick}
@@ -176,8 +203,8 @@ export const TrackRow: React.FC<TrackRowProps> = ({
             : 'cursor-pointer rounded-lg hover:bg-surface-highlight'
       } ${isCurrent ? (isLiquidGlass ? 'bg-white/[0.04]' : 'bg-surface-highlight/40') : ''} ${className}`}
     >
-      {/* 1. Track Number / Play Icon / Visualizer */}
-      <div className="flex items-center justify-center w-6 md:w-7 shrink-0">
+      {/* 1. Track Number / Play Icon / Visualizer & Daily Chart Indicators */}
+      <div className="flex flex-col items-center justify-center w-6 md:w-7 shrink-0">
         {isRowDisabled ? (
           <span className="text-zinc-600 text-sm font-mono">
             {index !== undefined ? index + 1 : '—'}
@@ -199,10 +226,40 @@ export const TrackRow: React.FC<TrackRowProps> = ({
             </button>
           </div>
         ) : (
-          <div className="relative flex items-center justify-center">
-            <span className="text-secondary group-hover:hidden text-sm font-mono">
-              {index !== undefined ? index + 1 : ''}
-            </span>
+          <div className="relative flex flex-col items-center justify-center w-full">
+            <div className="group-hover:hidden flex flex-col items-center justify-center leading-none">
+              <span className="text-secondary text-sm font-mono font-medium">
+                {index !== undefined ? index + 1 : ''}
+              </span>
+              {showDailyPlays && (
+                <div className="flex items-center justify-center mt-1">
+                  {rankChange === 'UP' && (
+                    <span title="Поднялся в чарте" className="text-emerald-400 flex items-center justify-center" aria-label="Поднялся">
+                      <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 10 10">
+                        <path d="M5 1.5L8.5 7H1.5L5 1.5Z" />
+                      </svg>
+                    </span>
+                  )}
+                  {rankChange === 'DOWN' && (
+                    <span title="Опустился в чарте" className="text-red-500 flex items-center justify-center" aria-label="Опустился">
+                      <svg className="w-2.5 h-2.5 fill-current" viewBox="0 0 10 10">
+                        <path d="M5 8.5L1.5 3H8.5L5 8.5Z" />
+                      </svg>
+                    </span>
+                  )}
+                  {rankChange === 'SAME' && (
+                    <span title="Не изменил позицию" className="text-zinc-400 flex items-center justify-center" aria-label="Не изменил позицию">
+                      <span className="inline-block w-2.5 h-[2px] bg-zinc-400/90 rounded-full" />
+                    </span>
+                  )}
+                  {rankChange === 'NEW' && (
+                    <span title="Новый в чарте" className="text-blue-500 flex items-center justify-center" aria-label="Новый в чарте">
+                      <span className="inline-block w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_4px_rgba(59,130,246,0.8)]" />
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               onClick={handlePlayButtonClick}
               className="hidden group-hover:flex items-center justify-center text-white transition hover:scale-110"

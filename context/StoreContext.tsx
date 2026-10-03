@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord } from '../types';
+import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ChartRankChange, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord } from '../types';
 import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase';
@@ -642,6 +642,107 @@ export const getOrCreateDeviceId = (): string => {
   return devId;
 };
 
+const computeRankChangesFromSupabaseLogs = async (
+  currentChart: DailyChartTrack[],
+  publicationPoint: Date,
+  availableTracks: Track[]
+): Promise<DailyChartTrack[]> => {
+  if (!currentChart || currentChart.length === 0) return [];
+
+  const cycleEnd = publicationPoint;
+  const cycleStart = new Date(publicationPoint.getTime() - 24 * 60 * 60 * 1000);
+  const prevCycleStart = new Date(cycleStart.getTime() - 24 * 60 * 60 * 1000);
+  const prevCycleEnd = cycleStart;
+
+  let prevDailyPlaysMap: Record<string, number> = {};
+
+  if (isSupabaseConfigured()) {
+    try {
+      const rangePlays = await SupabaseService.fetchDailyPlaysRange(
+        prevCycleStart.toISOString(),
+        prevCycleEnd.toISOString()
+      );
+      if (rangePlays) {
+        prevDailyPlaysMap = rangePlays;
+      }
+    } catch (e) {
+      console.warn('Error fetching previous cycle plays from Supabase:', e);
+    }
+  }
+
+  // Fallback to local logs if Supabase was empty / not configured
+  if (Object.keys(prevDailyPlaysMap).length === 0) {
+    const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+    const periodLogs = localLogs.filter(l => l.timestamp >= prevCycleStart.getTime() && l.timestamp < prevCycleEnd.getTime());
+    const userTrackLogs: Record<string, number[]> = {};
+    periodLogs.forEach(l => {
+      const tid = l.trackId;
+      if (!userTrackLogs[tid]) userTrackLogs[tid] = [];
+      userTrackLogs[tid].push(l.plays || 1);
+    });
+    Object.entries(userTrackLogs).forEach(([tid, playsList]) => {
+      const validPlays = playsList.slice(0, 20);
+      prevDailyPlaysMap[tid] = validPlays.reduce((sum, p) => sum + p, 0);
+    });
+  }
+
+  const savedPreviousChart = StorageService.load<DailyChartTrack[]>('huevify_previous_daily_chart', []);
+
+  // Build the previous cycle Top 25
+  const liveTracks = availableTracks.filter(t => !isTestTrack(t));
+  let prevTop25Ids: string[] = [];
+
+  if (Object.keys(prevDailyPlaysMap).length > 0) {
+    const prevSorted = liveTracks
+      .map(t => ({
+        id: t.id,
+        dailyPlays: prevDailyPlaysMap[t.id] || 0,
+        plays: t.plays || 0,
+        title: t.title
+      }))
+      .filter(t => t.dailyPlays > 0)
+      .sort((a, b) => {
+        if (b.dailyPlays !== a.dailyPlays) return b.dailyPlays - a.dailyPlays;
+        if (b.plays !== a.plays) return b.plays - a.plays;
+        return a.title.localeCompare(b.title);
+      })
+      .slice(0, 25);
+
+    prevTop25Ids = prevSorted.map(t => t.id);
+  } else if (savedPreviousChart.length > 0) {
+    prevTop25Ids = savedPreviousChart.map(t => t.id);
+  }
+
+  return currentChart.map((track, idx) => {
+    const currentRank = idx + 1;
+    const prevIndex = prevTop25Ids.indexOf(track.id);
+
+    if (prevIndex !== -1) {
+      const previousRank = prevIndex + 1;
+      let rankChange: ChartRankChange = 'SAME';
+      if (previousRank > currentRank) {
+        rankChange = 'UP';
+      } else if (previousRank < currentRank) {
+        rankChange = 'DOWN';
+      } else {
+        rankChange = 'SAME';
+      }
+      return {
+        ...track,
+        previousRank,
+        rankChange
+      };
+    } else {
+      // Track was not in yesterday's Top 25 -> NEW
+      return {
+        ...track,
+        previousRank: undefined,
+        rankChange: 'NEW' as ChartRankChange
+      };
+    }
+  });
+};
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -1224,6 +1325,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
               StorageService.save('huevify_daily_chart', remoteDailyChart.chart);
               setDailyChart(remoteDailyChart.chart);
+              const latestPt = getLatestPublicationPoint();
+              computeRankChangesFromSupabaseLogs(remoteDailyChart.chart, latestPt, tracksRef.current).then(enriched => {
+                StorageService.save('huevify_daily_chart', enriched);
+                setDailyChart(enriched);
+              });
             }
 
             if (remoteReleases !== null) {
@@ -1427,6 +1533,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (freshChartData && freshChartData.chart && freshChartData.chart.length > 0) {
           setDailyChart(freshChartData.chart);
           StorageService.save('huevify_daily_chart', freshChartData.chart);
+          const latestPt = getLatestPublicationPoint();
+          computeRankChangesFromSupabaseLogs(freshChartData.chart, latestPt, tracksRef.current).then(enriched => {
+            setDailyChart(enriched);
+            StorageService.save('huevify_daily_chart', enriched);
+          });
           if (freshChartData.lastUpdate) {
             StorageService.save('huevify_last_chart_update', freshChartData.lastUpdate);
           }
@@ -2381,9 +2492,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return a.title.localeCompare(b.title);
     }).slice(0, 25);
 
-    setDailyChart(sorted);
+    // Compute exact rank changes by querying play logs for previous 24h cycle
+    const rankedSorted = await computeRankChangesFromSupabaseLogs(sorted, publicationPoint, availableTracks);
 
-    const chartToSave = sorted.map(t => ({
+    setDailyChart(rankedSorted);
+
+    const chartToSave = rankedSorted.map(t => ({
       ...t,
       url: t.url && t.url.startsWith('data:') ? '' : t.url
     }));
@@ -2411,7 +2525,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // 1. If local storage already has valid, full static chart for latestPt, keep it!
       if (savedLastUpdate && savedLastUpdate === latestPt.toISOString() && savedChart.length > 0) {
-        setDailyChart(savedChart);
+        const enriched = await computeRankChangesFromSupabaseLogs(savedChart, latestPt, tracksRef.current);
+        setDailyChart(enriched);
         return;
       }
 
@@ -2419,8 +2534,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isSupabaseConfigured()) {
         const remoteData = await SupabaseService.fetchDailyChart();
         if (remoteData && remoteData.lastUpdate === latestPt.toISOString() && Array.isArray(remoteData.chart) && remoteData.chart.length > 0) {
-          setDailyChart(remoteData.chart);
-          StorageService.save('huevify_daily_chart', remoteData.chart);
+          const enriched = await computeRankChangesFromSupabaseLogs(remoteData.chart, latestPt, tracksRef.current);
+          setDailyChart(enriched);
+          StorageService.save('huevify_daily_chart', enriched);
           StorageService.save('huevify_last_chart_update', remoteData.lastUpdate);
           return;
         }
@@ -2488,7 +2604,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           hasChanges = true;
           return {
             ...live,
-            dailyPlays: chartTrack.dailyPlays
+            dailyPlays: chartTrack.dailyPlays,
+            previousRank: chartTrack.previousRank,
+            rankChange: chartTrack.rankChange
           };
         }
         return chartTrack;

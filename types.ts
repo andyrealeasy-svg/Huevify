@@ -31,12 +31,18 @@ export interface Track {
   mainArtists?: string[]; // Array of additional main artists
   isUnreleased?: boolean; // For tracks in expected releases that are not yet released
   dailyPlays?: number; // Optional daily plays count
+  previousRank?: number; // Position in previous daily chart cycle
+  rankChange?: ChartRankChange; // Position movement indicator
   lyrics?: string;
   syncedLyrics?: LyricsLine[];
 }
 
+export type ChartRankChange = 'UP' | 'DOWN' | 'SAME' | 'NEW';
+
 export interface DailyChartTrack extends Track {
   dailyPlays: number;
+  previousRank?: number;
+  rankChange?: ChartRankChange;
 }
 
 export interface Playlist {
