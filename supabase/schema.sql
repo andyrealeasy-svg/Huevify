@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS public.releases (
     hide_track_metadata BOOLEAN DEFAULT FALSE,
     announcement_date TIMESTAMPTZ,
     announcement_time TEXT DEFAULT '',
+    linked_announcement_id TEXT DEFAULT NULL,
+    linked_release_id TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -34,6 +36,8 @@ ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS announcement_date TIMESTAMP
 ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS announcement_time TEXT DEFAULT '';
 ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS deletion_requested BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS additional_main_artists JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS linked_announcement_id TEXT DEFAULT NULL;
+ALTER TABLE public.releases ADD COLUMN IF NOT EXISTS linked_release_id TEXT DEFAULT NULL;
 
 -- 2. Artist Accounts Table
 CREATE TABLE IF NOT EXISTS public.artist_accounts (
@@ -151,6 +155,8 @@ CREATE TABLE IF NOT EXISTS public.release_drafts (
     hide_track_metadata BOOLEAN DEFAULT FALSE,
     announcement_date TEXT,
     announcement_time TEXT,
+    linked_announcement_id TEXT DEFAULT NULL,
+    linked_release_id TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -161,6 +167,8 @@ ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS announcement_date TEX
 ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS announcement_time TEXT;
 ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS is_editing_original_id TEXT;
 ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS additional_main_artists JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS linked_announcement_id TEXT DEFAULT NULL;
+ALTER TABLE public.release_drafts ADD COLUMN IF NOT EXISTS linked_release_id TEXT DEFAULT NULL;
 
 -- Migration for user_preferences table
 ALTER TABLE public.user_preferences ADD COLUMN IF NOT EXISTS liked_tracks JSONB DEFAULT '[]'::jsonb;

@@ -73,6 +73,8 @@ export interface Album {
   announcementDate?: string;
   announcementTime?: string;
   hideTrackMetadata?: boolean;
+  linkedAnnouncementId?: string;
+  linkedAlbumId?: string;
 }
 
 export interface User {
@@ -185,6 +187,8 @@ export interface ReleaseRequest {
   hideTrackMetadata?: boolean;
   announcementDate?: string;
   announcementTime?: string;
+  linkedAnnouncementId?: string;
+  linkedReleaseId?: string;
 }
 
 export interface ReleaseDraft {
@@ -210,6 +214,8 @@ export interface ReleaseDraft {
   hideTrackMetadata?: boolean;
   announcementDate?: string;
   announcementTime?: string;
+  linkedAnnouncementId?: string;
+  linkedReleaseId?: string;
 }
 
 export interface ProfileEditRequest {

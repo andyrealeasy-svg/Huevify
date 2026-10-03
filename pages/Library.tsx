@@ -39,7 +39,7 @@ export const Library = () => {
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
     currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover,
-    currentTrack, isPlaying, t, appSettings, showNotification
+    currentTrack, isPlaying, t, appSettings, showNotification, completeAnnouncementTransition
   } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
@@ -868,6 +868,8 @@ export const Library = () => {
                   <ReleaseCountdown 
                     targetDate={currentAlbumObj.releaseDate || ''} 
                     targetTime={currentAlbumObj.releaseTime}
+                    albumId={currentAlbumObj.id}
+                    linkedAlbumId={currentAlbumObj.linkedAlbumId}
                   />
                 </div>
               </div>
@@ -943,28 +945,52 @@ export const Library = () => {
 
         {/* Action Bar */}
         {currentAlbumObj?.isUpcoming ? (
-          <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-3 animate-appear bg-background">
-            <button 
-              onClick={() => {
-                toggleAlbumLike(id);
-                showNotification(isAlbumLiked(id) ? 'Удалено из медиатеки' : 'Релиз предварительно сохранен в медиатеку', 'success');
-              }}
-              className={`px-6 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 transition select-none ${
-                isAlbumLiked(id)
-                  ? 'bg-transparent text-white border border-white/40 hover:border-white'
-                  : 'bg-white text-black hover:scale-105 active:scale-95 shadow-md'
-              }`}
-            >
-              {isAlbumLiked(id) ? (
-                <>
-                  <span>Предварительно сохранено</span>
-                  <Check size={16} className="text-white stroke-[2.5]" />
-                </>
-              ) : (
-                <span>Предварительно сохранить</span>
-              )}
-            </button>
-          </div>
+          (() => {
+            const releaseTargetTimestamp = new Date(currentAlbumObj.releaseTime ? `${currentAlbumObj.releaseDate}T${currentAlbumObj.releaseTime}:00` : `${currentAlbumObj.releaseDate}T00:00:00`).getTime();
+            const isReleaseDue = !isNaN(releaseTargetTimestamp) && releaseTargetTimestamp <= Date.now();
+
+            if (isReleaseDue) {
+              return (
+                <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 animate-appear bg-background">
+                  <button 
+                    onClick={() => completeAnnouncementTransition(currentAlbumObj.id, currentAlbumObj.linkedAlbumId)}
+                    className="px-8 py-3 rounded-full bg-primary hover:bg-primary-highlight text-black font-extrabold text-base flex items-center gap-2.5 transition shadow-lg hover:scale-105 active:scale-95 shadow-primary/25 select-none"
+                  >
+                    <Play size={22} fill="currentColor" />
+                    <span>{t('listen', 'Слушать')}</span>
+                  </button>
+                  <span className="text-sm font-semibold text-white/80">
+                    Релиз доступен к прослушиванию!
+                  </span>
+                </div>
+              );
+            }
+
+            return (
+              <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-3 animate-appear bg-background">
+                <button 
+                  onClick={() => {
+                    toggleAlbumLike(id);
+                    showNotification(isAlbumLiked(id) ? 'Удалено из медиатеки' : 'Релиз предварительно сохранен в медиатеку', 'success');
+                  }}
+                  className={`px-6 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 transition select-none ${
+                    isAlbumLiked(id)
+                      ? 'bg-transparent text-white border border-white/40 hover:border-white'
+                      : 'bg-white text-black hover:scale-105 active:scale-95 shadow-md'
+                  }`}
+                >
+                  {isAlbumLiked(id) ? (
+                    <>
+                      <span>Предварительно сохранено</span>
+                      <Check size={16} className="text-white stroke-[2.5]" />
+                    </>
+                  ) : (
+                    <span>Предварительно сохранить</span>
+                  )}
+                </button>
+              </div>
+            );
+          })()
         ) : (
           <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-background">
             {(() => {

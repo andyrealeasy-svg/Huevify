@@ -107,27 +107,148 @@ export const FullScreenLyrics: React.FC = () => {
     }
   }
 
-  // Handle auto-scrolling to active line when audio is playing
+  // Smooth scroll animator using requestAnimationFrame and easeOutQuart
+  const scrollAnimRef = useRef<number | null>(null);
+
+  const smoothScrollToTarget = (targetTop: number, duration: number = 600) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+
+    const startTop = container.scrollTop;
+    const distance = targetTop - startTop;
+
+    if (Math.abs(distance) < 1) {
+      container.scrollTop = targetTop;
+      return;
+    }
+
+    const startTime = performance.now();
+
+    const step = (currentTime: number) => {
+      if (isUserScrollingRef.current) {
+        scrollAnimRef.current = null;
+        return;
+      }
+
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // easeOutQuart: very gradual deceleration curve for luxurious, buttery smooth motion
+      const ease = 1 - Math.pow(1 - progress, 4);
+
+      container.scrollTop = startTop + distance * ease;
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimRef.current = null;
+      }
+    };
+
+    scrollAnimRef.current = requestAnimationFrame(step);
+  };
+
+  // Smooth scroll to the active line inside the container
+  const scrollToActiveLine = (smooth: boolean = true) => {
+    if (!scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+
+    // At the start of the song or when on first line, stay cleanly at the top
+    if (activeIndex <= 0 || !activeLineRef.current) {
+      if (smooth) {
+        smoothScrollToTarget(0, 500);
+      } else {
+        if (scrollAnimRef.current) {
+          cancelAnimationFrame(scrollAnimRef.current);
+          scrollAnimRef.current = null;
+        }
+        container.scrollTop = 0;
+      }
+      return;
+    }
+
+    const el = activeLineRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const currentScrollTop = container.scrollTop;
+    const offset = elRect.top - containerRect.top;
+    const targetScrollTop = Math.max(0, currentScrollTop + offset - (container.clientHeight / 2) + (el.clientHeight / 2));
+
+    if (smooth) {
+      smoothScrollToTarget(targetScrollTop, 600);
+    } else {
+      if (scrollAnimRef.current) {
+        cancelAnimationFrame(scrollAnimRef.current);
+        scrollAnimRef.current = null;
+      }
+      container.scrollTop = targetScrollTop;
+    }
+  };
+
+  // Immediate alignment when lyrics view is opened
+  useEffect(() => {
+    if (isFullScreenLyricsOpen) {
+      isUserScrollingRef.current = false;
+      const timeout = setTimeout(() => {
+        scrollToActiveLine(false);
+      }, 50);
+      return () => clearTimeout(timeout);
+    }
+  }, [isFullScreenLyricsOpen]);
+
+  // Handle auto-scrolling to active line on EVERY line change (never skip lines)
   useEffect(() => {
     if (!isFullScreenLyricsOpen || isUserScrollingRef.current) return;
 
-    if (activeLineRef.current && scrollContainerRef.current) {
-      activeLineRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    const frameId = requestAnimationFrame(() => {
+      scrollToActiveLine(true);
+    });
+
+    return () => cancelAnimationFrame(frameId);
   }, [activeIndex, isFullScreenLyricsOpen]);
 
-  // Track when user manually scrolls to pause auto-scroll temporarily
-  const handleScroll = () => {
+  // Track actual user manual gestures (touch/wheel) to temporarily pause auto-follow
+  const handleTouchStart = () => {
     isUserScrollingRef.current = true;
-    if (scrollTimeoutRef.current) {
-      window.clearTimeout(scrollTimeoutRef.current);
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
     }
+    if (scrollTimeoutRef.current) window.clearTimeout(scrollTimeoutRef.current);
+  };
+
+  const handleTouchMove = () => {
+    isUserScrollingRef.current = true;
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+    if (scrollTimeoutRef.current) window.clearTimeout(scrollTimeoutRef.current);
+  };
+
+  const handleTouchEnd = () => {
+    if (scrollTimeoutRef.current) window.clearTimeout(scrollTimeoutRef.current);
     scrollTimeoutRef.current = window.setTimeout(() => {
       isUserScrollingRef.current = false;
-    }, 3000);
+      scrollToActiveLine(true);
+    }, 2500);
+  };
+
+  const handleWheel = () => {
+    isUserScrollingRef.current = true;
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+    if (scrollTimeoutRef.current) window.clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      isUserScrollingRef.current = false;
+      scrollToActiveLine(true);
+    }, 2500);
   };
 
   if (!isFullScreenLyricsOpen || !currentTrack) return null;
@@ -201,8 +322,12 @@ export const FullScreenLyrics: React.FC = () => {
       {/* LYRICS SCROLL AREA */}
       <main 
         ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className="relative z-10 flex-1 overflow-y-auto px-6 sm:px-16 md:px-28 py-12 sm:py-20 flex flex-col gap-6 sm:gap-10 scroll-smooth"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onWheel={handleWheel}
+        className="relative z-10 flex-1 overflow-y-auto px-6 sm:px-16 md:px-28 pt-8 sm:pt-14 pb-[45vh] flex flex-col gap-8 sm:gap-12"
       >
         {hasSyncedLyrics ? (
           syncedLyrics.map((line, idx) => {
@@ -214,14 +339,17 @@ export const FullScreenLyrics: React.FC = () => {
                 key={idx}
                 ref={isCurrent ? activeLineRef : null}
                 onClick={() => {
+                  isUserScrollingRef.current = false;
+                  if (scrollTimeoutRef.current) window.clearTimeout(scrollTimeoutRef.current);
                   seek(line.time);
+                  requestAnimationFrame(() => scrollToActiveLine(true));
                 }}
-                className={`cursor-pointer transition-all duration-200 transform origin-left max-w-4xl ${
+                className={`cursor-pointer transition-all duration-300 transform origin-left max-w-4xl select-none will-change-transform ${
                   isCurrent
-                    ? 'text-white text-2xl sm:text-4xl md:text-5xl font-extrabold scale-[1.01]'
+                    ? 'text-white text-2xl sm:text-4xl md:text-5xl font-extrabold scale-[1.02] opacity-100'
                     : isPast
-                      ? 'text-white/60 hover:text-white/90 text-xl sm:text-3xl md:text-4xl font-bold'
-                      : 'text-white/25 hover:text-white/50 text-xl sm:text-3xl md:text-4xl font-semibold'
+                      ? 'text-white/60 hover:text-white/90 text-2xl sm:text-4xl md:text-5xl font-extrabold opacity-40 scale-100'
+                      : 'text-white/30 hover:text-white/60 text-2xl sm:text-4xl md:text-5xl font-extrabold opacity-25 scale-100'
                 }`}
               >
                 <p className="leading-tight">{line.text}</p>

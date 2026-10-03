@@ -91,6 +91,7 @@ export const ArtistHub = () => {
   const [publishAnnouncementImmediately, setPublishAnnouncementImmediately] = useState(true);
   const [announcementDate, setAnnouncementDate] = useState("");
   const [announcementTime, setAnnouncementTime] = useState("00:00");
+  const [distLinkedAnnouncementId, setDistLinkedAnnouncementId] = useState("");
 
   // Editing Mode
   const [isEditing, setIsEditing] = useState(false);
@@ -230,7 +231,8 @@ export const ArtistHub = () => {
           isAnnouncement,
           hideTrackMetadata,
           announcementDate: !publishAnnouncementImmediately && announcementDate ? announcementDate : undefined,
-          announcementTime: !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined
+          announcementTime: !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined,
+          linkedAnnouncementId: distLinkedAnnouncementId || undefined
       };
   };
 
@@ -284,6 +286,7 @@ export const ArtistHub = () => {
       setPublishAnnouncementImmediately(!draft.announcementDate);
       setAnnouncementDate(draft.announcementDate || "");
       setAnnouncementTime(draft.announcementTime || "00:00");
+      setDistLinkedAnnouncementId(draft.linkedAnnouncementId || "");
       setLastSavedTime(new Date(draft.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       setView('DISTRIBUTION');
       showNotification(t('resume'), "info");
@@ -903,7 +906,8 @@ export const ArtistHub = () => {
           isAnnouncement: isAnnouncement,
           hideTrackMetadata: isAnnouncement ? hideTrackMetadata : false,
           announcementDate: isAnnouncement && !publishAnnouncementImmediately && announcementDate ? announcementDate : undefined,
-          announcementTime: isAnnouncement && !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined
+          announcementTime: isAnnouncement && !publishAnnouncementImmediately && announcementTime ? announcementTime : undefined,
+          linkedAnnouncementId: (!isAnnouncement && distType !== 'Single' && distLinkedAnnouncementId) ? distLinkedAnnouncementId : undefined
       };
 
       if (isEditing && editingId) {
@@ -966,6 +970,7 @@ export const ArtistHub = () => {
       setPublishAnnouncementImmediately(true);
       setAnnouncementDate("");
       setAnnouncementTime("00:00");
+      setDistLinkedAnnouncementId("");
       setIsAddTrackMenuOpen(false);
       setExpandedTrackIdx(null);
       setDraggedTrackIdx(null);
@@ -1068,6 +1073,7 @@ export const ArtistHub = () => {
       setPublishAnnouncementImmediately(!release.announcementDate);
       setAnnouncementDate(release.announcementDate || "");
       setAnnouncementTime(release.announcementTime || "00:00");
+      setDistLinkedAnnouncementId(release.linkedAnnouncementId || "");
 
       setDistStep(1);
       setView('DISTRIBUTION');
@@ -2532,6 +2538,134 @@ export const ArtistHub = () => {
               <div className="flex flex-col gap-6 animate-slide-in-right">
                   <h3 className="text-xl font-bold">{t('step3')}</h3>
                   <div className="flex flex-col gap-4 max-w-md mx-auto w-full">
+                      {/* Announcement Linking Card (Only for EP, Album, Mixtape - NOT for Singles or Announcements) */}
+                      {!isAnnouncement && distType !== 'Single' && (() => {
+                          const artistNameLower = (distArtistName || currentArtist?.artistName || '').toLowerCase();
+                          const availableAnnouncements = releaseRequests.filter(r => {
+                              const isMatch = (currentArtist && (r.artistId === currentArtist.id || (r.artistName || '').toLowerCase() === currentArtist.artistName?.toLowerCase())) ||
+                                  (artistNameLower && (r.artistName || '').toLowerCase() === artistNameLower);
+                              return Boolean(r.isAnnouncement && isMatch && r.id !== editingId);
+                          });
+
+                          if (availableAnnouncements.length === 0) {
+                              return (
+                                  <div className={`p-3.5 rounded-xl border flex items-center gap-3 text-xs text-secondary ${
+                                      isLiquidGlass ? 'bg-white/[0.04] border-white/10' : 'bg-surface/40 border-surface-highlight'
+                                  }`}>
+                                      <Megaphone size={18} className="text-secondary/70 shrink-0" />
+                                      <div>
+                                          <span className="font-semibold text-white/80 block">Привязка к релизу-анонсу</span>
+                                          <span>У вас нет активных релизов-анонсов. Релиз будет опубликован как самостоятельный.</span>
+                                      </div>
+                                  </div>
+                              );
+                          }
+
+                          return (
+                              <div className={`p-4 rounded-xl border flex flex-col gap-3 transition ${
+                                  distLinkedAnnouncementId
+                                      ? 'bg-primary/5 border-primary/40 shadow-md'
+                                      : isLiquidGlass ? 'bg-white/[0.05] border-white/10' : 'bg-surface/50 border-surface-highlight'
+                              }`}>
+                                  <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2.5">
+                                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${distLinkedAnnouncementId ? 'bg-primary text-black' : 'bg-surface-highlight text-secondary'}`}>
+                                              <Megaphone size={16} />
+                                          </div>
+                                          <div>
+                                              <div className="text-sm font-bold text-white flex items-center gap-2">
+                                                  <span>Связать с релизом-анонсом</span>
+                                                  {distLinkedAnnouncementId && (
+                                                      <span className="text-[10px] font-bold bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
+                                                          Связано
+                                                      </span>
+                                                  )}
+                                              </div>
+                                              <div className="text-xs text-secondary">
+                                                  Объединяет этот релиз с анонсом. По истечении таймера анонса в нём появится кнопка «Слушать» для перехода к альбому, а сам анонс удалится.
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                                      {/* Option 1: None */}
+                                      <div 
+                                          onClick={() => setDistLinkedAnnouncementId("")}
+                                          className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition select-none ${
+                                              !distLinkedAnnouncementId 
+                                                  ? 'bg-white/10 border-white/30 text-white' 
+                                                  : 'bg-black/20 hover:bg-black/30 border-white/5 text-secondary'
+                                          }`}
+                                      >
+                                          <div className="flex items-center gap-3">
+                                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${!distLinkedAnnouncementId ? 'border-primary bg-primary' : 'border-white/30'}`}>
+                                                  {!distLinkedAnnouncementId && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                              </div>
+                                              <span className="text-sm font-medium">Без привязки (самостоятельный релиз)</span>
+                                          </div>
+                                      </div>
+
+                                      {/* List of Available Announcements */}
+                                      {availableAnnouncements.map(ann => {
+                                          const isSelected = distLinkedAnnouncementId === ann.id;
+                                          const cover = ann.covers && ann.covers[0] ? ann.covers[0] : "";
+                                          const annDate = ann.releaseDate ? new Date(ann.releaseDate).toLocaleDateString() : "";
+                                          return (
+                                              <div 
+                                                  key={ann.id}
+                                                  onClick={() => {
+                                                      setDistLinkedAnnouncementId(ann.id);
+                                                      if (ann.releaseDate) {
+                                                          setDistDate(new Date(ann.releaseDate).toISOString().split('T')[0]);
+                                                      }
+                                                      if (ann.releaseTime) {
+                                                          setDistTime(ann.releaseTime);
+                                                      }
+                                                  }}
+                                                  className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition select-none ${
+                                                      isSelected 
+                                                          ? 'bg-primary/10 border-primary text-white shadow-sm' 
+                                                          : 'bg-black/20 hover:bg-black/30 border-white/10 text-white/90'
+                                                  }`}
+                                              >
+                                                  <div className="flex items-center gap-3 min-w-0">
+                                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? 'border-primary bg-primary' : 'border-white/30'}`}>
+                                                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                                      </div>
+                                                      {cover ? (
+                                                          <img src={cover} alt={ann.title} className="w-10 h-10 rounded-lg object-cover shrink-0 shadow-sm" />
+                                                      ) : (
+                                                          <div className="w-10 h-10 rounded-lg bg-surface-highlight flex items-center justify-center shrink-0">
+                                                              <Megaphone size={16} className="text-secondary" />
+                                                          </div>
+                                                      )}
+                                                      <div className="flex flex-col min-w-0">
+                                                          <div className="flex items-center gap-2">
+                                                              <span className="font-bold text-sm text-white truncate">{ann.title}</span>
+                                                              <span className="text-[10px] uppercase font-bold text-purple-300 bg-purple-500/20 border border-purple-500/30 px-1 rounded shrink-0">
+                                                                  {ann.type}
+                                                              </span>
+                                                          </div>
+                                                          <span className="text-xs text-secondary truncate mt-0.5">
+                                                              Дата выхода: {annDate} {ann.releaseTime ? `в ${ann.releaseTime}` : ''}
+                                                          </span>
+                                                      </div>
+                                                  </div>
+                                                  {isSelected && (
+                                                      <span className="text-xs font-bold text-primary flex items-center gap-1 shrink-0 ml-2">
+                                                          <Check size={14} className="stroke-[3]" />
+                                                          Выбрано
+                                                      </span>
+                                                  )}
+                                              </div>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          );
+                      })()}
+
                       <div className="flex flex-col gap-1">
                           <label className="text-xs font-bold text-secondary uppercase">{t('releaseDate')} *</label>
                           <input 

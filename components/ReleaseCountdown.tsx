@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, Play } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
 interface ReleaseCountdownProps {
   targetDate: string;
   targetTime?: string;
   className?: string;
+  albumId?: string;
+  linkedAlbumId?: string;
+  onListenClick?: () => void;
 }
 
 interface TimeRemaining {
@@ -19,9 +22,12 @@ interface TimeRemaining {
 export const ReleaseCountdown: React.FC<ReleaseCountdownProps> = ({
   targetDate,
   targetTime = "00:00",
-  className = ""
+  className = "",
+  albumId,
+  linkedAlbumId,
+  onListenClick
 }) => {
-  const { t, appSettings } = useStore();
+  const { t, appSettings, completeAnnouncementTransition } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const calculateTimeRemaining = (): TimeRemaining => {
@@ -72,9 +78,26 @@ export const ReleaseCountdown: React.FC<ReleaseCountdownProps> = ({
   }, [targetDate, targetTime]);
 
   if (time.isPast) {
+    const handleListen = () => {
+      if (onListenClick) {
+        onListenClick();
+      } else if (albumId) {
+        completeAnnouncementTransition(albumId, linkedAlbumId);
+      }
+    };
+
     return (
-      <div className={`px-4 py-2 rounded-xl bg-black/40 border border-white/10 text-xs font-semibold text-white/90 select-none ${className}`}>
-        {t('releaseNowLive', 'Релиз уже доступен')}
+      <div className={`inline-flex items-center gap-3 select-none ${className}`}>
+        <button
+          onClick={handleListen}
+          className="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-highlight text-black font-extrabold text-sm md:text-base flex items-center gap-2 shadow-lg shadow-primary/25 hover:scale-105 active:scale-95 transition"
+        >
+          <Play size={18} fill="currentColor" />
+          <span>{t('listen', 'Слушать')}</span>
+        </button>
+        <span className="text-xs text-white/70 font-medium">
+          {t('releaseNowLive', 'Релиз уже доступен!')}
+        </span>
       </div>
     );
   }

@@ -527,6 +527,7 @@ interface StoreContextType {
   updateReleaseRequest: (id: string, data: Partial<ReleaseRequest>) => void;
   submitProfileEdit: (edit: Omit<ProfileEditRequest, 'id' | 'status' | 'artistId' | 'artistName'>) => void;
   deleteRelease: (releaseId: string) => void;
+  completeAnnouncementTransition: (announcementAlbumId: string, targetAlbumId?: string) => void;
   deleteLegacyTrack: (trackId: string) => void; // New function for root structure
   deleteArtistAccount: (artistId: string) => void;
   changeArtistPassword: (newPass: string) => void;
@@ -958,8 +959,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       announcementTimestamp = new Date(`${req.announcementDate}T${aTime}:00`).getTime();
                   }
                   const announcementDue = !announcementTimestamp || isNaN(announcementTimestamp) || announcementTimestamp <= now;
-                  const releaseInFuture = isNaN(releaseTimestamp) || releaseTimestamp > now;
-                  isAnnouncementActive = announcementDue && releaseInFuture;
+                  // Announcement stays active once announcement date is reached, even when releaseDate arrives,
+                  // so the countdown/album view can display the "Слушать" button to transfer listeners to the real release.
+                  isAnnouncementActive = announcementDue;
               }
 
               if (isLive || isApprovedAndDue || isAnnouncementActive) {
@@ -991,7 +993,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       isAnnouncement: req.isAnnouncement,
                       announcementDate: req.announcementDate,
                       announcementTime: req.announcementTime,
-                      hideTrackMetadata: req.hideTrackMetadata
+                      hideTrackMetadata: req.hideTrackMetadata,
+                      linkedAnnouncementId: req.linkedAnnouncementId ? (req.linkedAnnouncementId.startsWith('a') || req.linkedAnnouncementId.startsWith('dist_alb_') ? req.linkedAnnouncementId : `dist_alb_${req.linkedAnnouncementId}`) : undefined,
+                      linkedAlbumId: req.linkedReleaseId ? (req.linkedReleaseId.startsWith('a') || req.linkedReleaseId.startsWith('dist_alb_') ? req.linkedReleaseId : `dist_alb_${req.linkedReleaseId}`) : undefined
                   };
 
                   const newTracksForThisAlbum: Track[] = [];
@@ -1059,6 +1063,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   }
               }
           });
+
+          // Cross-link Announcement albums and Real albums
+          mergedAlbums.forEach(alb => {
+              if (alb.isAnnouncement || alb.isUpcoming) {
+                  if (!alb.linkedAlbumId) {
+                      const annBaseId = alb.id.replace('dist_alb_', '');
+                      const matchingRealAlbum = mergedAlbums.find(other => 
+                          !other.isAnnouncement && !other.isUpcoming &&
+                          (other.linkedAnnouncementId === alb.id || other.linkedAnnouncementId === annBaseId || (other as any).linkedAnnouncementId === `dist_alb_${annBaseId}`)
+                      );
+                      if (matchingRealAlbum) {
+                          alb.linkedAlbumId = matchingRealAlbum.id;
+                      }
+                  }
+              } else {
+                  if (!alb.linkedAnnouncementId) {
+                      const realBaseId = alb.id.replace('dist_alb_', '');
+                      const matchingAnnAlbum = mergedAlbums.find(other => 
+                          (other.isAnnouncement || other.isUpcoming) &&
+                          (other.linkedAlbumId === alb.id || other.linkedAlbumId === realBaseId || (other as any).linkedAlbumId === `dist_alb_${realBaseId}`)
+                      );
+                      if (matchingAnnAlbum) {
+                          alb.linkedAnnouncementId = matchingAnnAlbum.id;
+                      }
+                  }
+              }
+          });
+
+          // Pre-save auto-transfer: if an announcement's countdown has passed and it has a linked real album,
+          // ensure the user's library contains the real album
+          if (currentUser && likedAlbumIds.length > 0) {
+              let preSaveTransferred = false;
+              let updatedLiked = [...likedAlbumIds];
+              mergedAlbums.forEach(alb => {
+                  if ((alb.isAnnouncement || alb.isUpcoming) && alb.linkedAlbumId) {
+                      const releaseTs = new Date(alb.releaseTime ? `${alb.releaseDate}T${alb.releaseTime}:00` : `${alb.releaseDate}T00:00:00`).getTime();
+                      if (!isNaN(releaseTs) && releaseTs <= Date.now()) {
+                          const annId = alb.id;
+                          const annBaseId = alb.id.replace('dist_alb_', '');
+                          const realId = alb.linkedAlbumId;
+                          if ((updatedLiked.includes(annId) || updatedLiked.includes(annBaseId)) && !updatedLiked.includes(realId)) {
+                              updatedLiked.push(realId);
+                              preSaveTransferred = true;
+                          }
+                      }
+                  }
+              });
+              if (preSaveTransferred) {
+                  setLikedAlbumIds(updatedLiked);
+                  StorageService.save(`huevify_liked_albums_${currentUser.id}`, updatedLiked);
+                  if (isSupabaseConfigured()) {
+                      SupabaseService.saveUserPreferences(currentUser.id, { likedAlbumIds: updatedLiked }).catch(e => console.warn('Supabase liked albums sync error:', e));
+                  }
+              }
+          }
 
           // Unique Tracks (Prevent duplicates if refresh called multiple times awkwardly)
           const uniqueTracks = Array.from(new Map(mergedTracks.map(item => [item.id, item])).values());
@@ -1794,6 +1853,69 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
   };
 
+  const completeAnnouncementTransition = (announcementAlbumId: string, targetAlbumId?: string) => {
+      // 1. Resolve announcement request ID
+      const annBaseId = announcementAlbumId.replace('dist_alb_', '');
+      
+      // 2. Resolve real album ID
+      const annAlbum = albums.find(a => a.id === announcementAlbumId || a.id === `dist_alb_${annBaseId}`);
+      let resolvedTargetId = targetAlbumId || annAlbum?.linkedAlbumId;
+      if (!resolvedTargetId) {
+          const matchingRealAlbum = albums.find(a => 
+              !a.isAnnouncement && !a.isUpcoming &&
+              (a.linkedAnnouncementId === announcementAlbumId || a.linkedAnnouncementId === annBaseId || (a as any).linkedAnnouncementId === `dist_alb_${annBaseId}`)
+          );
+          if (matchingRealAlbum) resolvedTargetId = matchingRealAlbum.id;
+      }
+      
+      // 3. Pre-save migration: if user had pre-saved announcement, add real album to library
+      if (currentUser) {
+          setLikedAlbumIds(prev => {
+              const hadPreSaved = prev.includes(announcementAlbumId) || prev.includes(annBaseId) || prev.includes(`dist_alb_${annBaseId}`);
+              let updated = prev.filter(id => id !== announcementAlbumId && id !== annBaseId && id !== `dist_alb_${annBaseId}`);
+              
+              if (hadPreSaved && resolvedTargetId && !updated.includes(resolvedTargetId)) {
+                  updated = [...updated, resolvedTargetId];
+              }
+              
+              StorageService.save(`huevify_liked_albums_${currentUser.id}`, updated);
+              if (isSupabaseConfigured()) {
+                  SupabaseService.saveUserPreferences(currentUser.id, { likedAlbumIds: updated }).catch(e => console.warn('Supabase liked albums sync error:', e));
+              }
+              return updated;
+          });
+      }
+
+      // 4. Force-delete announcement release from releaseRequests
+      const updatedRequests = releaseRequests.filter(r => r.id !== annBaseId && r.id !== announcementAlbumId);
+      setReleaseRequests(updatedRequests);
+      StorageService.save('huevify_release_requests', updatedRequests);
+      notifySync('ARTIST_DATA_UPDATE');
+
+      if (isSupabaseConfigured()) {
+          SupabaseService.deleteRelease(annBaseId).catch(e => console.warn('Supabase delete announcement error:', e));
+      }
+
+      // 5. Refresh library to delete announcement from state
+      refreshLibrary(updatedRequests);
+
+      // 6. Navigate to the real album
+      if (resolvedTargetId) {
+          setView({ type: 'ALBUM', id: resolvedTargetId });
+          showNotification("Переход к альбому!", "success");
+
+          const realAlb = albums.find(a => a.id === resolvedTargetId);
+          if (realAlb && realAlb.trackIds && realAlb.trackIds.length > 0) {
+              const albTracks = tracks.filter(t => realAlb.trackIds.includes(t.id) && !t.isUnreleased && Boolean(t.url));
+              if (albTracks.length > 0) {
+                  playTrack(albTracks[0], albTracks, realAlb.id);
+              }
+          }
+      } else {
+          showNotification("Релиз стал доступен!", "info");
+      }
+  };
+
   const submitRelease = (
       releaseData: Omit<ReleaseRequest, 'id' | 'status' | 'artistId' | 'artistName' | 'submissionTime'>,
       overrideArtist?: { artistId: string, artistName: string }
@@ -1828,7 +1950,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
       }
 
-      const updated = [...releaseRequests, newRelease];
+      let updated = [...releaseRequests, newRelease];
+      if (newRelease.linkedAnnouncementId) {
+          updated = updated.map(r => r.id === newRelease.linkedAnnouncementId ? { ...r, linkedReleaseId: newRelease.id } : r);
+      }
       setReleaseRequests(updated);
       StorageService.save('huevify_release_requests', updated);
       notifySync('ARTIST_DATA_UPDATE');
@@ -1838,6 +1963,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (isSupabaseConfigured()) {
           SupabaseService.saveRelease(newRelease).catch(e => console.warn('Supabase save release error:', e));
+          if (newRelease.linkedAnnouncementId) {
+              const annReq = updated.find(r => r.id === newRelease.linkedAnnouncementId);
+              if (annReq) {
+                  SupabaseService.saveRelease(annReq).catch(e => console.warn('Supabase update announcement link error:', e));
+              }
+          }
           // Save lyrics for each track to track_lyrics table
           if (newRelease.tracks && newRelease.tracks.length > 0) {
               newRelease.tracks.forEach((trk, idx) => {
@@ -1894,7 +2025,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
       }
 
-      const updated = releaseRequests.map(r => r.id === id ? { ...r, ...data } : r);
+      let updated = releaseRequests.map(r => r.id === id ? { ...r, ...data } : r);
+      if (data.linkedAnnouncementId) {
+          updated = updated.map(r => r.id === data.linkedAnnouncementId ? { ...r, linkedReleaseId: id } : r);
+      }
       setReleaseRequests(updated);
       StorageService.save('huevify_release_requests', updated);
       notifySync('ARTIST_DATA_UPDATE');
@@ -1906,6 +2040,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (isSupabaseConfigured() && req) {
           SupabaseService.saveRelease(req).catch(e => console.warn('Supabase update release error:', e));
+          if (req.linkedAnnouncementId) {
+              const annReq = updated.find(r => r.id === req.linkedAnnouncementId);
+              if (annReq) {
+                  SupabaseService.saveRelease(annReq).catch(e => console.warn('Supabase update announcement link error:', e));
+              }
+          }
           if (req.tracks && req.tracks.length > 0) {
               req.tracks.forEach((trk, idx) => {
                   const trkHueq = (trk.existingHueq || trk.generatedHueq || '').trim().toUpperCase();
@@ -3745,7 +3885,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       appSettings, updateSettings, dailyChart,
       getAlbumCover, changeAlbumCover, getTrackCover,
       isArtistHubOpen, setArtistHubOpen, currentArtist, currentModerator, artistAccounts,
-      registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
+      registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, completeAnnouncementTransition, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
       approveArtist, rejectArtist, approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
       releaseRequests, profileEditRequests, hasModerator, existingArtists, getTrackByHueq,
       tracks, setTracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, setCurrentTrack, currentQueue, isPlaying, playMode, isShuffle, volume, progress, duration, view,

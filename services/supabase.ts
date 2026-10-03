@@ -52,7 +52,9 @@ export const SupabaseService = {
         isAnnouncement: row.is_announcement ?? false,
         hideTrackMetadata: row.hide_track_metadata ?? false,
         announcementDate: row.announcement_date || undefined,
-        announcementTime: row.announcement_time || undefined
+        announcementTime: row.announcement_time || undefined,
+        linkedAnnouncementId: row.linked_announcement_id || undefined,
+        linkedReleaseId: row.linked_release_id || undefined
       }));
     } catch (e) {
       console.warn('Supabase fetchReleases failed:', e);
@@ -83,18 +85,22 @@ export const SupabaseService = {
         is_announcement: release.isAnnouncement || false,
         hide_track_metadata: release.hideTrackMetadata || false,
         announcement_date: release.announcementDate || null,
-        announcement_time: release.announcementTime || null
+        announcement_time: release.announcementTime || null,
+        linked_announcement_id: release.linkedAnnouncementId || null,
+        linked_release_id: release.linkedReleaseId || null
       };
       let { error } = await supabase.from('releases').upsert(row, { onConflict: 'id' });
       if (error) {
         console.warn('Supabase saveRelease error:', error.message);
         // If some optional columns don't exist yet on remote schema, retry with core fields
-        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column'))) {
+        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column') || error.message.includes('linked_'))) {
           delete row.is_announcement;
           delete row.hide_track_metadata;
           delete row.announcement_date;
           delete row.announcement_time;
           delete row.release_time;
+          delete row.linked_announcement_id;
+          delete row.linked_release_id;
           const retry = await supabase.from('releases').upsert(row, { onConflict: 'id' });
           if (!retry.error) return true;
         }
@@ -505,7 +511,9 @@ export const SupabaseService = {
         isAnnouncement: row.is_announcement ?? false,
         hideTrackMetadata: row.hide_track_metadata ?? false,
         announcementDate: row.announcement_date || undefined,
-        announcementTime: row.announcement_time || undefined
+        announcementTime: row.announcement_time || undefined,
+        linkedAnnouncementId: row.linked_announcement_id || undefined,
+        linkedReleaseId: row.linked_release_id || undefined
       }));
     } catch (e) {
       console.warn('Supabase fetchDrafts failed:', e);
@@ -536,17 +544,21 @@ export const SupabaseService = {
         is_announcement: draft.isAnnouncement || false,
         hide_track_metadata: draft.hideTrackMetadata || false,
         announcement_date: draft.announcementDate || null,
-        announcement_time: draft.announcementTime || null
+        announcement_time: draft.announcementTime || null,
+        linked_announcement_id: draft.linkedAnnouncementId || null,
+        linked_release_id: draft.linkedReleaseId || null
       };
       let { error } = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
       if (error) {
         console.warn('Supabase saveDraft error:', error.message);
         // Fallback retry without announcement columns if not migrated yet
-        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column'))) {
+        if (error.message && (error.message.includes('is_announcement') || error.message.includes('column') || error.message.includes('linked_'))) {
           delete row.is_announcement;
           delete row.hide_track_metadata;
           delete row.announcement_date;
           delete row.announcement_time;
+          delete row.linked_announcement_id;
+          delete row.linked_release_id;
           const retry = await supabase.from('release_drafts').upsert(row, { onConflict: 'id' });
           if (!retry.error) return true;
         }

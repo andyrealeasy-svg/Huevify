@@ -86,6 +86,44 @@ export const FullScreenPlayer = () => {
     };
   }, [cover, currentTrack?.id]);
 
+  // Active lyrics calculations
+  const syncedLyrics = currentTrack?.syncedLyrics || [];
+  const hasSyncedLyrics = syncedLyrics.length > 0;
+  let activeIndex = -1;
+  if (hasSyncedLyrics) {
+    for (let i = 0; i < syncedLyrics.length; i++) {
+      if (progress >= syncedLyrics[i].time) {
+        activeIndex = i;
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Smooth sliding preview refs & state (Hooks MUST be before any return statement)
+  const previewContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const lineRefs = React.useRef<(HTMLParagraphElement | null)[]>([]);
+  const [previewTranslateY, setPreviewTranslateY] = useState(0);
+
+  useEffect(() => {
+    lineRefs.current = [];
+    setPreviewTranslateY(0);
+  }, [currentTrack?.id]);
+
+  useEffect(() => {
+    if (!hasSyncedLyrics) return;
+    if (activeIndex >= 0 && lineRefs.current[activeIndex] && previewContainerRef.current) {
+      const activeEl = lineRefs.current[activeIndex];
+      const container = previewContainerRef.current;
+      if (activeEl && container) {
+        const targetOffset = activeEl.offsetTop - (container.clientHeight / 2) + (activeEl.clientHeight / 2);
+        setPreviewTranslateY(Math.max(0, targetOffset));
+      }
+    } else if (activeIndex < 0) {
+      setPreviewTranslateY(0);
+    }
+  }, [activeIndex, hasSyncedLyrics]);
+
   if (!currentTrack) return null;
 
   const getTrackArtists = (track: Track): string[] => {
@@ -114,20 +152,6 @@ export const FullScreenPlayer = () => {
   };
 
   const allArtists = getTrackArtists(currentTrack);
-
-  // Active lyrics calculations
-  const syncedLyrics = currentTrack?.syncedLyrics || [];
-  const hasSyncedLyrics = syncedLyrics.length > 0;
-  let activeIndex = -1;
-  if (hasSyncedLyrics) {
-    for (let i = 0; i < syncedLyrics.length; i++) {
-      if (progress >= syncedLyrics[i].time) {
-        activeIndex = i;
-      } else {
-        break;
-      }
-    }
-  }
 
   const handleToggleLike = () => {
     if (!currentTrack) return;
@@ -275,11 +299,11 @@ export const FullScreenPlayer = () => {
         </div>
 
         {/* Cover Art */}
-        <div className="flex-1 flex items-center justify-center my-auto min-h-0 py-2">
+        <div className="flex-1 flex items-center justify-center my-auto min-h-0 py-2 sm:py-3 w-full">
           <div 
-            className="w-full max-w-[340px] aspect-square rounded-xl overflow-hidden transition-all duration-500"
+            className="w-full aspect-square rounded-2xl overflow-hidden transition-all duration-500"
             style={{
-              boxShadow: `0 24px 48px -12px rgba(0,0,0,0.75), 0 8px 30px -8px ${palette.primary}`
+              boxShadow: `0 24px 50px -12px rgba(0,0,0,0.8), 0 10px 32px -8px ${palette.primary}`
             }}
           >
             <img 
@@ -463,31 +487,45 @@ export const FullScreenPlayer = () => {
           </div>
 
           {/* Real-time moving lyrics fragment */}
-          <div className="flex flex-col gap-2 min-h-[90px] justify-center">
+          <div 
+            ref={previewContainerRef}
+            className="relative h-[115px] overflow-hidden select-none"
+            style={{
+              maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)'
+            }}
+          >
             {hasSyncedLyrics ? (
-              syncedLyrics
-                .slice(Math.max(0, (activeIndex >= 0 ? activeIndex : 0) - 1), Math.max(0, (activeIndex >= 0 ? activeIndex : 0) + 3))
-                .map((line, idx) => {
-                  const isCurrent = line.time === syncedLyrics[activeIndex]?.time;
+              <div 
+                className="flex flex-col gap-2.5 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-transform py-8"
+                style={{ transform: `translateY(-${previewTranslateY}px)` }}
+              >
+                {syncedLyrics.map((line, idx) => {
+                  const isCurrent = idx === activeIndex;
+                  const isPast = activeIndex !== -1 && idx < activeIndex;
                   return (
                     <p
-                      key={idx}
-                      className={`transition-all duration-200 leading-snug line-clamp-2 ${
+                      key={`${line.time}_${idx}`}
+                      ref={el => { lineRefs.current[idx] = el; }}
+                      className={`transition-all duration-300 leading-snug line-clamp-2 ${
                         isCurrent
-                          ? 'text-base sm:text-lg font-bold text-white'
-                          : 'text-xs sm:text-sm font-medium text-white/40'
+                          ? 'text-base sm:text-lg font-bold text-white scale-[1.02] origin-left opacity-100'
+                          : isPast
+                            ? 'text-xs sm:text-sm font-medium text-white/50 opacity-60'
+                            : 'text-xs sm:text-sm font-medium text-white/30 opacity-40'
                       }`}
                     >
                       {line.text}
                     </p>
                   );
-                })
+                })}
+              </div>
             ) : currentTrack.lyrics ? (
-              <p className="text-xs sm:text-sm font-medium text-white/80 line-clamp-4 leading-relaxed">
+              <p className="text-xs sm:text-sm font-medium text-white/80 line-clamp-4 leading-relaxed py-2">
                 {currentTrack.lyrics.split('\n').filter(Boolean).slice(0, 4).join('\n')}
               </p>
             ) : (
-              <div className="text-xs text-zinc-400 py-2">
+              <div className="text-xs text-zinc-400 py-6">
                 Текст песни пока не добавлен. Нажмите, чтобы открыть окно текста.
               </div>
             )}
