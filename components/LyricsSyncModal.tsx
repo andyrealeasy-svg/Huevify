@@ -108,13 +108,40 @@ export const LyricsSyncModal: React.FC<LyricsSyncModalProps> = ({
   const startSync = () => {
     if (!rawText.trim()) return;
 
-    // Remove tags like [Припев], [Куплет 1], (Интро), (Chorus), etc.
+    // Song structure keywords (Verse, Chorus, Outro, etc.)
+    const structureKeywordRegex = /^(куплет|припев|интро|аутро|бридж|предприпев|хук|дроп|соло|скит|инструментал|вступление|концовка|переход|финал|verse|chorus|intro|outro|bridge|pre-?chorus|hook|drop|solo|skit|instrumental|interlude|refrain)(\s+\d+|\s*:|\s+-\s+.*|\s*:\s*.*)?$/i;
+
+    // Remove tags like [Припев], [Куплет 1], but NEVER delete backing vocals or ad-libs in parentheses like "(а)"
     // Also remove empty lines
     const cleanedLines = rawText
       .split('\n')
       .map(line => {
-        let text = line.replace(/\[.*?\]|\(.*?\)/g, '');
-        text = text.replace(/^\s*(Куплет|Припев|Интро|Аутро|Бридж|Chorus|Verse|Intro|Outro|Bridge|Solo|Drop).*?:?\s*$/gi, '');
+        let text = line.trim();
+
+        // 1. If entire line is in square brackets, e.g. [Припев], [Куплет 1], [Chorus: Drake]
+        if (/^\[.*?\]$/.test(text)) {
+          return '';
+        }
+
+        // 2. If entire line is a structure header inside round parentheses, like (Припев), (Интро)
+        const roundBracketsMatch = text.match(/^\((.*?)\)$/);
+        if (roundBracketsMatch) {
+          const inner = roundBracketsMatch[1].trim();
+          if (structureKeywordRegex.test(inner)) {
+            return '';
+          }
+        }
+
+        // 3. If line without brackets is purely a structure title like "Куплет 1:", "Припев:", "Chorus"
+        if (structureKeywordRegex.test(text)) {
+          return '';
+        }
+
+        // 4. Strip any leading inline tags in square brackets or timestamps, e.g. "[Припев] аовлла (а)" -> "аовлла (а)"
+        text = text.replace(/\[\d{1,2}:\d{2}(?:\.\d+)?\]\s*/g, '');
+        text = text.replace(/^\[.*?\]\s*/g, '');
+
+        // Note: parentheses with backing vocals (e.g. "(а)", "(эй, эй)", "(да)") are fully preserved!
         return text.trim();
       })
       .filter(line => line.length > 0);
@@ -398,7 +425,7 @@ export const LyricsSyncModal: React.FC<LyricsSyncModalProps> = ({
 
           <div className="mt-4 p-3.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-start gap-3 text-xs text-zinc-400">
             <p className="leading-relaxed">
-              При переходе к синхронизации пустые строки и пометки куплетов или припевов удаляются автоматически.
+              При переходе к синхронизации пустые строки и пометки куплетов или припевов ([Куплет], [Припев]) удаляются автоматически, а бэк-вокал и эдлибы в скобках (например, «(а)») сохраняются.
             </p>
           </div>
         </div>
