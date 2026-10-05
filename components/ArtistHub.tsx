@@ -193,14 +193,8 @@ export const ArtistHub = () => {
                           timestamp: new Date(r.created_at).getTime()
                       }));
                       
-                      // Merge remote and local logs
-                      combinedLogs = [...formattedRemote];
-                      const remoteKeys = new Set(formattedRemote.map(r => `${r.trackId}_${r.timestamp}`));
-                      local.forEach(l => {
-                          if (!remoteKeys.has(`${l.trackId}_${l.timestamp}`)) {
-                              combinedLogs.push(l);
-                          }
-                      });
+                      // Canonical remote logs from Supabase so all devices (phone, laptop) render identical stats
+                      combinedLogs = formattedRemote;
                   }
               } catch (err) {
                   console.warn('Failed to fetch release play logs from Supabase:', err);
@@ -4455,6 +4449,11 @@ export const ArtistHub = () => {
       allIds: string[];
     }
 
+    const getLogPlaysCount = (l: { plays?: number }): number => {
+      const p = Number(l.plays);
+      return (!isNaN(p) && p > 0) ? p : 1;
+    };
+
     const processedTracks: ProcessedTrackStat[] = releaseTracks.map((dt, idx) => {
       const displayTitle = dt.title?.trim() || `Трек ${idx + 1}`;
       const displayArtist = dt.artist || release.artistName || 'Артист';
@@ -4484,27 +4483,22 @@ export const ArtistHub = () => {
         return allIds.some(id => id.trim().toLowerCase() === clean);
       };
 
-      // Static Completed 24-hour cycle plays [prevCycleStart, currentCycleStart)
+      // 24-hour window stats
+      const last24hStart = Date.now() - 24 * 60 * 60 * 1000;
+      const prev24hStart = Date.now() - 48 * 60 * 60 * 1000;
+
       const completedCycleLogs = releasePlayLogs.filter(l =>
-        isMatch(l.trackId) && l.timestamp >= prevCycleStartMs && l.timestamp < currentCycleStartMs
+        isMatch(l.trackId) && l.timestamp >= last24hStart
       );
-      const staticTodayPlays = completedCycleLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+      const staticTodayPlays = completedCycleLogs.reduce((acc, l) => acc + getLogPlaysCount(l), 0);
 
-      // Static Previous 24-hour cycle plays [prevCycleStart - 24h, prevCycleStart)
-      const prevPrevStartMs = prevCycleStartMs - 24 * 60 * 60 * 1000;
       const prevPrevLogs = releasePlayLogs.filter(l =>
-        isMatch(l.trackId) && l.timestamp >= prevPrevStartMs && l.timestamp < prevCycleStartMs
+        isMatch(l.trackId) && l.timestamp >= prev24hStart && l.timestamp < last24hStart
       );
-      const staticYesterdayPlays = prevPrevLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+      const staticYesterdayPlays = prevPrevLogs.reduce((acc, l) => acc + getLogPlaysCount(l), 0);
 
-      // Static Total Plays recorded as of currentCycleStart
-      const logsUpToCycleStart = releasePlayLogs.filter(l =>
-        isMatch(l.trackId) && l.timestamp < currentCycleStartMs
-      );
-      const staticTotalPlays = Math.max(
-        logsUpToCycleStart.reduce((acc, l) => acc + (Number(l.plays) || 1), 0),
-        matchingStoreTrack?.plays || 0
-      );
+      // Exact total plays matching store track catalog or track metadata
+      const staticTotalPlays = matchingStoreTrack ? (matchingStoreTrack.plays || 0) : ((dt as any).plays || 0);
 
       // Real mathematical percentage change between the two static cycles
       let changePercent = 0;
@@ -4606,7 +4600,7 @@ export const ArtistHub = () => {
         return processedTracks.some(pt => pt.isMatch(l.trackId));
       });
 
-      const exactCyclePlays = cycleLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+      const exactCyclePlays = cycleLogs.reduce((acc, l) => acc + getLogPlaysCount(l), 0);
 
       const rawShort = cycleStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
       const rawFull = cycleStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
