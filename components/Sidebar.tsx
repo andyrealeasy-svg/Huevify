@@ -7,7 +7,7 @@ export const Sidebar = () => {
   const { 
     setView, playlists, deletePlaylist, view, setCreatePlaylistOpen, setPlaylistIdToEdit, 
     tracks, currentUser, setProfileModalOpen, likedPlaylistId, t, appSettings, currentTrack,
-    albums, isAlbumLiked, getAlbumCover, followedArtists, artistAccounts, goToArtist, getTrackCover
+    albums, isAlbumLiked, getAlbumCover, followedArtists, artistAccounts, goToArtist, getTrackCover, getArtistAvatar
   } = useStore();
 
   const [filter, setFilter] = useState<'ALL' | 'PLAYLISTS' | 'ALBUMS' | 'ARTISTS'>('ALL');
@@ -69,9 +69,7 @@ export const Sidebar = () => {
   const likedAlbums = albums.filter(a => isAlbumLiked(a.id));
 
   const followedArtistList = followedArtists.map(artistName => {
-    const acc = artistAccounts.find(a => a.artistName === artistName);
-    const artistTrack = tracks.find(t => t.artist === artistName);
-    const image = acc?.avatar || (artistTrack ? getTrackCover(artistTrack) : undefined);
+    const image = getArtistAvatar(artistName);
     return {
       name: artistName,
       image

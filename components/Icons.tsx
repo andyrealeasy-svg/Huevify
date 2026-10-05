@@ -5,7 +5,7 @@ import {
   ArrowLeft, Plus, ChevronDown, Image, X, Check, Edit, MoreHorizontal,
   User, LogOut, Settings, Camera, Upload, Palette, Globe, Zap, ChevronRight, ChevronLeft, Music2, Moon,
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
-  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
+  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, RotateCw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
   Sparkles, Layers, Megaphone, EyeOff, Eye, Info, CalendarClock, Copy, GripVertical, Music, ArrowUpDown, Maximize2, Minimize2, FastForward
 } from 'lucide-react';
 
@@ -15,6 +15,6 @@ export {
   ArrowLeft, Plus, ChevronDown, Image, X, Check, Edit, MoreHorizontal,
   User, LogOut, Settings, Camera, Upload, Palette, Globe, Zap, ChevronRight, ChevronLeft, Music2, Moon,
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
-  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
+  Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, RotateCw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
   Sparkles, Layers, Megaphone, EyeOff, Eye, Info, CalendarClock, Copy, GripVertical, Music, ArrowUpDown, Maximize2, Minimize2, FastForward
 };

@@ -804,6 +804,37 @@ export const SupabaseService = {
     return this.fetchDailyPlaysSince(twentyFourHoursAgo);
   },
 
+  async fetchReleasePlayLogs(trackIds?: string[], sinceISO?: string): Promise<Array<{ id: string; track_id: string; user_id?: string; plays: number; created_at: string }> | null> {
+    if (!supabase) return null;
+    try {
+      let query = supabase
+        .from('track_play_logs')
+        .select('id, track_id, user_id, plays, created_at')
+        .order('created_at', { ascending: true });
+
+      if (trackIds && trackIds.length > 0) {
+        query = query.in('track_id', trackIds);
+      }
+      if (sinceISO) {
+        query = query.gte('created_at', sinceISO);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.warn('Supabase fetchReleasePlayLogs error:', error.message);
+        return null;
+      }
+      return data || [];
+    } catch (e) {
+      console.warn('Supabase fetchReleasePlayLogs failed:', e);
+      return null;
+    }
+  },
+
+  async fetchAllPlayLogs(sinceISO?: string): Promise<Array<{ id: string; track_id: string; user_id?: string; plays: number; created_at: string }> | null> {
+    return this.fetchReleasePlayLogs(undefined, sinceISO);
+  },
+
   // --- DAILY CHART & SNAPSHOTS ---
   async fetchDailyChart(): Promise<{ chart: DailyChartTrack[]; snapshot: Record<string, number>; lastUpdate: string | null } | null> {
     if (!supabase) return null;
@@ -983,8 +1014,6 @@ export const SupabaseService = {
     folder: 'tracks' | 'covers' | 'avatars' | 'playlists',
     fileNameHint?: string
   ): Promise<string | null> {
-    if (!supabase) return null;
-
     try {
       // If already a remote cloud URL, keep it
       if (typeof source === 'string') {

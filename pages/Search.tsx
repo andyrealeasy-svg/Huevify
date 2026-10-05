@@ -18,7 +18,7 @@ const formatPlays = (plays: number) => {
 };
 
 export const Search = () => {
-  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, getAlbumCover, releaseRequests, currentTrack, isPlaying, t } = useStore();
+  const { tracks, playlists, playTrack, isLiked, toggleLike, setView, currentUser, existingArtists, artistAccounts, goToArtist, view, albums, goBack, appSettings, getTrackCover, getAlbumCover, getArtistAvatar, releaseRequests, currentTrack, isPlaying, t } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   const [query, setQuery] = useState("");
   const [selectedGenreYear, setSelectedGenreYear] = useState<string>("all");
@@ -74,10 +74,7 @@ export const Search = () => {
   ];
 
   const getArtistImage = (name: string) => {
-      const acc = artistAccounts.find(a => a.artistName === name);
-      if (acc && acc.avatar) return acc.avatar;
-      const track = tracks.find(t => t.artist === name);
-      return track ? getTrackCover(track) : null;
+      return getArtistAvatar(name) || null;
   };
 
   const normalizeGenre = (g?: string): string => {

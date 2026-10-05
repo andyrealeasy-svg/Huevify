@@ -136,6 +136,7 @@ export interface ArtistAccount {
     id: string;
     image?: string;
     subtitle?: string;
+    comment?: string;
   };
 }
 

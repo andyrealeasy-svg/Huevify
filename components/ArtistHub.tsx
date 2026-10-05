@@ -4,8 +4,8 @@ import { compressImage } from '../utils/imageCompressor.ts';
 import {
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
-  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, Pause, BarChart2, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
-  Megaphone, EyeOff, Eye, Info, CalendarClock, GripVertical, Music, ChevronLeft, ChevronRight, Sliders, ArrowUpDown, MoreHorizontal
+  Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, Pause, BarChart2, Headphones, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
+  Megaphone, EyeOff, Eye, Info, CalendarClock, GripVertical, Music, ChevronLeft, ChevronRight, Sliders, SlidersHorizontal, ArrowUpDown, MoreHorizontal, Maximize2
 } from './Icons.tsx';
 import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
 import { CustomSelect } from './CustomSelect.tsx';
@@ -47,7 +47,7 @@ export const ArtistHub = () => {
     submitRelease, updateReleaseRequest, getArtistStats, submitProfileEdit, hasModerator, existingArtists,
     deleteRelease, getTrackByHueq, tracks, setTracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
     changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t,
-    appSettings,
+    appSettings, dailyChart, goToArtist,
     currentTrack, setCurrentTrack, isPlaying, playTrack, togglePlay
   } = useStore();
 
@@ -108,16 +108,117 @@ export const ArtistHub = () => {
   const [editBio, setEditBio] = useState("");
   const [editAvatar, setEditAvatar] = useState("");
   const [editNewPassword, setEditNewPassword] = useState("");
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Mod Settings State
   const [modNewPassword, setModNewPassword] = useState("");
+  const [modTab, setModTab] = useState<'releases' | 'artists' | 'profiles'>('releases');
+  const [modSearch, setModSearch] = useState("");
+  const [modSortOrder, setModSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Artist Pick State
   const [pickSearch, setPickSearch] = useState("");
+  const [selectedPickItem, setSelectedPickItem] = useState<{
+    type: 'TRACK' | 'ALBUM' | 'PLAYLIST';
+    id: string;
+    image: string;
+    title: string;
+    subtitle: string;
+  } | null>(null);
+  const [pickComment, setPickComment] = useState("");
 
   // Release Detail Modal State
   const [selectedRelease, setSelectedRelease] = useState<ReleaseRequest | null>(null);
   const [previewTracks, setPreviewTracks] = useState<DistributionTrack[]>([]);
+
+  // Release Statistics Modal State
+  const [selectedStatsRelease, setSelectedStatsRelease] = useState<ReleaseRequest | null>(null);
+  const [statsPeriod, setStatsPeriod] = useState<7 | 30>(7);
+  const [hoveredGraphIndex, setHoveredGraphIndex] = useState<number | null>(null);
+  const [statsCycleTick, setStatsCycleTick] = useState<number>(Date.now());
+  const [releasePlayLogs, setReleasePlayLogs] = useState<Array<{ trackId: string; plays: number; timestamp: number }>>([]);
+  const [isLoadingStatsLogs, setIsLoadingStatsLogs] = useState(false);
+
+  useEffect(() => {
+      if (!selectedStatsRelease) return;
+      const interval = setInterval(() => {
+          setStatsCycleTick(Date.now());
+      }, 15000);
+      return () => clearInterval(interval);
+  }, [selectedStatsRelease?.id]);
+
+  useEffect(() => {
+      if (!selectedStatsRelease) {
+          setReleasePlayLogs([]);
+          return;
+      }
+
+      let isMounted = true;
+      setIsLoadingStatsLogs(true);
+
+      const loadLogs = async () => {
+          // 1. Load local logs first
+          const local = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+          
+          // 2. Determine all track identifiers for this release
+          const releaseTrackIds: string[] = [];
+          (selectedStatsRelease.tracks || []).forEach(dt => {
+              if (dt.id) releaseTrackIds.push(dt.id);
+              if (dt.title) releaseTrackIds.push(dt.title.trim());
+              const match = tracks.find(t =>
+                  (dt.id && t.id === dt.id) ||
+                  (t.title?.trim().toLowerCase() === dt.title?.trim().toLowerCase() &&
+                   (t.artist?.trim().toLowerCase() === (dt.artist || selectedStatsRelease.artistName)?.trim().toLowerCase() ||
+                    t.album?.trim().toLowerCase() === selectedStatsRelease.title?.trim().toLowerCase()))
+              );
+              if (match?.id) releaseTrackIds.push(match.id);
+              if (match?.title) releaseTrackIds.push(match.title.trim());
+              if (match?.hueq) releaseTrackIds.push(match.hueq);
+              if (dt.existingHueq) releaseTrackIds.push(dt.existingHueq);
+              if (dt.generatedHueq) releaseTrackIds.push(dt.generatedHueq);
+          });
+          const uniqueTrackIds = Array.from(new Set(releaseTrackIds.filter(Boolean)));
+
+          // 3. Fetch from Supabase track_play_logs table (last 35 days)
+          const thirtyFiveDaysAgo = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+          let combinedLogs: Array<{ trackId: string; plays: number; timestamp: number }> = [...local];
+
+          if (isSupabaseConfigured()) {
+              try {
+                  const remoteLogs = await SupabaseService.fetchReleasePlayLogs(uniqueTrackIds.length > 0 ? uniqueTrackIds : undefined, thirtyFiveDaysAgo);
+                  if (remoteLogs && remoteLogs.length > 0) {
+                      const formattedRemote = remoteLogs.map(r => ({
+                          trackId: r.track_id,
+                          plays: Number(r.plays) || 1,
+                          timestamp: new Date(r.created_at).getTime()
+                      }));
+                      
+                      // Merge remote and local logs
+                      combinedLogs = [...formattedRemote];
+                      const remoteKeys = new Set(formattedRemote.map(r => `${r.trackId}_${r.timestamp}`));
+                      local.forEach(l => {
+                          if (!remoteKeys.has(`${l.trackId}_${l.timestamp}`)) {
+                              combinedLogs.push(l);
+                          }
+                      });
+                  }
+              } catch (err) {
+                  console.warn('Failed to fetch release play logs from Supabase:', err);
+              }
+          }
+
+          if (isMounted) {
+              setReleasePlayLogs(combinedLogs);
+              setIsLoadingStatsLogs(false);
+          }
+      };
+
+      loadLogs();
+
+      return () => {
+          isMounted = false;
+      };
+  }, [selectedStatsRelease?.id, tracks, statsCycleTick]);
 
   useEffect(() => {
       if (selectedRelease) {
@@ -1001,21 +1102,48 @@ export const ArtistHub = () => {
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const compressed = await compressImage(file, 400, 400, 0.85);
-      if (compressed) {
-        let finalAvatar = compressed;
-        if (isSupabaseConfigured()) {
-          try {
-            const storageUrl = await SupabaseService.uploadMedia(compressed, 'avatars', file.name);
-            if (storageUrl) finalAvatar = storageUrl;
-          } catch (err) {
-            console.warn('Avatar storage upload fallback:', err);
-          }
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      // 1. Upload original uncompressed file directly to Filebase (or Supabase fallback)
+      try {
+        const storageUrl = await SupabaseService.uploadMedia(file, 'avatars', file.name);
+        if (storageUrl) {
+          setEditAvatar(storageUrl);
+          setIsUploadingAvatar(false);
+          if (e.target) e.target.value = '';
+          return;
         }
-        setEditAvatar(finalAvatar);
+      } catch (err) {
+        console.warn('Avatar original file cloud upload fallback:', err);
       }
+
+      // 2. High-quality uncompressed local preview / fallback
+      if (file.size <= 4 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = ev.target?.result as string;
+          if (result) {
+            setEditAvatar(result);
+          }
+          setIsUploadingAvatar(false);
+        };
+        reader.onerror = () => setIsUploadingAvatar(false);
+        reader.readAsDataURL(file);
+      } else {
+        // Ultra-high resolution fallback (2560x2560, quality 0.98) only for huge files (>4MB) without Supabase
+        const highRes = await compressImage(file, 2560, 2560, 0.98);
+        if (highRes) {
+          setEditAvatar(highRes);
+        }
+        setIsUploadingAvatar(false);
+      }
+    } catch (err) {
+      console.error('Failed to process avatar upload:', err);
+      setIsUploadingAvatar(false);
     }
+    if (e.target) e.target.value = '';
   };
 
   const handleProfileUpdate = () => {
@@ -1528,76 +1656,180 @@ export const ArtistHub = () => {
       </div>
   );
 
-  const renderModDash = () => (
-      <div className="w-full h-full flex flex-col p-6 relative overflow-y-auto animate-fade-in pb-8">
-          <div className="flex justify-between items-center mb-8 shrink-0">
-              <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3"><Shield className="text-primary"/> {t('modDash')}</h1>
+  const formatRussianDateTime = (dateString?: string): string => {
+      if (!dateString) return '';
+      try {
+          const d = new Date(dateString);
+          if (isNaN(d.getTime())) return dateString;
+          return d.toLocaleDateString('ru-RU', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+          }) + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+          return dateString;
+      }
+  };
+
+  const formatRelativeTimeRussian = (dateString?: string): string => {
+      if (!dateString) return 'только что';
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return 'недавно';
+      const now = Date.now();
+      const diffMs = Math.max(0, now - d.getTime());
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHours = Math.floor(diffMin / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMin < 1) return 'только что';
+      if (diffMin < 60) {
+          if (diffMin === 1 || (diffMin > 20 && diffMin % 10 === 1)) return `${diffMin} минуту назад`;
+          if ((diffMin >= 2 && diffMin <= 4) || (diffMin > 20 && diffMin % 10 >= 2 && diffMin % 10 <= 4)) return `${diffMin} минуты назад`;
+          return `${diffMin} минут назад`;
+      }
+      if (diffHours < 24) {
+          if (diffHours === 1 || diffHours === 21) return `${diffHours} час назад`;
+          if ((diffHours >= 2 && diffHours <= 4) || (diffHours >= 22 && diffHours <= 24)) return `${diffHours} часа назад`;
+          return `${diffHours} часов назад`;
+      }
+      if (diffDays === 1) return '1 день назад';
+      if (diffDays >= 2 && diffDays <= 4) return `${diffDays} дня назад`;
+      return `${diffDays} дней назад`;
+  };
+
+  const formatTrackWordRussian = (count: number): string => {
+      if (count % 10 === 1 && count % 100 !== 11) return '1 трек';
+      if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return `${count} трека`;
+      return `${count} треков`;
+  };
+
+  const formatDraftDate = (dateString?: string): string => {
+      if (!dateString) return '';
+      try {
+          const d = new Date(dateString);
+          if (isNaN(d.getTime())) return dateString;
+          const day = String(d.getDate()).padStart(2, '0');
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const year = d.getFullYear();
+          const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return `${day}.${month}.${year} ${time}`;
+      } catch {
+          return dateString;
+      }
+  };
+
+  const renderModDash = () => {
+      const pendingReleases = releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested));
+      const pendingArtists = artistAccounts.filter(a => a.status === 'PENDING');
+      const pendingProfileEdits = profileEditRequests.filter(r => r.status === 'PENDING');
+
+      // Releases filtering & sorting
+      let displayReleases = pendingReleases.filter(r => {
+          if (!modSearch.trim()) return true;
+          const q = modSearch.toLowerCase();
+          return (r.title || '').toLowerCase().includes(q) || 
+                 (r.artistName || '').toLowerCase().includes(q) || 
+                 (r.type || '').toLowerCase().includes(q);
+      });
+      displayReleases.sort((a, b) => {
+          const timeA = new Date(a.submissionTime || a.releaseDate || 0).getTime();
+          const timeB = new Date(b.submissionTime || b.releaseDate || 0).getTime();
+          return modSortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+      });
+
+      // Artists filtering & sorting
+      let displayArtists = pendingArtists.filter(a => {
+          if (!modSearch.trim()) return true;
+          const q = modSearch.toLowerCase();
+          return (a.artistName || '').toLowerCase().includes(q) || 
+                 (a.username || '').toLowerCase().includes(q);
+      });
+
+      // Profile edits filtering & sorting
+      let displayProfiles = pendingProfileEdits.filter(r => {
+          if (!modSearch.trim()) return true;
+          const q = modSearch.toLowerCase();
+          return (r.artistName || '').toLowerCase().includes(q);
+      });
+      displayProfiles.sort((a, b) => {
+          const timeA = a.id.startsWith('pe_') ? parseInt(a.id.replace('pe_', '')) : 0;
+          const timeB = b.id.startsWith('pe_') ? parseInt(b.id.replace('pe_', '')) : 0;
+          return modSortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+      });
+
+      const totalModerationCount = pendingReleases.length + pendingArtists.length + pendingProfileEdits.length;
+
+      return (
+      <div className="w-full h-full flex flex-col p-3.5 sm:p-6 relative overflow-y-auto animate-fade-in pb-12">
+          <div className="flex justify-between items-center mb-6 sm:mb-8 shrink-0">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold flex items-center gap-2.5"><Shield className="text-primary"/> {t('modDash')}</h1>
               <button 
                 onClick={() => setView('MOD_SETTINGS')} 
                 className={`text-secondary hover:text-white transition p-2 rounded-full hover:bg-surface-highlight ${
                   isLiquidGlass ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15' : ''
                 }`}
               >
-                  <Settings size={24}/>
+                  <Settings size={22}/>
               </button>
           </div>
 
           {/* Quick Actions Grid for Mod */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 mb-8 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-8 shrink-0">
                 <button 
                   onClick={() => { resetDistForm(false); setView('DISTRIBUTION'); }} 
-                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full ${
+                  className={`p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-24 sm:h-28 md:h-32 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-primary max-md:text-black max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] max-md:rounded-2xl md:bg-primary md:text-black md:shadow-lg md:hover:shadow-primary/20'
                       : 'bg-primary text-black shadow-lg hover:shadow-primary/20'
                   }`}
                 >
-                    <UploadCloud size={30}/>
-                    <span>{t('uploadRelease')}</span>
+                    <UploadCloud size={24}/>
+                    <span className="text-xs sm:text-sm">{t('uploadRelease')}</span>
                 </button>
                 <button 
                   onClick={() => { resetDistForm(true); setView('DISTRIBUTION'); }} 
-                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-28 md:h-32 w-full border border-purple-500/30 ${
+                  className={`p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center gap-2 hover:scale-105 transition font-bold h-24 sm:h-28 md:h-32 w-full border border-purple-500/30 ${
                     isLiquidGlass
                       ? 'max-md:bg-purple-600/30 max-md:backdrop-blur-2xl max-md:text-white max-md:shadow-[0_6px_24px_rgba(168,85,247,0.35),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-purple-950/40 md:text-purple-300 md:hover:bg-purple-900/60 md:hover:text-white'
                       : 'bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 hover:text-white'
                   }`}
                 >
-                    <Megaphone size={30} className="text-purple-400"/>
-                    <span>Анонс альбома</span>
+                    <Megaphone size={24} className="text-purple-400"/>
+                    <span className="text-xs sm:text-sm">Анонс альбома</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_ALL_RELEASES')} 
-                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                  className={`p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center gap-2 transition font-bold h-24 sm:h-28 md:h-32 hover:scale-105 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <Database size={30} className="text-secondary"/>
-                    <span>{t('manageReleases')}</span>
+                    <Database size={24} className="text-secondary"/>
+                    <span className="text-xs sm:text-sm">{t('manageReleases')}</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_ALL_TRACKS')} 
-                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                  className={`p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center gap-2 transition font-bold h-24 sm:h-28 md:h-32 hover:scale-105 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <ListMusic size={30} className="text-secondary"/>
-                    <span>{t('manageTracks')}</span>
+                    <ListMusic size={24} className="text-secondary"/>
+                    <span className="text-xs sm:text-sm">{t('manageTracks')}</span>
                 </button>
                 <button 
                   onClick={() => setView('MOD_CREDENTIALS')} 
-                  className={`p-6 rounded-xl flex flex-col items-center justify-center gap-2 transition font-bold h-28 md:h-32 hover:scale-105 w-full ${
+                  className={`p-4 sm:p-6 rounded-2xl flex flex-col items-center justify-center gap-2 transition font-bold h-24 sm:h-28 md:h-32 hover:scale-105 col-span-2 sm:col-span-1 w-full ${
                     isLiquidGlass
                       ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:bg-surface-highlight'
                       : 'bg-surface border border-surface-highlight hover:bg-surface-highlight'
                   }`}
                 >
-                    <Key size={30} className="text-secondary"/>
-                    <span>{t('artistCreds')}</span>
+                    <Key size={24} className="text-secondary"/>
+                    <span className="text-xs sm:text-sm">{t('artistCreds')}</span>
                 </button>
           </div>
 
@@ -1605,60 +1837,61 @@ export const ArtistHub = () => {
           {drafts.length > 0 && (
               <div className="mb-8 shrink-0">
                   <div className="flex justify-between items-center mb-3">
-                      <h2 className="text-xl font-bold flex items-center gap-2">
-                          <Bookmark size={20} className="text-primary" />
-                          {t('drafts')} <span className="text-sm font-normal text-secondary">({drafts.length})</span>
+                      <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2 text-white">
+                          <Bookmark size={18} className="text-primary" />
+                          <span>Черновики</span>
+                          <span className="text-xs sm:text-sm font-normal text-secondary">({drafts.length})</span>
                       </h2>
-                      <span className="text-xs text-secondary">{t('draftsDesc')}</span>
+                      <span className="text-xs text-secondary hidden sm:inline">Неопубликованные черновики релизов</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       {drafts.map(d => (
                           <div 
                             key={d.id} 
-                            className={`p-4 rounded-xl flex flex-col justify-between gap-3 group transition ${
+                            className={`p-3.5 sm:p-4 rounded-2xl flex flex-col justify-between gap-3 group transition ${
                               isLiquidGlass
-                                ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:border-primary/40 md:shadow-sm md:hover:shadow-md'
-                                : 'bg-surface border border-surface-highlight hover:border-primary/40 shadow-sm hover:shadow-md'
+                                ? 'bg-zinc-900/60 backdrop-blur-2xl border border-white/10 shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4)]'
+                                : 'bg-[#101013] border border-white/10'
                             }`}
                           >
                               <div className="flex items-start gap-3">
-                                  <div className="w-14 h-14 rounded-lg bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5">
+                                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-surface-highlight overflow-hidden flex-shrink-0 flex items-center justify-center border border-white/5 shadow-md">
                                       {d.covers && d.covers.length > 0 ? (
                                           <img src={d.covers[0]} className="w-full h-full object-cover" alt="" />
                                       ) : (
-                                          <FileAudio size={24} className="text-secondary opacity-60" />
+                                          <FileAudio size={22} className="text-secondary opacity-60" />
                                       )}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                      <div className="font-bold text-sm truncate text-white">
+                                      <div className="font-bold text-sm sm:text-base truncate text-white">
                                           {d.title || <span className="italic text-secondary">Без названия</span>}
                                       </div>
-                                      <div className="text-xs text-secondary truncate mt-0.5">
-                                          {d.artistName || "Various"} • {d.type || 'Single'} • {d.tracks?.length || 0} {t('tracksLower')}
+                                      <div className="text-xs text-secondary truncate mt-0.5 font-medium">
+                                          {d.artistName || "Various"} • {d.type || 'Single'} • {formatTrackWordRussian(d.tracks?.length || 0)}
                                       </div>
-                                      <div className="text-[10px] text-secondary/70 mt-1 flex items-center gap-1">
-                                          <Clock size={10} />
-                                          <span>{new Date(d.lastSaved).toLocaleDateString()} {new Date(d.lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                      <div className="text-xs text-secondary/70 mt-1 flex items-center gap-1">
+                                          <Clock size={11} className="text-secondary/70 shrink-0" />
+                                          <span className="truncate">{formatDraftDate(d.lastSaved)}</span>
                                       </div>
                                   </div>
                               </div>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-1">
+                              <div className="flex items-center justify-between pt-2.5 border-t border-white/5 mt-1 gap-2">
                                   <button
                                       onClick={(e) => handleDeleteDraft(d.id, e)}
-                                      className="text-xs text-secondary hover:text-red-500 transition flex items-center gap-1 p-1 rounded"
+                                      className="text-xs text-zinc-400 hover:text-red-400 transition flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-white/5 shrink-0"
                                       title={t('deleteDraft')}
                                   >
-                                      <Trash2 size={14} />
-                                      <span>{t('deleteDraft')}</span>
+                                      <Trash2 size={13} />
+                                      <span>Удалить черновик</span>
                                   </button>
                                   <button
                                       onClick={() => handleResumeDraft(d)}
-                                      className="text-xs font-bold bg-primary text-black px-3.5 py-1.5 rounded-full hover:scale-105 transition flex items-center gap-1.5 shadow-sm"
+                                      className="text-xs font-bold bg-[#1ed760] hover:bg-[#1db954] text-black px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full hover:scale-105 active:scale-95 transition flex items-center gap-1.5 shadow-md shrink-0"
                                   >
                                       <Edit size={12} />
-                                      <span>{t('continueDraft')}</span>
+                                      <span>Продолжить</span>
                                   </button>
                               </div>
                           </div>
@@ -1667,125 +1900,367 @@ export const ArtistHub = () => {
               </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              {/* Artist Requests */}
-              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
-                isLiquidGlass
-                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
-                  : 'bg-surface border-surface-highlight'
-              }`}>
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><User size={18}/> {t('pendingArtists')}</h3>
-                  <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {artistAccounts.filter(a => a.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
-                      {artistAccounts.filter(a => a.status === 'PENDING').map(a => (
-                          <div 
-                            key={a.id} 
-                            className={`p-3 rounded-xl flex justify-between items-center animate-slide-in-bottom ${
-                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
-                            }`}
-                          >
-                              <div>
-                                  <div className="font-bold">{a.artistName}</div>
-                                  <div className="text-xs text-secondary">@{a.username}</div>
-                              </div>
-                              <div className="flex gap-2">
-                                  <button onClick={() => approveArtist(a.id)} className="text-green-500 hover:scale-110"><CheckCircle size={20}/></button>
-                                  <button onClick={() => rejectArtist(a.id)} className="text-red-500 hover:scale-110"><XCircle size={20}/></button>
-                              </div>
-                          </div>
-                      ))}
+          {/* "На модерации" Section */}
+          <div className="mb-8 flex flex-col gap-4 shrink-0">
+              {/* Header with count badge */}
+              <div className="flex items-center gap-2.5">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">На модерации</h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#1ed760]/20 text-[#1ed760] border border-[#1ed760]/30">
+                      {totalModerationCount}
+                  </span>
+              </div>
+
+              {/* Controls Bar: Tabs on Left, Search & Sort on Right */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 min-w-0 w-full">
+                  {/* Tabs - with scrollbar hidden and min-w-0 w-full */}
+                  <div className="flex items-center gap-2 overflow-x-auto min-w-0 w-full pb-1.5 sm:pb-0 scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] touch-pan-x">
+                      <button
+                          type="button"
+                          onClick={() => setModTab('releases')}
+                          className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-bold flex items-center gap-1.5 transition shrink-0 ${
+                              modTab === 'releases'
+                                  ? 'bg-[#1ed760] text-black shadow-md'
+                                  : 'bg-[#18181b] text-zinc-400 hover:text-white border border-white/5'
+                          }`}
+                      >
+                          <span>Релизы</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${modTab === 'releases' ? 'bg-black/20 text-black' : 'text-zinc-400 bg-white/5'}`}>
+                              {pendingReleases.length}
+                          </span>
+                      </button>
+
+                      <button
+                          type="button"
+                          onClick={() => setModTab('artists')}
+                          className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-bold flex items-center gap-1.5 transition shrink-0 ${
+                              modTab === 'artists'
+                                  ? 'bg-[#1ed760] text-black shadow-md'
+                                  : 'bg-[#18181b] text-zinc-400 hover:text-white border border-white/5'
+                          }`}
+                      >
+                          <span>Заявки артистов</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${modTab === 'artists' ? 'bg-black/20 text-black' : 'text-zinc-400 bg-white/5'}`}>
+                              {pendingArtists.length}
+                          </span>
+                      </button>
+
+                      <button
+                          type="button"
+                          onClick={() => setModTab('profiles')}
+                          className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-bold flex items-center gap-1.5 transition shrink-0 ${
+                              modTab === 'profiles'
+                                  ? 'bg-[#1ed760] text-black shadow-md'
+                                  : 'bg-[#18181b] text-zinc-400 hover:text-white border border-white/5'
+                          }`}
+                      >
+                          <span>Изменения профиля</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${modTab === 'profiles' ? 'bg-black/20 text-black' : 'text-zinc-400 bg-white/5'}`}>
+                              {pendingProfileEdits.length}
+                          </span>
+                      </button>
+                  </div>
+
+                  {/* Search and Sort */}
+                  <div className="flex items-center gap-2 flex-col sm:flex-row w-full sm:w-auto">
+                      <div className="relative w-full sm:w-48">
+                          <Search className="absolute left-3 top-2.5 text-zinc-500" size={14} />
+                          <input
+                              type="text"
+                              placeholder="Поиск заявок..."
+                              value={modSearch}
+                              onChange={e => setModSearch(e.target.value)}
+                              className="w-full bg-[#121215] text-white text-xs pl-8 pr-3 py-2 rounded-xl border border-white/10 placeholder-zinc-500 focus:outline-none focus:border-white/30 transition"
+                          />
+                          {modSearch && (
+                              <button onClick={() => setModSearch('')} className="absolute right-2.5 top-2.5 text-zinc-500 hover:text-white">
+                                  <X size={13} />
+                              </button>
+                          )}
+                      </div>
+
+                      <button
+                          type="button"
+                          onClick={() => setModSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
+                          className="w-full sm:w-auto justify-between px-3 py-2 rounded-xl bg-[#121215] border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-2 transition shrink-0"
+                          title="Изменить порядок сортировки"
+                      >
+                          <span className="flex items-center gap-1.5">
+                            <SlidersHorizontal size={13} className="text-zinc-400" />
+                            <span>{modSortOrder === 'newest' ? 'Сначала новые' : 'Сначала старые'}</span>
+                          </span>
+                          <ChevronDown size={13} className="text-zinc-500" />
+                      </button>
                   </div>
               </div>
 
-              {/* Release Requests */}
-              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
-                isLiquidGlass
-                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
-                  : 'bg-surface border-surface-highlight'
-              }`}>
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><UploadCloud size={18}/> {t('pendingReleases')}</h3>
-                  <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
-                      {releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested)).map(r => (
-                          <div 
-                            key={r.id} 
-                            className={`p-3 rounded-xl flex gap-3 cursor-pointer hover:bg-zinc-800 transition-colors animate-slide-in-bottom items-start ${
-                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
-                            }`} 
-                            onClick={() => setSelectedRelease(r)}
-                          >
-                              <img src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} className="w-12 h-12 rounded object-cover flex-shrink-0" alt=""/>
-                              <div className="flex-1 min-w-0 flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                      <div className="font-bold truncate">{r.title}</div>
-                                      {r.isAnnouncement && <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-bold">Анонс</span>}
-                                      {r.deletionRequested && <span className="text-[10px] bg-red-500 text-white px-1 rounded font-bold">{t('deleteReq')}</span>}
+              {/* Items List */}
+              <div className="flex flex-col gap-3">
+                  {/* 1. Tab: Releases */}
+                  {modTab === 'releases' && (
+                      <>
+                          {displayReleases.length === 0 && (
+                              <div className="p-8 text-center text-zinc-500 text-sm rounded-2xl bg-[#101013] border border-white/5">
+                                  {modSearch ? 'Ничего не найдено по вашему запросу' : 'Нет заявок на модерацию релизов'}
+                              </div>
+                          )}
+                          {displayReleases.map(r => (
+                              <div 
+                                  key={r.id} 
+                                  className="bg-[#101013] border border-white/5 hover:border-white/10 rounded-2xl p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 transition group"
+                              >
+                                  <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                                      <img 
+                                          src={r.covers && r.covers.length > 0 ? r.covers[0] : "https://picsum.photos/300"} 
+                                          className="w-14 h-14 rounded-xl object-cover shrink-0 bg-zinc-800 shadow-md" 
+                                          alt={r.title}
+                                      />
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-bold text-white text-sm sm:text-base truncate">{r.title}</span>
+                                              {r.isAnnouncement && <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">Анонс</span>}
+                                              {r.deletionRequested && <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold">{t('deleteReq', 'Запрос на удаление')}</span>}
+                                          </div>
+                                          <div className="text-xs text-zinc-400 font-medium truncate mt-0.5">
+                                              {r.artistName}
+                                          </div>
+                                          <div className="text-xs text-zinc-400 font-normal truncate">
+                                              {r.type} • {formatTrackWordRussian(r.tracks?.length || 0)}
+                                          </div>
+                                          <div className="text-xs text-zinc-400 flex items-center gap-1.5 mt-1 flex-wrap">
+                                              <span className="flex items-center gap-1 truncate">
+                                                  <Clock size={11} className="text-zinc-400 shrink-0" />
+                                                  <span>{formatRussianDateTime(r.submissionTime || r.releaseDate)}</span>
+                                              </span>
+                                              <span className="text-zinc-600">•</span>
+                                              <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shrink-0" />
+                                                  <span>{formatRelativeTimeRussian(r.submissionTime || r.releaseDate)}</span>
+                                              </span>
+                                          </div>
+                                      </div>
                                   </div>
-                                  <div className="text-xs text-secondary truncate">{r.artistName} • {r.type}</div>
-                                  <div className="flex gap-2 justify-end mt-1" onClick={e => e.stopPropagation()}>
+
+                                  <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap pt-2 border-t border-white/5 md:border-0 md:pt-0 shrink-0">
+                                      <button 
+                                          type="button"
+                                          onClick={() => setSelectedRelease(r)}
+                                          className="flex-1 sm:flex-initial border border-white/20 hover:border-white/40 text-white hover:bg-white/10 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                          title="Открыть превью релиза"
+                                      >
+                                          <span>Открыть</span>
+                                          <Maximize2 size={12} className="shrink-0 opacity-80" />
+                                      </button>
+
                                       {r.deletionRequested ? (
-                                           <>
-                                             <button onClick={() => approveRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">{t('confirmDelete')}</button>
-                                             <button onClick={() => rejectRelease(r.id)} className="text-blue-500 hover:text-white text-[10px] font-bold uppercase border border-blue-500 px-2 py-0.5 rounded hover:bg-blue-500 transition">{t('rejectDel')}</button>
-                                           </>
+                                          <>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => approveRelease(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-red-500/40 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <Trash2 size={12} className="shrink-0" />
+                                                  <span>Подтвердить</span>
+                                              </button>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => rejectRelease(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-zinc-600 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <X size={12} className="shrink-0" />
+                                                  <span>Отклонить</span>
+                                              </button>
+                                          </>
                                       ) : (
                                           <>
-                                            <button onClick={() => approveRelease(r.id)} className="text-green-500 hover:text-white text-[10px] font-bold uppercase border border-green-500 px-2 py-0.5 rounded hover:bg-green-500 transition">{t('approve')}</button>
-                                            <button onClick={() => rejectRelease(r.id)} className="text-red-500 hover:text-white text-[10px] font-bold uppercase border border-red-500 px-2 py-0.5 rounded hover:bg-red-500 transition">{t('reject')}</button>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => approveRelease(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <Check size={13} strokeWidth={3} className="shrink-0" />
+                                                  <span>Принять</span>
+                                              </button>
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => rejectRelease(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-red-500/40 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <X size={13} strokeWidth={2.5} className="shrink-0" />
+                                                  <span>Отклонить</span>
+                                              </button>
                                           </>
                                       )}
                                   </div>
                               </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
+                          ))}
+                      </>
+                  )}
 
-              {/* Profile Edits */}
-              <div className={`p-4 flex flex-col rounded-xl border max-h-[500px] ${
-                isLiquidGlass
-                  ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.4)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight'
-                  : 'bg-surface border-surface-highlight'
-              }`}>
-                  <h3 className="font-bold mb-4 flex items-center gap-2 text-primary"><Edit size={18}/> {t('profileEdits')}</h3>
-                  <div className="overflow-y-auto flex-1 flex flex-col gap-3">
-                      {profileEditRequests.filter(r => r.status === 'PENDING').length === 0 && <span className="text-secondary text-sm">{t('noPending')}</span>}
-                      {profileEditRequests.filter(r => r.status === 'PENDING').map(r => (
-                          <div 
-                            key={r.id} 
-                            className={`p-3 rounded-xl flex flex-col gap-2 animate-slide-in-bottom ${
-                              isLiquidGlass ? 'max-md:bg-white/[0.06] max-md:border max-md:border-white/10 md:bg-surface-highlight' : 'bg-surface-highlight'
-                            }`}
-                          >
-                               <div className="font-bold text-sm">{r.artistName} updates</div>
-                               {r.newAvatar && <div className="text-xs text-secondary">New Avatar</div>}
-                               {r.newBio && <div className="text-xs text-secondary bg-black/20 p-1 rounded italic line-clamp-2">Bio: {r.newBio}</div>}
-                               {r.newArtistPick && <div className="text-xs text-secondary bg-black/20 p-1 rounded italic">New Pick: {r.newArtistPick.subtitle}</div>}
-                               <div className="flex gap-2 justify-end">
-                                  <button onClick={() => approveProfileEdit(r.id)} className="text-green-500 hover:text-white text-xs font-bold uppercase border border-green-500 px-2 py-1 rounded hover:bg-green-500 transition">{t('approve')}</button>
-                                  <button onClick={() => rejectProfileEdit(r.id)} className="text-red-500 hover:text-white text-xs font-bold uppercase border border-red-500 px-2 py-1 rounded hover:bg-red-500 transition">{t('reject')}</button>
+                  {/* 2. Tab: Artist Registrations */}
+                  {modTab === 'artists' && (
+                      <>
+                          {displayArtists.length === 0 && (
+                              <div className="p-8 text-center text-zinc-500 text-sm rounded-2xl bg-[#101013] border border-white/5">
+                                  {modSearch ? 'Ничего не найдено по вашему запросу' : 'Нет новых заявок на верификацию артистов'}
                               </div>
-                          </div>
-                      ))}
-                  </div>
+                          )}
+                          {displayArtists.map(a => (
+                              <div 
+                                  key={a.id} 
+                                  className="bg-[#101013] border border-white/5 hover:border-white/10 rounded-2xl p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 transition group"
+                              >
+                                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-zinc-800 shadow-md flex items-center justify-center shrink-0">
+                                          {a.avatar ? (
+                                              <img src={a.avatar} className="w-full h-full object-cover" alt={a.artistName} />
+                                          ) : (
+                                              <User size={24} className="text-zinc-500" />
+                                          )}
+                                      </div>
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                          <span className="font-bold text-white text-sm sm:text-base truncate">{a.artistName}</span>
+                                          <span className="text-xs text-zinc-400 font-medium">@{a.username}</span>
+                                          <div className="text-xs text-zinc-400 flex items-center gap-1.5 mt-1">
+                                              <Clock size={11} className="text-zinc-400 shrink-0" />
+                                              <span>Заявка на регистрацию артиста</span>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap pt-2 border-t border-white/5 md:border-0 md:pt-0 shrink-0">
+                                      <button 
+                                          type="button"
+                                          onClick={() => approveArtist(a.id)} 
+                                          className="flex-1 sm:flex-initial border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                      >
+                                          <Check size={13} strokeWidth={3} className="shrink-0" />
+                                          <span>Принять</span>
+                                      </button>
+                                      <button 
+                                          type="button"
+                                          onClick={() => rejectArtist(a.id)} 
+                                          className="flex-1 sm:flex-initial border border-red-500/40 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                      >
+                                          <X size={13} strokeWidth={2.5} className="shrink-0" />
+                                          <span>Отклонить</span>
+                                      </button>
+                                  </div>
+                              </div>
+                          ))}
+                      </>
+                  )}
+
+                  {/* 3. Tab: Profile Changes */}
+                  {modTab === 'profiles' && (
+                      <>
+                          {displayProfiles.length === 0 && (
+                              <div className="p-8 text-center text-zinc-500 text-sm rounded-2xl bg-[#101013] border border-white/5">
+                                  {modSearch ? 'Ничего не найдено по вашему запросу' : 'Нет заявок на изменение профиля'}
+                              </div>
+                          )}
+                          {displayProfiles.map(r => {
+                              const existingArtist = artistAccounts.find(a => a.id === r.artistId);
+                              const avatarImg = r.newAvatar || existingArtist?.avatar || "https://picsum.photos/300";
+                              const requestDateStr = r.id.startsWith('pe_') ? new Date(parseInt(r.id.replace('pe_', ''))).toISOString() : new Date().toISOString();
+
+                              return (
+                                  <div 
+                                      key={r.id} 
+                                      className="bg-[#101013] border border-white/5 hover:border-white/10 rounded-2xl p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 transition group"
+                                  >
+                                      <div className="flex items-center gap-3.5 min-w-0 md:w-1/3">
+                                          <img 
+                                              src={avatarImg} 
+                                              className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover shrink-0 bg-zinc-800 shadow-md" 
+                                              alt={r.artistName}
+                                          />
+                                          <div className="flex flex-col min-w-0 flex-1">
+                                              <span className="font-bold text-white text-sm sm:text-base truncate">{r.artistName}</span>
+                                              <span className="text-xs text-zinc-400 font-medium">Изменение профиля</span>
+                                              <div className="text-xs text-zinc-400 flex items-center gap-1.5 mt-1">
+                                                  <Clock size={11} className="text-zinc-400 shrink-0" />
+                                                  <span>{formatRussianDateTime(requestDateStr)}</span>
+                                              </div>
+                                          </div>
+                                      </div>
+
+                                      {/* Middle: Details of what changed */}
+                                      <div className="flex flex-col gap-1 text-xs md:w-1/3 min-w-0">
+                                          {r.newBio && (
+                                              <div className="flex items-start gap-3">
+                                                  <span className="text-zinc-400 font-medium w-14 shrink-0">Bio</span>
+                                                  <span className="text-zinc-200 truncate">изменено</span>
+                                              </div>
+                                          )}
+                                          {r.newAvatar && (
+                                              <div className="flex items-start gap-3">
+                                                  <span className="text-zinc-400 font-medium w-14 shrink-0">Аватар</span>
+                                                  <span className="text-zinc-200 truncate">новый</span>
+                                              </div>
+                                          )}
+                                          {r.newArtistPick && (
+                                              <div className="flex items-start gap-3">
+                                                  <span className="text-zinc-400 font-medium w-14 shrink-0">Выбор</span>
+                                                  <span className="text-zinc-200 truncate">{r.newArtistPick.subtitle || 'изменен'}</span>
+                                              </div>
+                                          )}
+                                      </div>
+
+                                      {/* Right: Actions */}
+                                      <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap pt-2 border-t border-white/5 md:border-0 md:pt-0 shrink-0">
+                                          <button 
+                                              type="button"
+                                              onClick={() => {
+                                                  goToArtist(r.artistName);
+                                                  setArtistHubOpen(false);
+                                              }}
+                                              className="flex-1 sm:flex-initial border border-white/20 hover:border-white/40 text-white hover:bg-white/10 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              title="Открыть профиль артиста"
+                                          >
+                                              <span>Открыть профиль</span>
+                                              <Maximize2 size={12} className="shrink-0 opacity-80" />
+                                          </button>
+                                          <button 
+                                              type="button"
+                                              onClick={() => approveProfileEdit(r.id)} 
+                                              className="flex-1 sm:flex-initial border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                          >
+                                              <Check size={13} strokeWidth={3} className="shrink-0" />
+                                              <span>Принять</span>
+                                          </button>
+                                          <button 
+                                              type="button"
+                                              onClick={() => rejectProfileEdit(r.id)} 
+                                              className="flex-1 sm:flex-initial border border-red-500/40 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                          >
+                                              <X size={13} strokeWidth={2.5} className="shrink-0" />
+                                              <span>Отклонить</span>
+                                          </button>
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </>
+                  )}
               </div>
           </div>
 
-          <div className="mt-auto">
+          <div className="mt-auto pt-4">
               <button
                   onClick={() => { logoutArtistHub(); setView('AUTH'); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-secondary hover:text-white hover:bg-red-500 hover:text-white transition font-bold shadow-lg ${
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-secondary hover:text-white hover:bg-red-500 transition font-bold text-xs sm:text-sm shadow-lg ${
                     isLiquidGlass
                       ? 'max-md:bg-white/[0.12] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3)] md:bg-surface-highlight'
                       : 'bg-surface-highlight'
                   }`}
               >
-                  <LogOut size={18} />
-                  {t('logout')}
+                  <LogOut size={16} />
+                  <span>{t('logout')}</span>
               </button>
           </div>
       </div>
   );
+  };
 
   const renderDistribution = () => (
       <div className={`w-full max-w-4xl p-4 sm:p-6 md:p-8 rounded-2xl shadow-2xl animate-zoom-in relative mb-12 ${
@@ -2766,19 +3241,19 @@ export const ArtistHub = () => {
               </div>
           )}
 
-          <div className="flex flex-wrap justify-between items-center gap-3 mt-8 pt-6 border-t border-surface-highlight">
+          <div className="flex flex-wrap justify-between items-center gap-2 sm:gap-3 mt-8 pt-6 border-t border-surface-highlight w-full min-w-0">
               {distStep > 1 ? (
                   <button 
                       type="button"
                       onClick={() => setDistStep(distStep - 1)} 
-                      className="px-5 py-2.5 rounded-full font-bold text-white hover:bg-white/10 transition text-sm flex items-center gap-1.5"
+                      className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full font-bold text-white hover:bg-white/10 transition text-xs sm:text-sm flex items-center gap-1 shrink-0"
                   >
-                      <ChevronLeft size={18} />
+                      <ChevronLeft size={16} />
                       <span>{t('back')}</span>
                   </button>
-              ) : <div></div>}
+              ) : <div className="shrink-0"></div>}
 
-              <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end shrink-0 min-w-0 max-w-full">
                   {/* Save to Draft button available on Step 3 or anywhere */}
                   <button
                       type="button"
@@ -2787,33 +3262,34 @@ export const ArtistHub = () => {
                           if (currentModerator) setView('MOD_DASH');
                           else setView('ARTIST_DASH');
                       }}
-                      className={`px-4 py-2 rounded-full font-semibold text-xs sm:text-sm text-secondary hover:text-white transition flex items-center gap-1.5 border shadow-sm ${
+                      className={`px-3 sm:px-4 py-2 rounded-full font-semibold text-xs sm:text-sm text-secondary hover:text-white transition flex items-center gap-1.5 border shadow-sm shrink-0 ${
                         isLiquidGlass
                           ? 'max-md:bg-white/[0.1] max-md:backdrop-blur-xl max-md:border-white/15 md:bg-surface-highlight md:hover:bg-zinc-700 md:border-white/10'
                           : 'bg-surface-highlight hover:bg-zinc-700 border-white/10'
                       }`}
                       title={t('saveDraft')}
                   >
-                      <Bookmark size={15} className="text-primary" />
-                      <span>{t('saveDraft')}</span>
+                      <Bookmark size={14} className="text-primary shrink-0" />
+                      <span className="hidden sm:inline">{t('saveDraft')}</span>
+                      <span className="inline sm:hidden">В черновик</span>
                   </button>
 
                   {distStep < 3 ? (
                       <button 
                         type="button"
                         onClick={handleNextStep} 
-                        className={`px-7 py-2.5 rounded-full font-bold bg-white text-black hover:scale-105 active:scale-95 transition text-sm flex items-center gap-1.5 ${
+                        className={`px-4 sm:px-7 py-2 sm:py-2.5 rounded-full font-bold bg-white text-black hover:scale-105 active:scale-95 transition text-xs sm:text-sm flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                           isLiquidGlass ? 'max-md:shadow-[0_4px_16px_rgba(255,255,255,0.25)]' : ''
                         }`}
                       >
                         <span>{t('next')}</span>
-                        <ChevronRight size={18} />
+                        <ChevronRight size={16} />
                       </button>
                   ) : (
                       <button 
                         type="button"
                         onClick={handleSubmitRelease} 
-                        className={`px-7 py-2.5 rounded-full font-bold bg-primary text-black hover:scale-105 active:scale-95 transition text-sm ${
+                        className={`px-4 sm:px-7 py-2 sm:py-2.5 rounded-full font-bold bg-primary text-black hover:scale-105 active:scale-95 transition text-xs sm:text-sm shrink-0 ${
                           isLiquidGlass
                             ? 'max-md:shadow-[0_6px_24px_rgba(29,185,84,0.4),inset_0_1px_0_rgba(255,255,255,0.4)] md:shadow-lg md:shadow-primary/20'
                             : 'shadow-lg shadow-primary/20'
@@ -2867,7 +3343,29 @@ export const ArtistHub = () => {
             deletionRequested: false
         }));
 
-    const myReleases = [...pendingReleases, ...liveAlbums];
+    const getReleaseDateTime = (r: { releaseDate?: string; releaseTime?: string; submissionTime?: string }): number => {
+        if (r.releaseDate) {
+            let dateStr = r.releaseDate;
+            if (r.releaseTime && !dateStr.includes('T')) {
+                dateStr = `${dateStr}T${r.releaseTime}`;
+            }
+            const time = new Date(dateStr).getTime();
+            if (!isNaN(time)) return time;
+            const fallbackTime = new Date(r.releaseDate).getTime();
+            if (!isNaN(fallbackTime)) return fallbackTime;
+        }
+        if (r.submissionTime) {
+            const time = new Date(r.submissionTime).getTime();
+            if (!isNaN(time)) return time;
+        }
+        return 0;
+    };
+
+    const myReleases = [...pendingReleases, ...liveAlbums].sort((a, b) => {
+        const diff = getReleaseDateTime(b) - getReleaseDateTime(a);
+        if (diff !== 0) return diff;
+        return (new Date(b.submissionTime || 0).getTime()) - (new Date(a.submissionTime || 0).getTime());
+    });
     const stats = getArtistStats(currentArtist.artistName);
 
     return (
@@ -3162,7 +3660,7 @@ export const ArtistHub = () => {
           <div className="flex flex-col gap-6">
               <div className="flex justify-center">
                   <div
-                      onClick={() => avatarInputRef.current?.click()}
+                      onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}
                       className={`w-32 h-32 rounded-full flex items-center justify-center cursor-pointer hover:opacity-80 transition relative overflow-hidden group border-2 border-transparent hover:border-primary ${
                         isLiquidGlass ? 'max-md:bg-white/[0.08] max-md:border-white/15 md:bg-surface-highlight' : 'bg-surface-highlight'
                       }`}
@@ -3172,11 +3670,17 @@ export const ArtistHub = () => {
                       ) : (
                           <Camera size={40} className="text-secondary" />
                       )}
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                          <span className="text-xs font-bold text-white uppercase">{t('changeCover')}</span>
-                      </div>
+                      {isUploadingAvatar ? (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                              <div className="w-8 h-8 border-2 border-white/20 border-t-primary rounded-full animate-spin" />
+                          </div>
+                      ) : (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                              <span className="text-xs font-bold text-white uppercase">{t('changeCover')}</span>
+                          </div>
+                      )}
                   </div>
-                  <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+                  <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -3229,13 +3733,12 @@ export const ArtistHub = () => {
       const filteredTracks = pickSearch ? tracks.filter(t => t.title.toLowerCase().includes(pickSearch.toLowerCase()) && t.artist === currentArtist?.artistName) : [];
       const filteredAlbums = pickSearch ? albums.filter(a => a.title.toLowerCase().includes(pickSearch.toLowerCase()) && a.artist === currentArtist?.artistName) : [];
 
-      // Actually, artists usually pick their own stuff, or anything? "Artist Pick" usually implies anything.
-      // Let's assume they can pick anything, but typically their own or what they like.
-      // Let's search everything.
       const searchResults = [
           ...tracks.filter(t => t.title.toLowerCase().includes(pickSearch.toLowerCase())).map(t => ({...t, type: 'TRACK' as const})),
           ...albums.filter(a => a.title.toLowerCase().includes(pickSearch.toLowerCase())).map(a => ({...a, type: 'ALBUM' as const}))
       ].slice(0, 20);
+
+      const artistAvatar = currentArtist?.avatar || "";
 
       return (
         <div className={`w-full max-w-2xl p-6 md:p-8 rounded-xl shadow-2xl animate-zoom-in relative h-[80vh] flex flex-col ${
@@ -3243,75 +3746,193 @@ export const ArtistHub = () => {
             ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-3xl max-md:border max-md:border-white/15 max-md:shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight'
             : 'bg-surface border border-surface-highlight'
         }`}>
+            {/* Top Navigation */}
             <button 
-              onClick={() => setView('ARTIST_DASH')} 
-              className={`absolute top-6 md:top-8 left-6 md:left-8 text-secondary hover:text-white ${
+              onClick={() => {
+                if (selectedPickItem) {
+                  setSelectedPickItem(null);
+                } else {
+                  setView('ARTIST_DASH');
+                }
+              }} 
+              className={`absolute top-6 md:top-8 left-6 md:left-8 text-secondary hover:text-white transition ${
                 isLiquidGlass ? 'max-md:p-1.5 max-md:rounded-full max-md:bg-white/[0.08] max-md:border max-md:border-white/10' : ''
               }`}
+              title={selectedPickItem ? "Назад к поиску" : "Назад"}
             >
               <ArrowLeft size={24}/>
             </button>
             <h2 className="text-2xl font-bold text-center mb-6">{t('artistPick')}</h2>
 
-            <div className="relative mb-6">
-                <Search className="absolute left-4 top-3.5 text-secondary" size={20} />
-                <input
-                    type="text"
-                    placeholder={t('searchTrackAlbum')}
-                    className={`w-full py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary ${
-                      isLiquidGlass
-                        ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 md:bg-background'
-                        : 'bg-background'
-                    }`}
-                    value={pickSearch}
-                    onChange={e => setPickSearch(e.target.value)}
-                    autoFocus
-                />
-            </div>
+            {selectedPickItem ? (
+              /* Step 2: Confirmation with optional comment */
+              <div className="flex-1 overflow-y-auto flex flex-col justify-between gap-6 pb-2">
+                <div className="flex flex-col gap-5">
+                  <div className="text-sm font-semibold text-secondary">
+                    Выбранный релиз или трек:
+                  </div>
 
-            <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-                {pickSearch && searchResults.length === 0 && <div className="text-center text-secondary">{t('noResults')}</div>}
-                {!pickSearch && <div className="text-center text-secondary">{t('searchToFind')}</div>}
+                  {/* Selected Item Preview Card */}
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-surface-highlight/70 border border-white/10">
+                    <img 
+                      src={selectedPickItem.image} 
+                      alt={selectedPickItem.title} 
+                      className="w-16 h-16 rounded-xl object-cover shadow-md shrink-0 bg-zinc-800" 
+                    />
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-base truncate">{selectedPickItem.title}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-white/10 text-secondary shrink-0">
+                          {selectedPickItem.type === 'TRACK' ? 'Трек' : 'Альбом'}
+                        </span>
+                      </div>
+                      <span className="text-xs text-secondary truncate mt-0.5">{selectedPickItem.subtitle}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPickItem(null)}
+                      className="text-xs font-semibold text-primary hover:underline shrink-0 ml-2"
+                    >
+                      Изменить
+                    </button>
+                  </div>
 
-                {searchResults.map((item: any) => {
-                   let image = "";
-                   try {
-                       image = item.type === 'TRACK' ? getTrackCover(item) : getAlbumCover(item.id);
-                   } catch (e) {
-                       console.error("Error getting cover", e);
-                   }
-                   const subtitle = item.type === 'TRACK' ? item.artist : (item.year ? `Album • ${item.year}` : 'Album');
+                  {/* Comment Section */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <span>Комментарий к выбору</span>
+                        <span className="text-xs font-normal text-secondary">(необязательно)</span>
+                      </label>
+                      <span className="text-xs text-secondary/70">{pickComment.length} / 120</span>
+                    </div>
 
-                   return (
-                       <div
-                           key={`${item.type}_${item.id}`}
-                           onClick={() => {
-                               submitProfileEdit({
-                                   newArtistPick: {
+                    <textarea
+                      rows={3}
+                      maxLength={120}
+                      value={pickComment}
+                      onChange={e => setPickComment(e.target.value)}
+                      placeholder="Напишите комментарий к своему выбору (необязательно)..."
+                      className="w-full p-3.5 rounded-2xl bg-surface-highlight border border-white/10 text-white placeholder-secondary/50 focus:outline-none focus:border-primary text-sm resize-none transition"
+                    />
+
+                    {/* Live Preview of Speech Bubble */}
+                    {pickComment.trim() && (
+                      <div className="mt-2 p-3.5 rounded-2xl bg-black/40 border border-white/5">
+                        <div className="text-[11px] font-medium text-secondary/70 mb-2">Предпросмотр плашки в профиле:</div>
+                        <div className="relative self-start">
+                          <div className="bg-white text-black px-3.5 py-2.5 rounded-2xl shadow-xl flex items-center gap-2.5 max-w-md">
+                            {artistAvatar ? (
+                              <img src={artistAvatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0 border border-black/10 shadow-sm" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-zinc-800 shrink-0" />
+                            )}
+                            <div className="text-xs font-semibold text-zinc-900 leading-snug break-words">
+                              {pickComment.trim()}
+                            </div>
+                          </div>
+                          <div className="w-2.5 h-2.5 bg-white rotate-45 ml-5 -mt-1 shadow-sm" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Save and Cancel buttons */}
+                <div className="flex items-center gap-3 pt-4 border-t border-surface-highlight">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPickItem(null)}
+                    className="flex-1 py-3 rounded-xl bg-surface-highlight hover:bg-surface-highlight/80 text-white font-bold text-sm transition"
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      submitProfileEdit({
+                        newArtistPick: {
+                          type: selectedPickItem.type,
+                          id: selectedPickItem.id,
+                          image: selectedPickItem.image,
+                          subtitle: selectedPickItem.title,
+                          comment: pickComment.trim() || undefined
+                        }
+                      });
+                      showNotification("Выбор артиста обновлен (на рассмотрении)", "success");
+                      setSelectedPickItem(null);
+                      setPickComment("");
+                      setPickSearch("");
+                      setView('ARTIST_DASH');
+                    }}
+                    className="flex-1 py-3 rounded-xl bg-primary hover:bg-primary/90 text-black font-bold text-sm shadow-md transition"
+                  >
+                    Сохранить выбор
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Step 1: Search and list */
+              <>
+                <div className="relative mb-6">
+                    <Search className="absolute left-4 top-3.5 text-secondary" size={20} />
+                    <input
+                        type="text"
+                        placeholder={t('searchTrackAlbum')}
+                        className={`w-full py-3 pl-12 pr-4 rounded-full text-white focus:outline-none focus:ring-1 focus:ring-primary ${
+                          isLiquidGlass
+                            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 md:bg-background'
+                            : 'bg-background'
+                        }`}
+                        value={pickSearch}
+                        onChange={e => setPickSearch(e.target.value)}
+                        autoFocus
+                    />
+                </div>
+
+                <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+                    {pickSearch && searchResults.length === 0 && <div className="text-center text-secondary">{t('noResults')}</div>}
+                    {!pickSearch && <div className="text-center text-secondary">{t('searchToFind')}</div>}
+
+                    {searchResults.map((item: any) => {
+                       let image = "";
+                       try {
+                           image = item.type === 'TRACK' ? getTrackCover(item) : getAlbumCover(item.id);
+                       } catch (e) {
+                           console.error("Error getting cover", e);
+                       }
+                       const subtitle = item.type === 'TRACK' ? item.artist : (item.year ? `Album • ${item.year}` : 'Album');
+
+                       return (
+                           <div
+                               key={`${item.type}_${item.id}`}
+                               onClick={() => {
+                                   setSelectedPickItem({
                                        type: item.type,
                                        id: item.id,
                                        image: image,
-                                       subtitle: item.title
-                                   }
-                               });
-                               showNotification("Artist Pick updated (Pending Approval)", "success");
-                               setView('ARTIST_DASH');
-                           }}
-                           className={`flex items-center gap-4 p-3 rounded cursor-pointer transition ${
-                             isLiquidGlass
-                               ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 max-md:rounded-xl md:hover:bg-surface-highlight'
-                               : 'hover:bg-surface-highlight'
-                           }`}
-                       >
-                           <img src={image} className="w-12 h-12 rounded object-cover" />
-                           <div className="flex flex-col">
-                               <span className="font-bold">{item.title}</span>
-                               <span className="text-xs text-secondary">{subtitle}</span>
+                                       title: item.title,
+                                       subtitle: subtitle
+                                   });
+                                   setPickComment(currentArtist?.artistPick?.id === item.id ? (currentArtist?.artistPick?.comment || "") : "");
+                               }}
+                               className={`flex items-center gap-4 p-3 rounded cursor-pointer transition ${
+                                 isLiquidGlass
+                                   ? 'max-md:bg-white/[0.05] max-md:border max-md:border-white/10 max-md:rounded-xl md:hover:bg-surface-highlight'
+                                   : 'hover:bg-surface-highlight'
+                               }`}
+                           >
+                               <img src={image} className="w-12 h-12 rounded object-cover shrink-0" />
+                               <div className="flex flex-col min-w-0">
+                                   <span className="font-bold truncate">{item.title}</span>
+                                   <span className="text-xs text-secondary truncate">{subtitle}</span>
+                               </div>
                            </div>
-                       </div>
-                   )
-                })}
-            </div>
+                       )
+                    })}
+                </div>
+              </>
+            )}
         </div>
       );
   };
@@ -3479,7 +4100,7 @@ export const ArtistHub = () => {
                           )}
                       </div>
 
-                      {/* Header Controls: Play, Edit, Delete */}
+                      {/* Header Controls: Play, Stats, Edit, Delete */}
                       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 mt-4 sm:mt-5">
                           <button
                               type="button"
@@ -3488,6 +4109,18 @@ export const ArtistHub = () => {
                           >
                               {isReleasePlaying ? <Pause size={16} fill="black" /> : <Play size={16} fill="black" className="ml-0.5" />}
                               <span>{isReleasePlaying ? 'Пауза' : 'Слушать'}</span>
+                          </button>
+
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setSelectedStatsRelease(selectedRelease);
+                              }}
+                              className="p-2 sm:p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/10 transition active:scale-95 group relative"
+                              title="Статистика"
+                              aria-label="Статистика"
+                          >
+                              <BarChart2 size={16} className="text-zinc-300 group-hover:text-primary transition-colors" />
                           </button>
 
                           {canEdit && (
@@ -3699,6 +4332,897 @@ export const ArtistHub = () => {
               </div>
           </div>
       );
+  };
+
+  const renderReleaseStatsModal = () => {
+    if (!selectedStatsRelease) return null;
+
+    const release = selectedStatsRelease;
+    const releaseTracks = release.tracks || [];
+    const count = releaseTracks.length;
+    const trackCountText = `${count} ${count === 1 ? 'трек' : (count >= 2 && count <= 4) ? 'трека' : 'треков'}`;
+    const releaseYear = release.releaseDate ? new Date(release.releaseDate).getFullYear() : 2026;
+    const coverUrl = release.covers && release.covers.length > 0 ? release.covers[0] : '';
+
+    const statusBadgeClass =
+      release.status === 'LIVE' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' :
+      release.status === 'APPROVED' ? 'bg-white/[0.06] text-zinc-300 border border-white/10' :
+      release.status === 'REJECTED' ? 'bg-red-500/15 text-red-400 border border-red-500/25' :
+      'bg-white/[0.04] text-zinc-400 border border-white/[0.08]';
+
+    const statusText =
+      release.status === 'LIVE' ? 'LIVE' :
+      release.status === 'APPROVED' ? 'Одобрен' :
+      release.status === 'REJECTED' ? 'Отклонен' :
+      'На модерации';
+
+    const formatWithSpaces = (num: number): string => {
+      return new Intl.NumberFormat('ru-RU').format(Math.round(num || 0)).replace(/\u00A0/g, ' ');
+    };
+
+    const getPluralPlays = (cnt: number): string => {
+      const n = Math.abs(Math.round(cnt || 0)) % 100;
+      const n1 = n % 10;
+      if (n > 10 && n < 20) return 'прослушиваний';
+      if (n1 > 1 && n1 < 5) return 'прослушивания';
+      if (n1 === 1) return 'прослушивание';
+      return 'прослушиваний';
+    };
+
+    // Determine release date and whether the release is not out yet
+    let releaseDateObj: Date | null = null;
+    if (release.releaseDate) {
+      const parsed = new Date(release.releaseDate);
+      if (!isNaN(parsed.getTime())) {
+        releaseDateObj = parsed;
+      }
+    }
+
+    const formatDisplayDate = (dObj: Date | null, rawDateStr?: string): string => {
+      if (dObj) {
+        const day = String(dObj.getDate()).padStart(2, '0');
+        const month = String(dObj.getMonth() + 1).padStart(2, '0');
+        const year = dObj.getFullYear();
+        return `${day}/${month}/${year}`;
+      }
+      if (rawDateStr) {
+        return rawDateStr;
+      }
+      return 'скоро';
+    };
+
+    const formattedReleaseDate = formatDisplayDate(releaseDateObj, release.releaseDate);
+    const isFutureDate = Boolean(releaseDateObj && releaseDateObj.getTime() > Date.now());
+    const isUnreleased = release.status !== 'LIVE' || isFutureDate;
+
+    // 1. Release release time determination (every 24h updates at this exact time)
+    let releaseHour = 0;
+    let releaseMinute = 0;
+
+    if (release.releaseTime && release.releaseTime.includes(':')) {
+      const parts = release.releaseTime.split(':').map(Number);
+      if (!isNaN(parts[0])) {
+        releaseHour = parts[0];
+        releaseMinute = parts[1] || 0;
+      }
+    } else if (release.releaseDate && release.releaseDate.includes('T')) {
+      const parsed = new Date(release.releaseDate);
+      if (!isNaN(parsed.getTime())) {
+        releaseHour = parsed.getHours();
+        releaseMinute = parsed.getMinutes();
+      }
+    } else if (release.submissionTime) {
+      const parsed = new Date(release.submissionTime);
+      if (!isNaN(parsed.getTime())) {
+        releaseHour = parsed.getHours();
+        releaseMinute = parsed.getMinutes();
+      }
+    }
+
+    const timeFormatted = `${String(releaseHour).padStart(2, '0')}:${String(releaseMinute).padStart(2, '0')}`;
+
+    // Current 24h cycle: starts at releaseHour:releaseMinute
+    const now = new Date();
+    let currentCycleStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), releaseHour, releaseMinute, 0, 0);
+    if (now.getTime() < currentCycleStart.getTime()) {
+      currentCycleStart = new Date(currentCycleStart.getTime() - 24 * 60 * 60 * 1000);
+    }
+    const nextCycleEnd = new Date(currentCycleStart.getTime() + 24 * 60 * 60 * 1000);
+    const prevCycleStart = new Date(currentCycleStart.getTime() - 24 * 60 * 60 * 1000);
+    const msUntilNextCycle = Math.max(1000, nextCycleEnd.getTime() - now.getTime());
+    const hoursLeft = Math.floor(msUntilNextCycle / (60 * 60 * 1000));
+    const minutesLeft = Math.floor((msUntilNextCycle % (60 * 60 * 1000)) / (60 * 1000));
+
+    // 2. Compute Static Snapshot for Summary Cards & Tracks List (frozen for 24h until next update at release time)
+    const prevCycleStartMs = prevCycleStart.getTime();
+    const currentCycleStartMs = currentCycleStart.getTime();
+
+    // Map each track and resolve all its aliases / IDs
+    interface ProcessedTrackStat {
+      index: number;
+      title: string;
+      artist: string;
+      duration: number;
+      cover: string;
+      explicit?: boolean;
+      totalPlays: number;
+      todayPlays: number;
+      yesterdayPlays: number;
+      changePercent: number;
+      changeLabel: string;
+      changeType: 'positive' | 'negative' | 'neutral';
+      isMatch: (logTrackId?: string) => boolean;
+      allIds: string[];
+    }
+
+    const processedTracks: ProcessedTrackStat[] = releaseTracks.map((dt, idx) => {
+      const displayTitle = dt.title?.trim() || `Трек ${idx + 1}`;
+      const displayArtist = dt.artist || release.artistName || 'Артист';
+
+      const matchingStoreTrack = tracks.find(t =>
+        (dt.id && t.id === dt.id) ||
+        (dt.existingHueq && t.hueq && t.hueq.toLowerCase() === dt.existingHueq.toLowerCase()) ||
+        (dt.generatedHueq && t.hueq && t.hueq.toLowerCase() === dt.generatedHueq.toLowerCase()) ||
+        (t.title?.trim().toLowerCase() === displayTitle.toLowerCase() &&
+         (t.artist?.trim().toLowerCase() === displayArtist.toLowerCase() ||
+          t.album?.trim().toLowerCase() === release.title?.trim().toLowerCase()))
+      );
+
+      const allIds = [
+        dt.id,
+        matchingStoreTrack?.id,
+        dt.existingHueq,
+        dt.generatedHueq,
+        matchingStoreTrack?.hueq,
+        displayTitle,
+        matchingStoreTrack?.title?.trim()
+      ].filter(Boolean) as string[];
+
+      const isMatch = (logTrackId?: string): boolean => {
+        if (!logTrackId) return false;
+        const clean = logTrackId.trim().toLowerCase();
+        return allIds.some(id => id.trim().toLowerCase() === clean);
+      };
+
+      // Static Completed 24-hour cycle plays [prevCycleStart, currentCycleStart)
+      const completedCycleLogs = releasePlayLogs.filter(l =>
+        isMatch(l.trackId) && l.timestamp >= prevCycleStartMs && l.timestamp < currentCycleStartMs
+      );
+      const staticTodayPlays = completedCycleLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+
+      // Static Previous 24-hour cycle plays [prevCycleStart - 24h, prevCycleStart)
+      const prevPrevStartMs = prevCycleStartMs - 24 * 60 * 60 * 1000;
+      const prevPrevLogs = releasePlayLogs.filter(l =>
+        isMatch(l.trackId) && l.timestamp >= prevPrevStartMs && l.timestamp < prevCycleStartMs
+      );
+      const staticYesterdayPlays = prevPrevLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+
+      // Static Total Plays recorded as of currentCycleStart
+      const logsUpToCycleStart = releasePlayLogs.filter(l =>
+        isMatch(l.trackId) && l.timestamp < currentCycleStartMs
+      );
+      const staticTotalPlays = Math.max(
+        logsUpToCycleStart.reduce((acc, l) => acc + (Number(l.plays) || 1), 0),
+        matchingStoreTrack?.plays || 0
+      );
+
+      // Real mathematical percentage change between the two static cycles
+      let changePercent = 0;
+      let changeLabel = '0%';
+      let changeType: 'positive' | 'negative' | 'neutral' = 'neutral';
+
+      if (staticYesterdayPlays === 0) {
+        if (staticTodayPlays > 0) {
+          changePercent = 100;
+          changeLabel = '+100%';
+          changeType = 'positive';
+        } else {
+          changePercent = 0;
+          changeLabel = '0%';
+          changeType = 'neutral';
+        }
+      } else {
+        const diff = staticTodayPlays - staticYesterdayPlays;
+        changePercent = Math.round((diff / staticYesterdayPlays) * 100);
+        if (changePercent > 0) {
+          changeLabel = `+${changePercent}%`;
+          changeType = 'positive';
+        } else if (changePercent < 0) {
+          changeLabel = `${changePercent}%`;
+          changeType = 'negative';
+        } else {
+          changeLabel = '0%';
+          changeType = 'neutral';
+        }
+      }
+
+      return {
+        index: idx + 1,
+        title: displayTitle,
+        artist: displayArtist,
+        duration: dt.duration || matchingStoreTrack?.duration || 180,
+        cover: coverUrl,
+        explicit: dt.explicit || matchingStoreTrack?.explicit,
+        totalPlays: staticTotalPlays,
+        todayPlays: staticTodayPlays,
+        yesterdayPlays: staticYesterdayPlays,
+        changePercent,
+        changeLabel,
+        changeType,
+        isMatch,
+        allIds
+      };
+    });
+
+    const releaseTotalPlays = processedTracks.reduce((acc, t) => acc + t.totalPlays, 0);
+    const releaseTodayPlays = processedTracks.reduce((acc, t) => acc + t.todayPlays, 0);
+    const releaseYesterdayPlays = processedTracks.reduce((acc, t) => acc + t.yesterdayPlays, 0);
+
+    let releaseChangeLabel = '0%';
+    let releaseChangeType: 'positive' | 'negative' | 'neutral' = 'neutral';
+    if (releaseYesterdayPlays === 0) {
+      if (releaseTodayPlays > 0) {
+        releaseChangeLabel = '+100%';
+        releaseChangeType = 'positive';
+      } else {
+        releaseChangeLabel = '0%';
+        releaseChangeType = 'neutral';
+      }
+    } else {
+      const diff = releaseTodayPlays - releaseYesterdayPlays;
+      const pct = Math.round((diff / releaseYesterdayPlays) * 100);
+      if (pct > 0) {
+        releaseChangeLabel = `+${pct}%`;
+        releaseChangeType = 'positive';
+      } else if (pct < 0) {
+        releaseChangeLabel = `${pct}%`;
+        releaseChangeType = 'negative';
+      } else {
+        releaseChangeLabel = '0%';
+        releaseChangeType = 'neutral';
+      }
+    }
+
+    // 3. Generate REAL-TIME Daily Time Series for Chart (dynamically updates with live streams)
+    const daysCount = statsPeriod;
+    interface ChartPoint {
+      dayIndex: number;
+      date: Date;
+      shortDate: string;
+      fullDate: string;
+      value: number;
+    }
+
+    const chartPoints: ChartPoint[] = [];
+
+    for (let i = daysCount - 1; i >= 0; i--) {
+      // 24-hour cycle anchored to release time
+      const cycleStart = new Date(currentCycleStart.getTime() - i * 24 * 60 * 60 * 1000);
+      const cycleEnd = new Date(cycleStart.getTime() + 24 * 60 * 60 * 1000);
+
+      // Filter exact logs in this 24h cycle (including live streams for today: i === 0)
+      const cycleLogs = releasePlayLogs.filter(l => {
+        if (l.timestamp < cycleStart.getTime() || l.timestamp >= cycleEnd.getTime()) return false;
+        return processedTracks.some(pt => pt.isMatch(l.trackId));
+      });
+
+      const exactCyclePlays = cycleLogs.reduce((acc, l) => acc + (Number(l.plays) || 1), 0);
+
+      const rawShort = cycleStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+      const rawFull = cycleStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+
+      chartPoints.push({
+        dayIndex: daysCount - 1 - i,
+        date: cycleStart,
+        shortDate: rawShort,
+        fullDate: rawFull,
+        value: exactCyclePlays
+      });
+    }
+
+    // Chart dimensions & scaling: robust against any scale
+    const maxVal = Math.max(...chartPoints.map(p => p.value), 0);
+    let yMax = 100;
+    if (maxVal > 1000000) {
+      yMax = Math.ceil(maxVal / 250000) * 250000;
+    } else if (maxVal > 100000) {
+      yMax = Math.ceil(maxVal / 25000) * 25000;
+    } else if (maxVal > 10000) {
+      yMax = Math.ceil(maxVal / 2500) * 2500;
+    } else if (maxVal > 1000) {
+      yMax = Math.ceil(maxVal / 250) * 250;
+    } else if (maxVal > 100) {
+      yMax = Math.ceil(maxVal / 25) * 25;
+    } else if (maxVal > 0) {
+      yMax = Math.ceil(maxVal / 10) * 10;
+    } else {
+      yMax = 100;
+    }
+
+    const formatTick = (v: number) => {
+      if (v >= 1000000) return `${(v / 1000000).toFixed(1).replace('.0', '')}M`;
+      if (v >= 1000) return `${Math.round(v / 1000)}K`;
+      return String(Math.round(v));
+    };
+
+    const yTicks = [
+      { val: yMax, label: formatTick(yMax) },
+      { val: Math.round(yMax * 0.75), label: formatTick(yMax * 0.75) },
+      { val: Math.round(yMax * 0.5), label: formatTick(yMax * 0.5) },
+      { val: Math.round(yMax * 0.25), label: formatTick(yMax * 0.25) },
+      { val: 0, label: '0' }
+    ];
+
+    const svgWidth = 800;
+    const svgHeight = 280;
+    const padLeft = 60;
+    const padRight = 30;
+    const padTop = 30;
+    const padBottom = 45;
+    const plotW = svgWidth - padLeft - padRight;
+    const plotH = svgHeight - padTop - padBottom;
+
+    const coords = chartPoints.map((pt, idx) => {
+      const x = padLeft + (idx / Math.max(chartPoints.length - 1, 1)) * plotW;
+      const y = padTop + (1 - (pt.value / Math.max(yMax, 1))) * plotH;
+      return { x, y, pt, idx };
+    });
+
+    // Create SVG smooth cubic spline curve
+    let linePathD = '';
+    if (coords.length > 0) {
+      linePathD = `M ${coords[0].x},${coords[0].y}`;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const p0 = coords[i === 0 ? 0 : i - 1];
+        const p1 = coords[i];
+        const p2 = coords[i + 1];
+        const p3 = coords[i + 2] || p2;
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        linePathD += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+      }
+    }
+
+    const firstX = coords[0]?.x || padLeft;
+    const lastX = coords[coords.length - 1]?.x || (padLeft + plotW);
+    const bottomY = padTop + plotH;
+    const areaPathD = `${linePathD} L ${lastX},${bottomY} L ${firstX},${bottomY} Z`;
+
+    const activePointIndex = hoveredGraphIndex !== null && hoveredGraphIndex >= 0 && hoveredGraphIndex < coords.length
+      ? hoveredGraphIndex
+      : coords.length - 1;
+    const activePoint = coords[activePointIndex] || coords[coords.length - 1];
+
+    const accentColor = appSettings?.accentColor || '#1ed760';
+
+    return (
+      <div 
+        className="fixed inset-0 bg-black z-[260] flex flex-col w-full h-full overflow-y-auto animate-fade-in text-white scrollbar-thin"
+      >
+        {/* Top Sticky Navigation Bar */}
+        <header className="sticky top-0 z-30 bg-black/95 backdrop-blur-xl border-b border-surface-highlight px-4 sm:px-8 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <button
+              type="button"
+              onClick={() => setSelectedStatsRelease(null)}
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-surface-highlight hover:bg-white/10 text-secondary hover:text-white border border-surface-highlight transition active:scale-95 text-xs sm:text-sm font-semibold shrink-0"
+            >
+              <ArrowLeft size={16} />
+              <span>Назад</span>
+            </button>
+            <div className="h-5 w-[1px] bg-surface-highlight hidden sm:block shrink-0" />
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-base sm:text-xl font-bold text-white tracking-tight truncate">
+                Статистика релиза
+              </h2>
+              <span className="text-secondary/60 hidden sm:inline">•</span>
+              <span className="text-primary font-bold text-sm sm:text-base truncate hidden sm:inline">
+                {release.title}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            type="button"
+            onClick={() => setSelectedStatsRelease(null)} 
+            className="text-secondary hover:text-white p-2 rounded-full hover:bg-surface-highlight transition shrink-0"
+            title="Закрыть"
+            aria-label="Закрыть"
+          >
+            <X size={22} />
+          </button>
+        </header>
+
+        {/* Full-screen Content Container */}
+        <main className="w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-8 flex flex-col gap-6 flex-1">
+          {/* Release Profile & Period Switcher */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-surface border border-surface-highlight">
+            {/* Release Left Details */}
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="relative shrink-0">
+                <img 
+                  src={coverUrl} 
+                  alt={release.title} 
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover bg-surface-highlight border border-white/10 shadow-md"
+                />
+                {release.covers && release.covers.length > 1 && (
+                  <span className="absolute bottom-1 right-1 bg-black/80 text-[10px] font-bold text-secondary px-2 py-0.5 rounded-full border border-white/10">
+                    +{release.covers.length - 1}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col min-w-0">
+                <h3 className="text-lg sm:text-2xl font-bold text-white truncate tracking-tight">
+                  {release.title}
+                </h3>
+                <div className="text-xs sm:text-sm text-secondary font-medium truncate mt-0.5">
+                  {release.artistName}
+                </div>
+                <div className="text-[11px] sm:text-xs text-secondary/70 mt-1 truncate">
+                  {release.type || 'Single'} • {releaseYear} • {trackCountText}
+                </div>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold uppercase tracking-wider ${statusBadgeClass}`}>
+                    {statusText}
+                  </span>
+                  {release.genre && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-surface-highlight text-secondary border border-surface-highlight">
+                      {normalizeClassicGenre(release.genre)}
+                    </span>
+                  )}
+                  {release.label && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-surface-highlight text-secondary border border-surface-highlight max-w-[180px] truncate" title={release.label}>
+                      {release.label}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Period Switcher: 7 дней | 30 дней (only shown when release is released) */}
+            {!isUnreleased && (
+              <div className="inline-flex p-1 rounded-xl bg-surface-highlight border border-white/5 shrink-0 self-start sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatsPeriod(7);
+                    setHoveredGraphIndex(null);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition ${
+                    statsPeriod === 7
+                      ? 'bg-primary text-black shadow-md'
+                      : 'text-secondary hover:text-white'
+                  }`}
+                >
+                  7 дней
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatsPeriod(30);
+                    setHoveredGraphIndex(null);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition ${
+                    statsPeriod === 30
+                      ? 'bg-primary text-black shadow-md'
+                      : 'text-secondary hover:text-white'
+                  }`}
+                >
+                  30 дней
+                </button>
+              </div>
+            )}
+          </div>
+
+          {isUnreleased ? (
+            /* Unreleased State: No statistics shown, clear friendly reminder with release date */
+            <div className="p-8 sm:p-14 rounded-2xl bg-surface border border-surface-highlight flex flex-col items-center justify-center text-center my-auto min-h-[380px]">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-surface-highlight border border-surface-highlight flex items-center justify-center mb-5 text-secondary shadow-lg">
+                <CalendarClock size={36} className="text-primary" />
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-2">
+                Релиз ещё не вышел
+              </h3>
+
+              <p className="text-secondary text-sm sm:text-base max-w-md mb-6 leading-relaxed">
+                Статистика прослушиваний станет доступна после официального выхода релиза на платформе.
+              </p>
+
+              <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-highlight border border-surface-highlight text-white text-xs sm:text-sm font-medium">
+                <Clock size={15} className="text-primary shrink-0" />
+                <span>
+                  Возвращайтесь <strong className="text-white font-bold">{formattedReleaseDate}</strong>
+                  {release.releaseTime ? ` в ${release.releaseTime}` : ''}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Primary Metrics Row: 2 Key Cards with perfectly aligned numbers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Total Plays Card */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-surface-highlight flex flex-col justify-between">
+                  <div className="flex items-center justify-between min-h-[28px]">
+                    <div className="flex items-center gap-2 text-secondary text-xs font-semibold uppercase tracking-wider">
+                      <Headphones size={18} className="text-primary shrink-0" />
+                      <span>Прослушивания (всего)</span>
+                    </div>
+                  </div>
+
+                  <div className="text-3xl sm:text-4xl font-black text-white my-3 sm:my-4 tracking-tight">
+                    {formatWithSpaces(releaseTotalPlays)}
+                  </div>
+
+                  <div className="text-[11px] text-secondary/80 flex items-center gap-1.5 pt-2 border-t border-surface-highlight">
+                    <Music size={12} className="text-secondary shrink-0" />
+                    <span className="truncate">
+                      Суммарно по всем трекам релиза
+                    </span>
+                  </div>
+                </div>
+
+                {/* Today Plays Card with 24h release-time update anchor */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-surface-highlight flex flex-col justify-between">
+                  <div className="flex items-center justify-between min-h-[28px]">
+                    <div className="flex items-center gap-2 text-secondary text-xs font-semibold uppercase tracking-wider">
+                      <BarChart2 size={18} className="text-primary shrink-0" />
+                      <span>Прослушивания за сутки</span>
+                    </div>
+                    <span className={`text-xs font-bold flex items-center gap-1 px-2.5 py-0.5 rounded-full border shrink-0 ${
+                      releaseChangeType === 'positive'
+                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                        : releaseChangeType === 'negative'
+                        ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                        : 'text-secondary bg-surface-highlight border-surface-highlight'
+                    }`}>
+                      {releaseChangeType === 'positive' && '↑ '}
+                      {releaseChangeType === 'negative' && '↓ '}
+                      {releaseChangeLabel} чем вчера
+                    </span>
+                  </div>
+
+                  <div className="text-3xl sm:text-4xl font-black text-white my-3 sm:my-4 tracking-tight">
+                    {formatWithSpaces(releaseTodayPlays)}
+                  </div>
+
+                  {/* 24-hour cycle update notice */}
+                  <div className="text-[11px] text-secondary/80 flex items-center gap-1.5 pt-2 border-t border-surface-highlight">
+                    <Clock size={12} className="text-secondary shrink-0" />
+                    <span className="truncate">
+                      Статичный отчёт • обновление каждые сутки в <strong className="text-zinc-200 font-medium">{timeFormatted}</strong> (след. через {hoursLeft} ч {minutesLeft} мин)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+          {/* Large Interactive Chart: Прослушивания по дням */}
+          <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-surface-highlight relative flex flex-col">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h4 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                    Прослушивания по дням
+                  </h4>
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface-highlight border border-white/10 text-secondary text-[11px] font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    <span>В реальном времени</span>
+                  </div>
+                </div>
+                <p className="text-xs text-secondary/70 mt-0.5">
+                  Суточная динамика релиза с живым обновлением текущих суток
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isLoadingStatsLogs && (
+                  <span className="text-[11px] text-secondary animate-pulse flex items-center gap-1">
+                    Синхронизация...
+                  </span>
+                )}
+                <span className="text-xs text-secondary/80 bg-surface-highlight px-2.5 py-1 rounded-full border border-surface-highlight font-medium">
+                  {statsPeriod === 7 ? 'Последние 7 дней' : 'Последние 30 дней'}
+                </span>
+              </div>
+            </div>
+
+            {/* SVG Chart Container with EXPLICIT CSS HEIGHT to prevent collapsing */}
+            <div className="relative w-full h-[280px] sm:h-[320px] md:h-[360px] select-none rounded-2xl bg-black border border-surface-highlight p-2 sm:p-4">
+              {/* Active Tooltip Popover */}
+              {activePoint && (
+                <div 
+                  className="absolute pointer-events-none z-20 bg-surface border border-surface-highlight shadow-2xl rounded-xl p-3 transition-all duration-150 -translate-x-1/2 -translate-y-full"
+                  style={{
+                    left: `${(activePoint.x / svgWidth) * 100}%`,
+                    top: `${Math.max(10, (activePoint.y / svgHeight) * 100 - 10)}%`
+                  }}
+                >
+                  <div className="text-[11px] text-secondary font-medium">
+                    {activePoint.pt.fullDate}
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-white leading-tight mt-0.5">
+                    {formatWithSpaces(activePoint.pt.value)}
+                  </div>
+                  <div className="text-[10px] text-secondary/70">
+                    {getPluralPlays(activePoint.pt.value)}
+                  </div>
+                </div>
+              )}
+
+              <svg 
+                viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
+                className="w-full h-full"
+                style={{ display: 'block' }}
+              >
+                <defs>
+                  <linearGradient id="chartAccentGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={accentColor} stopOpacity="0.22" />
+                    <stop offset="100%" stopColor={accentColor} stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+
+                {/* Horizontal Grid lines & Y-ticks */}
+                {yTicks.map((t, idx) => {
+                  const y = padTop + (1 - (t.val / Math.max(yMax, 1))) * plotH;
+                  return (
+                    <g key={idx}>
+                      <line 
+                        x1={padLeft} 
+                        y1={y} 
+                        x2={padLeft + plotW} 
+                        y2={y} 
+                        stroke="rgba(255,255,255,0.06)" 
+                        strokeDasharray={t.val === 0 ? "0" : "3 3"}
+                        strokeWidth="1"
+                      />
+                      <text 
+                        x={padLeft - 10} 
+                        y={y + 4} 
+                        textAnchor="end" 
+                        fill="rgba(255,255,255,0.35)" 
+                        fontSize="11" 
+                        fontWeight="500"
+                        fontFamily="monospace"
+                      >
+                        {t.label}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Area Gradient Fill */}
+                <path d={areaPathD} fill="url(#chartAccentGrad)" />
+
+                {/* Main Stroke Curve */}
+                <path 
+                  d={linePathD} 
+                  fill="none" 
+                  stroke={accentColor} 
+                  strokeWidth="2.5" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                />
+
+                {/* Vertical Cursor Line at active point */}
+                {activePoint && (
+                  <line 
+                    x1={activePoint.x} 
+                    y1={padTop} 
+                    x2={activePoint.x} 
+                    y2={bottomY} 
+                    stroke={accentColor} 
+                    strokeOpacity="0.35"
+                    strokeDasharray="3 3" 
+                    strokeWidth="1"
+                  />
+                )}
+
+                {/* Interactive Points */}
+                {coords.map((c) => {
+                  const isActive = activePoint && activePoint.idx === c.idx;
+                  return (
+                    <g 
+                      key={c.idx}
+                      className="cursor-pointer"
+                      onMouseEnter={() => setHoveredGraphIndex(c.idx)}
+                      onClick={() => setHoveredGraphIndex(c.idx)}
+                    >
+                      {/* Transparent hit target for mouse & touch */}
+                      <circle cx={c.x} cy={c.y} r="18" fill="transparent" />
+
+                      {isActive && (
+                        <circle 
+                          cx={c.x} 
+                          cy={c.y} 
+                          r="9" 
+                          fill={`${accentColor}25`}
+                          stroke={accentColor} 
+                          strokeWidth="1.5" 
+                        />
+                      )}
+
+                      <circle 
+                        cx={c.x} 
+                        cy={c.y} 
+                        r={isActive ? "5" : "3.5"} 
+                        fill={accentColor} 
+                        stroke="#ffffff" 
+                        strokeWidth="1.5"
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* X-axis date labels */}
+                {coords.map((c, i) => {
+                  const shouldShowLabel = statsPeriod === 7 
+                    ? true 
+                    : (i % 5 === 0 || i === coords.length - 1);
+
+                  if (!shouldShowLabel) return null;
+
+                  return (
+                    <text
+                      key={i}
+                      x={c.x}
+                      y={bottomY + 22}
+                      textAnchor="middle"
+                      fill="rgba(255,255,255,0.4)" 
+                      fontSize={statsPeriod === 7 ? "11" : "10"}
+                      fontWeight="500"
+                    >
+                      {c.pt.shortDate}
+                    </text>
+                  );
+                })}
+              </svg>
+            </div>
+          </div>
+
+          {/* Tracks Section: Треки в релизе */}
+          <div className="flex flex-col gap-3 pb-8">
+            <div className="flex items-center justify-between px-1">
+              <h4 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Треки в релизе</span>
+                <span className="text-xs text-secondary/70 font-normal">({processedTracks.length})</span>
+              </h4>
+            </div>
+
+            {/* Desktop Table View (Hidden on mobile) */}
+            <div className="hidden md:block overflow-hidden rounded-2xl border border-surface-highlight bg-surface shadow-md">
+              <div className="grid grid-cols-12 gap-3 px-5 py-3.5 border-b border-surface-highlight text-xs font-semibold text-secondary uppercase tracking-wider bg-surface-highlight/70">
+                <div className="col-span-1 text-center">#</div>
+                <div className="col-span-5">Название</div>
+                <div className="col-span-2 text-right">Прослушивания (всего)</div>
+                <div className="col-span-2 text-right">За сутки</div>
+                <div className="col-span-2 text-right">Изменение</div>
+              </div>
+
+              <div className="divide-y divide-white/5">
+                {processedTracks.map((trk) => (
+                  <div 
+                    key={trk.index} 
+                    className="grid grid-cols-12 gap-3 px-5 py-3.5 items-center hover:bg-white/5 transition group"
+                  >
+                    <div className="col-span-1 text-center text-xs font-mono text-secondary/60 group-hover:text-white transition">
+                      {trk.index}
+                    </div>
+
+                    <div className="col-span-5 flex items-center gap-3 min-w-0">
+                      <img 
+                        src={trk.cover} 
+                        alt={trk.title} 
+                        className="w-11 h-11 rounded-lg object-cover bg-surface-highlight border border-white/5 shrink-0 shadow-sm"
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-sm text-white truncate">
+                            {trk.title}
+                          </span>
+                          {trk.explicit && <ExplicitBadge size="sm" />}
+                        </div>
+                        <div className="text-xs text-secondary truncate">
+                          {trk.artist} • {formatDuration(trk.duration)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 text-right font-bold text-sm text-white">
+                      {formatWithSpaces(trk.totalPlays)}
+                    </div>
+
+                    <div className="col-span-2 text-right font-medium text-sm text-secondary">
+                      {formatWithSpaces(trk.todayPlays)}
+                    </div>
+
+                    <div className="col-span-2 text-right">
+                      <span className={`text-xs font-semibold ${
+                        trk.changeType === 'positive'
+                          ? 'text-emerald-400'
+                          : trk.changeType === 'negative'
+                          ? 'text-red-400'
+                          : 'text-secondary/60'
+                      }`}>
+                        {trk.changeType === 'positive' && '↑ '}
+                        {trk.changeType === 'negative' && '↓ '}
+                        {trk.changeLabel}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile Cards View (Hidden on desktop) */}
+            <div className="md:hidden flex flex-col gap-2.5">
+              {processedTracks.map((trk) => (
+                <div 
+                  key={trk.index}
+                  className="p-3.5 rounded-2xl bg-surface border border-surface-highlight shadow-sm flex flex-col gap-2.5"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs font-mono text-secondary/60 w-4 text-center shrink-0">
+                      {trk.index}
+                    </span>
+                    <img 
+                      src={trk.cover} 
+                      alt={trk.title} 
+                      className="w-10 h-10 rounded-lg object-cover bg-surface-highlight border border-white/5 shrink-0 shadow-sm"
+                    />
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-sm text-white truncate">
+                          {trk.title}
+                        </span>
+                        {trk.explicit && <ExplicitBadge size="sm" />}
+                      </div>
+                      <div className="text-xs text-secondary truncate">
+                        {trk.artist} • {formatDuration(trk.duration)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-surface-highlight text-center">
+                    <div>
+                      <div className="text-[10px] text-secondary/70 font-medium">Всего</div>
+                      <div className="text-xs font-bold text-white truncate">
+                        {formatWithSpaces(trk.totalPlays)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-secondary/70 font-medium">За сутки</div>
+                      <div className="text-xs font-semibold text-secondary truncate">
+                        {formatWithSpaces(trk.todayPlays)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-secondary/70 font-medium">Динамика</div>
+                      <div className={`text-xs font-semibold truncate ${
+                        trk.changeType === 'positive'
+                          ? 'text-emerald-400'
+                          : trk.changeType === 'negative'
+                          ? 'text-red-400'
+                          : 'text-secondary/60'
+                      }`}>
+                        {trk.changeType === 'positive' && '↑ '}
+                        {trk.changeType === 'negative' && '↓ '}
+                        {trk.changeLabel}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+            </>
+          )}
+        </main>
+      </div>
+    );
   };
 
   const renderHueqImportModal = () => {
@@ -4080,6 +5604,7 @@ export const ArtistHub = () => {
 
         {/* Overlays */}
         {selectedRelease && renderReleaseDetailModal()}
+        {selectedStatsRelease && renderReleaseStatsModal()}
         {isHueqModalOpen && renderHueqImportModal()}
         {isAddTrackMenuOpen && renderAddTrackMenu()}
         {lyricsModalTrackIdx !== null && distTracks[lyricsModalTrackIdx] && (

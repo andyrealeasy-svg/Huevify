@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../context/StoreContext.tsx';
 import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal } from '../components/Icons.tsx';
 import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
@@ -38,12 +39,13 @@ export const Library = () => {
     removeFromPlaylist, goBack, setCreatePlaylistOpen, setPlaylistIdToEdit, setView, 
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
-    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover,
+    currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover, getArtistAvatar,
     currentTrack, isPlaying, t, appSettings, showNotification, completeAnnouncementTransition
   } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
+  const [isAboutArtistModalOpen, setIsAboutArtistModalOpen] = useState(false);
 
   const handleCreate = () => {
     setPlaylistIdToEdit(null);
@@ -381,12 +383,14 @@ export const Library = () => {
       const { monthlyPlays, globalRank } = getArtistStats(artistName);
       
       // Get Bio and Pick if available
-      const artistAccount = artistAccounts.find(a => a.artistName === artistName && a.status === 'APPROVED');
+      const artistAccount = artistAccounts.find(a => a.artistName === artistName && a.status === 'APPROVED') ||
+                            artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === artistName.trim().toLowerCase());
       const bio = artistAccount?.bio;
       const pick = artistAccount?.artistPick;
       
-      // Only verify if account exists and is approved
-      const isVerified = !!artistAccount;
+      // Only verify if account exists (registered in Huevify For Artists)
+      const isVerified = Boolean(artistAccount);
+      const artistPhoto = artistAccount?.avatar || getArtistAvatar(artistName) || (topTracks[0] ? getTrackCover(topTracks[0]) : '');
 
       const isFollowing = isArtistFollowed(artistName);
 
@@ -395,7 +399,7 @@ export const Library = () => {
             {/* Artist Header */}
             <div 
                 className="relative h-[40vh] bg-cover bg-center flex items-end p-8 animate-appear"
-                style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.2), #121212), url(${artistAccount?.avatar || (topTracks[0] ? getTrackCover(topTracks[0]) : '')})` }}
+                style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.2), #121212), url(${artistPhoto})` }}
             >
                 <div className="absolute top-4 left-4 z-20">
                     <button 
@@ -465,49 +469,70 @@ export const Library = () => {
                         {pick && (
                             <div className="mb-8">
                                 <h2 className="text-2xl font-bold mb-4">{t('artistPick')}</h2>
-                                <div 
-                                    className={`flex items-start gap-4 cursor-pointer p-4 transition group ${
-                                      isLiquidGlass
-                                        ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded md:bg-surface md:hover:bg-surface-highlight'
-                                        : 'rounded bg-surface hover:bg-surface-highlight'
-                                    }`}
-                                    onClick={() => {
-                                        if (!pick.id) return;
-                                        if (pick.type === 'TRACK') {
-                                            const targetTrack = tracks.find(t => t.id === pick.id || (t.hueq && t.hueq.toUpperCase() === pick.id.toUpperCase()));
-                                            if (targetTrack) {
-                                                playTrack(targetTrack);
-                                            } else {
-                                                const byTitle = tracks.find(t => t.artist === artistName && t.title.toLowerCase() === pick.subtitle?.toLowerCase());
-                                                if (byTitle) {
-                                                    playTrack(byTitle);
-                                                }
-                                            }
-                                        } else if (pick.type === 'ALBUM') {
-                                            setView({ type: 'ALBUM', id: pick.id });
-                                        } else if (pick.type === 'PLAYLIST') {
-                                            setView({ type: 'PLAYLIST', id: pick.id });
-                                        }
-                                    }}
-                                >
-                                    <div className="relative w-20 h-20 shrink-0 group">
-                                        <img src={pick.image} className="w-full h-full rounded-xl object-cover shadow-lg" alt={pick.subtitle || ''} />
-                                        {pick.type === 'TRACK' && (
-                                            <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                <Play size={24} fill="white" className="text-white ml-0.5" />
+                                
+                                <div className="flex flex-col gap-2.5 max-w-xl">
+                                    {/* White comment bubble with artist avatar if comment exists */}
+                                    {pick.comment && (
+                                        <div className="relative self-start animate-fade-in">
+                                            <div className="bg-white text-black px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20 relative z-10">
+                                                <img 
+                                                    src={artistPhoto} 
+                                                    alt={artistName} 
+                                                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-black/10 shadow-sm"
+                                                />
+                                                <div className="text-xs sm:text-sm font-semibold text-zinc-900 leading-snug break-words">
+                                                    {pick.comment}
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                    <div className="flex flex-col justify-center min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800 shrink-0">
-                                                <img src={artistAccount?.avatar || pick.image} className="w-full h-full object-cover"/>
-                                            </div>
-                                            <span className="text-xs text-secondary font-bold truncate">{t('postedBy')} {artistName}</span>
+                                            {/* Speech bubble pointer tail towards the pick card */}
+                                            <div className="w-3 h-3 bg-white rotate-45 ml-6 -mt-1.5 shadow-sm relative z-0" />
                                         </div>
-                                        <div className="font-bold group-hover:underline text-lg truncate">{pick.subtitle}</div>
-                                        <div className="text-sm text-secondary">
-                                            {pick.type === 'TRACK' ? 'Трек' : pick.type === 'PLAYLIST' ? 'Плейлист' : (t('latestRelease') || 'Релиз')}
+                                    )}
+
+                                    <div 
+                                        className={`flex items-start gap-4 cursor-pointer p-4 transition group ${
+                                          isLiquidGlass
+                                            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded-2xl md:bg-surface md:hover:bg-surface-highlight'
+                                            : 'rounded-2xl bg-surface hover:bg-surface-highlight'
+                                        }`}
+                                        onClick={() => {
+                                            if (!pick.id) return;
+                                            if (pick.type === 'TRACK') {
+                                                const targetTrack = tracks.find(t => t.id === pick.id || (t.hueq && t.hueq.toUpperCase() === pick.id.toUpperCase()));
+                                                if (targetTrack) {
+                                                    playTrack(targetTrack);
+                                                } else {
+                                                    const byTitle = tracks.find(t => t.artist === artistName && t.title.toLowerCase() === pick.subtitle?.toLowerCase());
+                                                    if (byTitle) {
+                                                        playTrack(byTitle);
+                                                    }
+                                                }
+                                            } else if (pick.type === 'ALBUM') {
+                                                setView({ type: 'ALBUM', id: pick.id });
+                                            } else if (pick.type === 'PLAYLIST') {
+                                                setView({ type: 'PLAYLIST', id: pick.id });
+                                            }
+                                        }}
+                                    >
+                                        <div className="relative w-20 h-20 shrink-0 group">
+                                            <img src={pick.image} className="w-full h-full rounded-xl object-cover shadow-lg" alt={pick.subtitle || ''} />
+                                            {pick.type === 'TRACK' && (
+                                                <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                    <Play size={24} fill="white" className="text-white ml-0.5" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col justify-center min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+                                                    <img src={artistPhoto} className="w-full h-full object-cover"/>
+                                                </div>
+                                                <span className="text-xs text-secondary font-bold truncate">{t('postedBy')} {artistName}</span>
+                                            </div>
+                                            <div className="font-bold group-hover:underline text-lg truncate">{pick.subtitle}</div>
+                                            <div className="text-sm text-secondary">
+                                                {pick.type === 'TRACK' ? 'Трек' : pick.type === 'PLAYLIST' ? 'Плейлист' : (t('latestRelease') || 'Релиз')}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -600,18 +625,30 @@ export const Library = () => {
                     {/* About Column */}
                     <div className="w-full md:w-1/3">
                         <h2 className="text-2xl font-bold mb-4">{t('about')}</h2>
-                        <div className={`overflow-hidden relative group cursor-pointer min-h-[300px] transition ${
-                          isLiquidGlass
-                            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-3xl max-md:shadow-[0_12px_36px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:rounded-lg md:hover:scale-[1.02]'
-                            : 'bg-surface rounded-lg hover:scale-[1.02]'
-                        }`}>
+                        <div 
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setIsAboutArtistModalOpen(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setIsAboutArtistModalOpen(true);
+                            }
+                          }}
+                          className={`overflow-hidden relative group cursor-pointer min-h-[300px] transition active:scale-[0.98] select-none touch-manipulation ${
+                            isLiquidGlass
+                              ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-3xl max-md:shadow-[0_12px_36px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:rounded-2xl md:hover:scale-[1.02]'
+                              : 'bg-surface rounded-2xl hover:scale-[1.02]'
+                          }`}
+                        >
                             {/* Use avatar or fallback to first track cover */}
                             <img 
-                                src={artistAccount?.avatar || (topTracks[0] ? getTrackCover(topTracks[0]) : '')} 
-                                className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition absolute inset-0 bg-zinc-800" 
+                                src={artistPhoto} 
+                                alt={artistName}
+                                className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition absolute inset-0 bg-zinc-800 pointer-events-none" 
                             />
                             
-                            <div className="absolute inset-0 p-6 flex flex-col justify-end z-10">
+                            <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 pointer-events-none">
                                 <div className="mb-4">
                                     <div className="text-3xl font-bold text-white mb-2">#{globalRank}</div>
                                     <div className="text-sm font-bold uppercase tracking-widest text-white">{t('inTheWorld')}</div>
@@ -624,6 +661,135 @@ export const Library = () => {
                     </div>
                 </div>
             </div>
+
+            {/* About Artist Modal / Window rendered at document root via createPortal to prevent scroll trapping */}
+            {isAboutArtistModalOpen && typeof document !== 'undefined' && createPortal(
+              <div 
+                className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-fade-in"
+                onClick={() => setIsAboutArtistModalOpen(false)}
+              >
+                <div 
+                  className={`w-full max-w-2xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 sm:p-8 flex flex-col gap-6 relative shadow-[0_24px_64px_rgba(0,0,0,0.85)] border border-white/10 animate-zoom-in scrollbar-thin ${
+                    isLiquidGlass
+                      ? 'bg-zinc-950/95 backdrop-blur-3xl'
+                      : 'bg-zinc-950'
+                  }`}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Mobile drag handle */}
+                  <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-1 sm:hidden shrink-0" />
+
+                  {/* Header with Title & Close Button */}
+                  <div className="flex items-center justify-between pb-2 border-b border-white/10 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
+                        {t('about')} • {artistName}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAboutArtistModalOpen(false)}
+                      className="text-zinc-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition shrink-0"
+                      title="Закрыть"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {/* 1:1 Aspect Ratio Artist Photo (at the very top) */}
+                  <div className="w-full max-w-[340px] sm:max-w-[380px] aspect-square mx-auto rounded-2xl sm:rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl shrink-0">
+                    <img
+                      src={artistPhoto}
+                      alt={artistName}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+
+                  {/* Desktop Layout (md and up): Left (Rank, Monthly plays), Right (Verified badge, Bio) */}
+                  <div className="hidden md:grid md:grid-cols-12 gap-8 items-start pt-2">
+                    {/* Left Column */}
+                    <div className="md:col-span-5 flex flex-col gap-5">
+                      <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
+                        <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
+                          #{globalRank}
+                        </span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
+                          {t('inTheWorld', 'в мире')}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
+                        <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
+                          {formatPlays(monthlyPlays)}
+                        </span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
+                          {t('monthlyPlays', 'прослушиваний за месяц')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="md:col-span-7 flex flex-col gap-4">
+                      {isVerified && (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
+                          <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                            <Check size={10} strokeWidth={3.5} />
+                          </span>
+                          <span className="text-xs font-bold tracking-wide">
+                            {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="text-zinc-200 text-sm sm:text-base leading-relaxed whitespace-pre-line">
+                        {bio || `Слушайте ${artistName} в Huevify.`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Phone / Mobile Layout (below md): 1. Галочка, 2. Место в мире, 3. Количество за месяц, 4. Био */}
+                  <div className="flex md:hidden flex-col gap-4 pt-1">
+                    {/* 1. Галочка (если зарегистрирован в Huevify For Artists) */}
+                    {isVerified && (
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
+                        <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                          <Check size={10} strokeWidth={3.5} />
+                        </span>
+                        <span className="text-xs font-bold tracking-wide">
+                          {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 2. Место в мире */}
+                    <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
+                      <span className="text-2xl font-black text-white tracking-tight">
+                        #{globalRank}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
+                        {t('inTheWorld', 'в мире')}
+                      </span>
+                    </div>
+
+                    {/* 3. Количество прослушиваний за месяц */}
+                    <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
+                      <span className="text-2xl font-black text-white tracking-tight">
+                        {formatPlays(monthlyPlays)}
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
+                        {t('monthlyPlays', 'прослушиваний за месяц')}
+                      </span>
+                    </div>
+
+                    {/* 4. Био */}
+                    <div className="text-zinc-200 text-sm leading-relaxed whitespace-pre-line pt-2 border-t border-white/10">
+                      {bio || `Слушайте ${artistName} в Huevify.`}
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
         </div>
       )
   }
@@ -1138,34 +1304,47 @@ export const Library = () => {
            )}
         </div>
 
-        {/* Cover Picker Modal */}
-        {isCoverPickerOpen && currentAlbumObj && (
-            <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
-                <div className={`w-full max-w-lg p-6 relative animate-zoom-in ${
-                  isLiquidGlass
-                    ? 'max-md:bg-[#15151e]/85 max-md:backdrop-blur-3xl max-md:border max-md:border-white/20 max-md:rounded-3xl max-md:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.3)] md:bg-surface md:rounded-xl'
-                    : 'bg-surface rounded-xl'
-                }`}>
-                    <button onClick={() => setCoverPickerOpen(false)} className="absolute top-4 right-4 text-white"><X size={24}/></button>
-                    <h2 className="text-xl font-bold mb-4">{t('chooseCover')}</h2>
-                    <p className="text-sm text-secondary mb-4">Select your preferred artwork for this release.</p>
+        {/* Cover Picker Modal rendered via createPortal */}
+        {isCoverPickerOpen && currentAlbumObj && typeof document !== 'undefined' && createPortal(
+            <div 
+              className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+              onClick={() => setCoverPickerOpen(false)}
+            >
+                <div 
+                  className={`w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 rounded-t-3xl sm:rounded-2xl relative animate-zoom-in border border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.85)] ${
+                    isLiquidGlass
+                      ? 'bg-zinc-950/95 backdrop-blur-3xl'
+                      : 'bg-zinc-950'
+                  }`}
+                  onClick={e => e.stopPropagation()}
+                >
+                    <button 
+                      onClick={() => setCoverPickerOpen(false)} 
+                      className="absolute top-4 right-4 text-zinc-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition"
+                      title="Закрыть"
+                    >
+                      <X size={20}/>
+                    </button>
+                    <h2 className="text-xl font-bold text-white mb-1 tracking-tight">{t('chooseCover')}</h2>
+                    <p className="text-xs text-secondary mb-4">Выберите предпочитаемую альтернативную обложку для этого релиза.</p>
                     
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 max-h-[60vh] overflow-y-auto pr-1 scrollbar-thin">
                         {currentAlbumObj.covers.map((c: string, idx: number) => (
                             <div 
                                 key={idx} 
                                 onClick={() => { changeAlbumCover(currentAlbumObj.id, idx); setCoverPickerOpen(false); }}
-                                className="cursor-pointer group relative"
+                                className="cursor-pointer group relative rounded-xl overflow-hidden border border-white/10 aspect-square bg-zinc-900 shadow-md active:scale-95 transition"
                             >
-                                <img src={c} className="w-full aspect-square object-cover rounded-xl shadow-lg group-hover:opacity-80 transition" />
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                    <span className="bg-primary text-black font-bold text-xs px-2 py-1 rounded-full">{t('select')}</span>
+                                <img src={c} alt={`Cover ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                    <span className="bg-primary text-black font-bold text-xs px-3 py-1 rounded-full shadow-md">{t('select')}</span>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </div>
-            </div>
+            </div>,
+            document.body
         )}
 
       </div>

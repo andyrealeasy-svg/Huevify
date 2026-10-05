@@ -26,7 +26,7 @@ export const TrackMenuModal: React.FC<TrackMenuModalProps> = ({
   const { 
     isLiked, toggleLike, openAddToPlaylist, removeFromPlaylist, 
     playlists, currentUser, showNotification, goToArtist, 
-    albums, setView, getTrackCover, tracks, t, appSettings, playNext,
+    albums, setView, getTrackCover, getArtistAvatar, tracks, t, appSettings, playNext,
     setQueueOpen, isShuffle, getUpcomingTracks 
   } = useStore();
 
@@ -305,8 +305,7 @@ export const TrackMenuModal: React.FC<TrackMenuModalProps> = ({
 
             <div className="flex flex-col gap-1 overflow-y-auto max-h-[50vh]">
               {allArtists.map((artistName) => {
-                const artistTrack = tracks.find(t => t.artist === artistName || (t.mainArtists && t.mainArtists.includes(artistName)));
-                const artistImg = artistTrack ? getTrackCover(artistTrack) : null;
+                const artistImg = getArtistAvatar(artistName);
                 return (
                   <button 
                     key={artistName}

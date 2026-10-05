@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ChartRankChange, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord } from '../types';
 import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
-import { SupabaseService, isSupabaseConfigured } from '../services/supabase';
+import { SupabaseService, isSupabaseConfigured, supabase } from '../services/supabase';
 
 interface ArtistStats {
   monthlyPlays: number;
@@ -500,6 +500,7 @@ interface StoreContextType {
   // Cover Management
   getAlbumCover: (albumId: string) => string;
   getTrackCover: (track: Track, explicitAlbumId?: string) => string;
+  getArtistAvatar: (artistName: string) => string | undefined;
   changeAlbumCover: (albumId: string, index: number) => void;
 
   // Artist Hub / Moderation
@@ -895,38 +896,89 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // --- Broadcast Channel for Cross-Tab Syncing ---
+  // --- Reload Artist & Moderation Data in Realtime ---
+  const reloadArtistAndModerationData = async () => {
+    try {
+      const storedArtists = StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []);
+      const storedRequests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+      const storedProfiles = StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []);
+      const storedLegacy = StorageService.load<string[]>('huevify_deleted_legacy', []);
+      const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+
+      if (isSupabaseConfigured()) {
+        try {
+          const [remoteReleases, remoteArtists, remoteProfiles] = await Promise.all([
+            SupabaseService.fetchReleases().catch(() => null),
+            SupabaseService.fetchArtistAccounts().catch(() => null),
+            SupabaseService.fetchProfileEditRequests().catch(() => null)
+          ]);
+
+          if (remoteReleases) {
+            setReleaseRequests(remoteReleases);
+            StorageService.save('huevify_release_requests', remoteReleases);
+          } else {
+            setReleaseRequests(storedRequests);
+          }
+
+          if (remoteArtists) {
+            setArtistAccounts(remoteArtists);
+            StorageService.save('huevify_artist_accounts', remoteArtists);
+          } else {
+            setArtistAccounts(storedArtists);
+          }
+
+          if (remoteProfiles) {
+            setProfileEditRequests(remoteProfiles);
+            StorageService.save('huevify_profile_requests', remoteProfiles);
+          } else {
+            setProfileEditRequests(storedProfiles);
+          }
+        } catch (e) {
+          setArtistAccounts(storedArtists);
+          setReleaseRequests(storedRequests);
+          setProfileEditRequests(storedProfiles);
+        }
+      } else {
+        setArtistAccounts(storedArtists);
+        setReleaseRequests(storedRequests);
+        setProfileEditRequests(storedProfiles);
+      }
+
+      setDeletedLegacyIds(storedLegacy);
+      const reqsToRefresh = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+      refreshLibrary(reqsToRefresh, storedPlays);
+    } catch (err) {
+      console.error("reloadArtistAndModerationData error:", err);
+    }
+  };
+
+  // --- Realtime Syncing across tabs, windows, and custom events ---
   useEffect(() => {
+      const handleSyncMessage = (type: string) => {
+          if (type === 'PLAYLISTS_UPDATE') {
+              setPlaylists(StorageService.load<Playlist[]>('huevify_playlists', []));
+          }
+          if (type === 'TRACKS_UPDATE') {
+              const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
+              const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+              refreshLibrary(requests, storedPlays);
+          }
+          if (type === 'ARTIST_DATA_UPDATE') {
+              reloadArtistAndModerationData();
+          }
+          if (type === 'SETTINGS_UPDATE' && currentUser) {
+              const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
+              if (userSettings) setAppSettingsState(prev => ({ ...prev, ...userSettings }));
+          }
+      };
+
       try {
           if (typeof BroadcastChannel !== 'undefined') {
               broadcastChannelRef.current = new BroadcastChannel('huevify_sync');
               
               broadcastChannelRef.current.onmessage = (event) => {
                   try {
-                      const { type } = event.data;
-                      // When another tab updates data, reload from local storage
-                      if (type === 'PLAYLISTS_UPDATE') {
-                          setPlaylists(StorageService.load<Playlist[]>('huevify_playlists', []));
-                      }
-                      if (type === 'TRACKS_UPDATE') {
-                          const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
-                          const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
-                          refreshLibrary(requests, storedPlays);
-                      }
-                      if (type === 'ARTIST_DATA_UPDATE') {
-                          setArtistAccounts(StorageService.load<ArtistAccount[]>('huevify_artist_accounts', []));
-                          setReleaseRequests(StorageService.load<ReleaseRequest[]>('huevify_release_requests', []));
-                          setProfileEditRequests(StorageService.load<ProfileEditRequest[]>('huevify_profile_requests', []));
-                          setDeletedLegacyIds(StorageService.load<string[]>('huevify_deleted_legacy', []));
-                          
-                          const requests = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
-                          const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
-                          refreshLibrary(requests, storedPlays);
-                      }
-                      if (type === 'SETTINGS_UPDATE' && currentUser) {
-                          const userSettings = StorageService.load<AppSettings | null>(`huevify_settings_${currentUser.id}`, null);
-                          if (userSettings) setAppSettingsState(prev => ({ ...prev, ...userSettings }));
-                      }
+                      if (event.data?.type) handleSyncMessage(event.data.type);
                   } catch (err) {
                       console.error("Sync error:", err);
                   }
@@ -936,10 +988,68 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.warn("BroadcastChannel not supported in this browser.", e);
       }
 
+      const handleCustomSync = (e: any) => {
+          if (e.detail?.type) handleSyncMessage(e.detail.type);
+      };
+
+      const handleStorageEvent = (e: StorageEvent) => {
+          if (
+              e.key === 'huevify_release_requests' ||
+              e.key === 'huevify_artist_accounts' ||
+              e.key === 'huevify_profile_requests' ||
+              e.key === 'huevify_deleted_legacy'
+          ) {
+              reloadArtistAndModerationData();
+          }
+          if (e.key === 'huevify_playlists') {
+              setPlaylists(StorageService.load<Playlist[]>('huevify_playlists', []));
+          }
+      };
+
+      window.addEventListener('huevify_sync', handleCustomSync);
+      window.addEventListener('storage', handleStorageEvent);
+
       return () => {
           broadcastChannelRef.current?.close();
+          window.removeEventListener('huevify_sync', handleCustomSync);
+          window.removeEventListener('storage', handleStorageEvent);
       };
   }, [currentUser]);
+
+  // --- Realtime Auto-Polling when Artist Hub is open ---
+  useEffect(() => {
+    if (!isArtistHubOpen) return;
+
+    reloadArtistAndModerationData();
+
+    const interval = setInterval(() => {
+      reloadArtistAndModerationData();
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [isArtistHubOpen]);
+
+  // --- Supabase Realtime Subscriptions for Moderation Tables ---
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !supabase) return;
+
+    const channel = supabase
+      .channel('huevify_realtime_moderation')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'releases' }, () => {
+        reloadArtistAndModerationData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_accounts' }, () => {
+        reloadArtistAndModerationData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profile_edit_requests' }, () => {
+        reloadArtistAndModerationData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, []);
 
   // --- Live Lyrics Sync from Supabase track_lyrics table ---
   useEffect(() => {
@@ -2658,6 +2768,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return track.cover;
   };
 
+  const getArtistAvatar = (artistName: string): string | undefined => {
+      if (!artistName) return undefined;
+      const clean = artistName.trim().toLowerCase();
+
+      // 1. Check logged-in artist account
+      if (currentArtist && (currentArtist.artistName || '').trim().toLowerCase() === clean && currentArtist.avatar) {
+          return currentArtist.avatar;
+      }
+
+      // 2. Check registered artist accounts (approved first, then any with avatar)
+      const approvedAcc = artistAccounts.find(
+          a => (a.artistName || '').trim().toLowerCase() === clean && a.status === 'APPROVED' && a.avatar
+      );
+      if (approvedAcc?.avatar) return approvedAcc.avatar;
+
+      const anyAcc = artistAccounts.find(
+          a => (a.artistName || '').trim().toLowerCase() === clean && a.avatar
+      );
+      if (anyAcc?.avatar) return anyAcc.avatar;
+
+      // 3. Fallback: if no avatar is set in artist profile, check artist's top track (same fallback as in artist card)
+      const artistTracks = tracks.filter(
+          t => (t.artist || '').trim().toLowerCase() === clean || 
+               (t.mainArtists && t.mainArtists.some(m => (m || '').trim().toLowerCase() === clean))
+      );
+      if (artistTracks.length > 0) {
+          const topTrack = [...artistTracks].sort((a, b) => (b.plays || 0) - (a.plays || 0))[0];
+          if (topTrack) return getTrackCover(topTrack);
+      }
+
+      return undefined;
+  };
+
   const changeAlbumCover = (albumId: string, index: number) => {
       updateSettings({
           albumCoverIndexes: {
@@ -4001,7 +4144,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       t,
       currentUser, login, register, logout, updateUserProfile,
       appSettings, updateSettings, dailyChart,
-      getAlbumCover, changeAlbumCover, getTrackCover,
+      getAlbumCover, changeAlbumCover, getTrackCover, getArtistAvatar,
       isArtistHubOpen, setArtistHubOpen, currentArtist, currentModerator, artistAccounts,
       registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, completeAnnouncementTransition, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
       approveArtist, rejectArtist, approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
