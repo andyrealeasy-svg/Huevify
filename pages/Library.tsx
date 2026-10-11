@@ -46,13 +46,13 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
     tracks, albums, playTrack, goBack, setView, 
     getArtistStats, toggleFollowArtist, isArtistFollowed,
     getAlbumCover, artistAccounts, getTrackCover, getArtistAvatar,
-    t, appSettings, openShareModal
+    t, appSettings, openShareModal,
+    popularMode, setPopularMode
   } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
   const isEn = appSettings?.language === 'English';
 
   const [isAboutArtistModalOpen, setIsAboutArtistModalOpen] = useState(false);
-  const [popularMode, setPopularMode] = useState<'trending' | 'alltime'>('trending');
 
   // Artist's tracks (as main artist or additional artist)
   const artistTracks = useMemo(() => {

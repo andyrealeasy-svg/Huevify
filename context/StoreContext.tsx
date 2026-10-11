@@ -601,6 +601,10 @@ interface StoreContextType {
   openShareModal: (data: Omit<ShareModalData, 'isOpen'>) => void;
   closeShareModal: () => void;
 
+  // Popular tracks mode across artists
+  popularMode: 'trending' | 'alltime';
+  setPopularMode: (mode: 'trending' | 'alltime') => void;
+
   // Actions
   setView: (v: ViewState) => void;
   goToArtist: (artistName: string) => void;
@@ -897,6 +901,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const closeShareModal = () => {
     setShareModalData(null);
+  };
+
+  // --- Popular Mode State (trending / alltime) ---
+  const [popularMode, setPopularModeState] = useState<'trending' | 'alltime'>(() => {
+    try {
+      const saved = StorageService.load<string>('huevify_popular_mode', 'trending');
+      return saved === 'alltime' ? 'alltime' : 'trending';
+    } catch {
+      return 'trending';
+    }
+  });
+
+  const setPopularMode = (mode: 'trending' | 'alltime') => {
+    setPopularModeState(mode);
+    StorageService.save('huevify_popular_mode', mode);
   };
 
   // --- Telegram Mini App Deep Linking & Auto-login ---
@@ -4248,7 +4267,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
       isDeleteModalOpen, playlistToDelete, openDeleteModal, closeDeleteModal, confirmDeletePlaylist,
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,
-      shareModalData, openShareModal, closeShareModal,
+      shareModalData, openShareModal, closeShareModal, popularMode, setPopularMode,
       setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, playNext, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, togglePlaylistSave, toggleLike, isLiked,
       toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache, getTrackStreamInfo
