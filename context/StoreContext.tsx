@@ -3,6 +3,17 @@ import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyCh
 import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
 import { SupabaseService, isSupabaseConfigured, supabase } from '../services/supabase';
+import { getTelegramStartParam, decodeTelegramStartParam } from '../utils/telegramShare.ts';
+
+export interface ShareModalData {
+  isOpen: boolean;
+  type: 'ALBUM' | 'ARTIST';
+  title: string;
+  subtitle: string;
+  cover: string;
+  album?: any;
+  artistName?: string;
+}
 
 interface ArtistStats {
   monthlyPlays: number;
@@ -25,6 +36,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     showAll: "Show All",
     latestReleases: "Latest Releases",
     popularAlbums: "Popular Albums",
+    topArtists: "Top Artists",
     updating: "Chart data updating...",
     plays: "plays",
     dailyPlays: "daily plays",
@@ -62,6 +74,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     postedBy: "Posted By",
     latestRelease: "Latest Release",
     popular: "Popular",
+    popularTwoWeeks: "Last 2 weeks",
     discography: "Discography",
     seeAllDiscography: "Show all",
     allReleases: "All",
@@ -243,6 +256,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     showAll: "Показать все",
     latestReleases: "Новые релизы",
     popularAlbums: "Популярные альбомы",
+    topArtists: "Топ артистов",
     updating: "Обновление чарта...",
     plays: "прослушиваний",
     dailyPlays: "прослушиваний за день",
@@ -280,6 +294,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     postedBy: "Опубликовано",
     latestRelease: "Последний релиз",
     popular: "Популярное",
+    popularTwoWeeks: "За 2 недели",
     discography: "Дискография",
     seeAllDiscography: "Показать все",
     allReleases: "Все",
@@ -581,6 +596,11 @@ interface StoreContextType {
   isProfileModalOpen: boolean;
   setProfileModalOpen: (isOpen: boolean) => void;
 
+  // Share Modal
+  shareModalData: ShareModalData | null;
+  openShareModal: (data: Omit<ShareModalData, 'isOpen'>) => void;
+  closeShareModal: () => void;
+
   // Actions
   setView: (v: ViewState) => void;
   goToArtist: (artistName: string) => void;
@@ -869,6 +889,73 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [playlistToDelete, setPlaylistToDelete] = useState<string | null>(null);
+
+  // --- Share Modal State ---
+  const [shareModalData, setShareModalData] = useState<ShareModalData | null>(null);
+  const openShareModal = (data: Omit<ShareModalData, 'isOpen'>) => {
+    setShareModalData({ ...data, isOpen: true });
+  };
+  const closeShareModal = () => {
+    setShareModalData(null);
+  };
+
+  // --- Telegram Mini App Deep Linking & Auto-login ---
+  const [pendingDeepLink, setPendingDeepLink] = useState<{ type: 'ALBUM' | 'ARTIST'; id: string } | null>(() => {
+    const raw = getTelegramStartParam();
+    return raw ? decodeTelegramStartParam(raw) : null;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg) {
+      try {
+        tg.ready?.();
+        tg.expand?.();
+      } catch (e) {
+        console.warn('Telegram WebApp ready error:', e);
+      }
+
+      if (!currentUser) {
+        const tgUser = tg.initDataUnsafe?.user;
+        const tgName = tgUser
+          ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Telegram User'
+          : 'Telegram User';
+        const autoUser: User = {
+          id: tgUser ? `tg_${tgUser.id}` : `tg_guest_${Date.now()}`,
+          username: tgUser?.username || 'telegram_user',
+          password: '',
+          displayName: tgName,
+          avatar: tgUser?.photo_url || ''
+        };
+        setCurrentUser(autoUser);
+        StorageService.save('huevify_current_user', autoUser);
+      }
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!pendingDeepLink || !currentUser) return;
+    if (albums.length === 0) return;
+
+    if (pendingDeepLink.type === 'ALBUM') {
+      const match = albums.find(a => 
+        a.id === pendingDeepLink.id || 
+        a.id.toLowerCase() === pendingDeepLink.id.toLowerCase() ||
+        a.title.toLowerCase() === pendingDeepLink.id.toLowerCase()
+      );
+      if (match) {
+        setViewInternal({ type: 'ALBUM', id: match.id });
+        setPendingDeepLink(null);
+      } else {
+        setViewInternal({ type: 'ALBUM', id: pendingDeepLink.id });
+        setPendingDeepLink(null);
+      }
+    } else if (pendingDeepLink.type === 'ARTIST') {
+      goToArtist(pendingDeepLink.id);
+      setPendingDeepLink(null);
+    }
+  }, [pendingDeepLink, albums, currentUser]);
 
   // --- Refs ---
   const audioRefA = useRef<HTMLAudioElement>(new Audio());
@@ -3176,8 +3263,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     
     const sortedArtists = Object.entries(artistPlayMap).sort(([, a], [, b]) => b - a);
-    const rankIndex = sortedArtists.findIndex(([name]) => name === artistName);
-    const totalPlays = artistPlayMap[artistName] || 0;
+    const targetClean = (artistName || '').trim().toLowerCase();
+    const rankIndex = sortedArtists.findIndex(([name]) => name.trim().toLowerCase() === targetClean);
+    let totalPlays = artistPlayMap[artistName] || 0;
+    if (totalPlays === 0 && rankIndex !== -1) {
+      totalPlays = sortedArtists[rankIndex][1];
+    }
     
     return { monthlyPlays: totalPlays, globalRank: rankIndex === -1 ? 999 : rankIndex + 1 };
   };
@@ -4157,6 +4248,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isAddToPlaylistOpen, trackIdToAdd, openAddToPlaylist, closeAddToPlaylist,
       isDeleteModalOpen, playlistToDelete, openDeleteModal, closeDeleteModal, confirmDeletePlaylist,
       isProfileModalOpen, setProfileModalOpen, likedPlaylistId, notifications, showNotification, dismissNotification,
+      shareModalData, openShareModal, closeShareModal,
       setView, goToArtist, getArtistStats, toggleFollowArtist, isArtistFollowed, goBack, playTrack, playNext, togglePlay, nextTrack, prevTrack, seek, setVolume, toggleRepeat, toggleShuffle,
       createPlaylist, editPlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, togglePlaylistSave, toggleLike, isLiked,
       toggleAlbumLike, isAlbumLiked, isSupabaseConnected, clearAppCache, getTrackStreamInfo

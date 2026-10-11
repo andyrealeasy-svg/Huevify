@@ -89,8 +89,15 @@ export const Sidebar = () => {
       {/* Brand Header */}
       <div className="px-3.5 mb-1.5 flex items-center justify-between">
         <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-huevify flex items-center justify-center shrink-0 shadow-sm">
-             <span className="text-xs font-black">H</span>
+          <div className="w-6 h-6 rounded-full bg-huevify overflow-hidden flex items-center justify-center shrink-0 shadow-sm border border-white/10">
+             <img 
+               src="https://i.postimg.cc/Xv7wBHsW/IMG-20261011-153258-509.jpg" 
+               alt="Huevify" 
+               className="w-full h-full object-cover"
+               onError={(e) => {
+                 (e.currentTarget as HTMLElement).style.display = 'none';
+               }}
+             />
           </div>
           Huevify
         </h1>

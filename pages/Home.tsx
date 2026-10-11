@@ -6,6 +6,7 @@ import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 import { TrackRow } from '../components/TrackRow.tsx';
 import { StorageService } from '../services/storage.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
+import { formatCompactNumber } from '../utils/formatters.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -14,7 +15,7 @@ const formatDuration = (seconds: number) => {
 };
 
 export const Home = () => {
-  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, getAlbumCover, currentTrack, isPlaying, t } = useStore();
+  const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, getAlbumCover, getArtistAvatar, getArtistStats, existingArtists, artistAccounts, currentTrack, isPlaying, t } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [remotePlays14d, setRemotePlays14d] = useState<Record<string, number>>({});
@@ -23,6 +24,7 @@ export const Home = () => {
     let isMounted = true;
     if (isSupabaseConfigured()) {
       const twoWeeksAgoISO = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
       SupabaseService.fetchDailyPlaysSince(twoWeeksAgoISO).then(res => {
         if (isMounted && res) {
           setRemotePlays14d(res);
@@ -88,6 +90,85 @@ export const Home = () => {
       })
       .slice(0, 5);
   }, [albums, tracks, remotePlays14d]);
+
+  // Top 10 artists by monthly plays (taken directly from artist stats / artist card)
+  const topArtists = useMemo(() => {
+    // 1. Gather all unique artist names across tracks, albums, artist accounts, and existingArtists list
+    const artistNamesMap = new Map<string, string>(); // lowercase clean -> original display name
+
+    existingArtists.forEach(name => {
+      if (name && name.trim()) {
+        const clean = name.trim().toLowerCase();
+        if (!artistNamesMap.has(clean)) artistNamesMap.set(clean, name.trim());
+      }
+    });
+
+    artistAccounts.forEach(acc => {
+      if (acc.artistName && acc.artistName.trim()) {
+        const clean = acc.artistName.trim().toLowerCase();
+        if (!artistNamesMap.has(clean)) artistNamesMap.set(clean, acc.artistName.trim());
+      }
+    });
+
+    albums.forEach(alb => {
+      if (alb.artist && alb.artist.trim()) {
+        const clean = alb.artist.trim().toLowerCase();
+        if (!artistNamesMap.has(clean)) artistNamesMap.set(clean, alb.artist.trim());
+      }
+    });
+
+    tracks.forEach(tr => {
+      if (tr.artist && tr.artist.trim()) {
+        const clean = tr.artist.trim().toLowerCase();
+        if (!artistNamesMap.has(clean)) artistNamesMap.set(clean, tr.artist.trim());
+      }
+      if (Array.isArray(tr.mainArtists)) {
+        tr.mainArtists.forEach(ma => {
+          if (ma && ma.trim()) {
+            const clean = ma.trim().toLowerCase();
+            if (!artistNamesMap.has(clean)) artistNamesMap.set(clean, ma.trim());
+          }
+        });
+      }
+    });
+
+    // 2. Build list with exact monthly plays from getArtistStats (same as on artist card)
+    const list = Array.from(artistNamesMap.values()).map(name => {
+      const clean = name.toLowerCase();
+
+      // Find all tracks involving this artist
+      const artistTracks = tracks.filter(t => {
+        const matchesArtist = (t.artist || '').trim().toLowerCase() === clean;
+        const matchesMain = Array.isArray(t.mainArtists) && t.mainArtists.some(m => (m || '').trim().toLowerCase() === clean);
+        return matchesArtist || matchesMain;
+      });
+
+      // Monthly plays taken directly from the artist card stats (e.g. 12M for SiCk)
+      const stats = getArtistStats(name);
+      const monthlyPlays = stats ? stats.monthlyPlays : artistTracks.reduce((sum, t) => sum + (t.plays || 0), 0);
+
+      // Resolve artist photo
+      const acc = artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === clean && a.status === 'APPROVED' && a.avatar) ||
+                  artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === clean && a.avatar);
+      const photo = acc?.avatar || getArtistAvatar(name) || (artistTracks[0] ? getTrackCover(artistTracks[0]) : '');
+
+      return {
+        name,
+        photo,
+        monthlyPlays
+      };
+    });
+
+    // Sort descending by monthly plays and take top 10
+    return list
+      .sort((a, b) => b.monthlyPlays - a.monthlyPlays)
+      .slice(0, 10);
+  }, [existingArtists, artistAccounts, albums, tracks, getArtistStats, getArtistAvatar, getTrackCover]);
+
+  const formatArtistMonthlyPlays = (plays: number): string => {
+    const isEn = appSettings?.language === 'English';
+    return `${formatCompactNumber(plays, isEn)} ${t('monthlyPlays')}`;
+  };
 
   const getGreeting = () => {
       const hour = new Date().getHours();
@@ -262,7 +343,7 @@ export const Home = () => {
       </div>
 
       <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('popularAlbums')}</h3>
-      <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
+      <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up mb-8">
         {popularAlbums.length === 0 ? (
           <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noReleases')}</div>
         ) : (
@@ -284,6 +365,56 @@ export const Home = () => {
               </div>
               <h4 className="font-bold truncate text-sm md:text-base">{album.title}</h4>
               <p className="text-xs md:text-sm text-secondary truncate">{album.artist} • {album.year}</p>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Top 10 Artists Section */}
+      <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('topArtists', 'Топ артистов')}</h3>
+      <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
+        {topArtists.length === 0 ? (
+          <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noResults', 'Нет артистов')}</div>
+        ) : (
+          topArtists.map((artist, idx) => (
+            <div 
+              key={artist.name} 
+              onClick={() => goToArtist(artist.name)}
+              className={`w-[155px] md:w-auto p-4 cursor-pointer group snap-start flex-shrink-0 hover-scale transition-all flex flex-col items-center text-center ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] md:bg-surface md:hover:bg-surface-highlight md:rounded-2xl'
+                  : 'bg-surface hover:bg-surface-highlight rounded-2xl'
+              }`}
+            >
+              {/* фото артиста 1:1 круглое и без всяких бейджей */}
+              <div className="w-28 h-28 sm:w-32 sm:h-32 aspect-square rounded-full overflow-hidden bg-zinc-800 shadow-xl mb-3 flex-shrink-0">
+                {artist.photo ? (
+                  <img 
+                    src={artist.photo} 
+                    alt={artist.name} 
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-secondary">
+                    <UserIcon size={44} />
+                  </div>
+                )}
+              </div>
+
+              {/* ниже №Х большое белое */}
+              <div className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-1.5">
+                №{idx + 1}
+              </div>
+
+              {/* ниже ник артиста тоже крупненько */}
+              <h4 className="text-base md:text-lg font-bold text-white truncate max-w-full px-1 group-hover:text-primary transition-colors leading-snug mb-1">
+                {artist.name}
+              </h4>
+
+              {/* ниже серым маленьким текстом количество прослушиваний */}
+              <p className="text-xs text-secondary truncate max-w-full font-medium">
+                {formatArtistMonthlyPlays(artist.monthlyPlays)}
+              </p>
             </div>
           ))
         )}

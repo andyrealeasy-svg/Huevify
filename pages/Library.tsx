@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal } from '../components/Icons.tsx';
+import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal, Share2 } from '../components/Icons.tsx';
 import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 import { ReleaseCountdown } from '../components/ReleaseCountdown.tsx';
 import { TrackRow } from '../components/TrackRow.tsx';
+import { StorageService } from '../services/storage.ts';
+import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
+import { Track } from '../types.ts';
+import { formatCompactNumber } from '../utils/formatters.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -33,6 +37,629 @@ const formatReleaseDateDisplay = (dateString?: string) => {
     }
 };
 
+interface ArtistViewProps {
+  artistName: string;
+}
+
+const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
+  const { 
+    tracks, albums, playTrack, goBack, setView, 
+    getArtistStats, toggleFollowArtist, isArtistFollowed,
+    getAlbumCover, artistAccounts, getTrackCover, getArtistAvatar,
+    t, appSettings, openShareModal
+  } = useStore();
+  const isLiquidGlass = appSettings?.liquidGlassNav !== false;
+  const isEn = appSettings?.language === 'English';
+
+  const [isAboutArtistModalOpen, setIsAboutArtistModalOpen] = useState(false);
+
+  // Artist's tracks (as main artist or additional artist)
+  const artistTracks = useMemo(() => {
+    return tracks.filter(t => t.artist === artistName || t.mainArtists?.includes(artistName));
+  }, [tracks, artistName]);
+
+  // Two weeks window cutoff (14 days)
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+
+  // Calculate 2-week plays map from local logs immediately
+  const getLocalTwoWeeksPlays = (): Record<string, number> => {
+    const cutoff = Date.now() - TWO_WEEKS_MS;
+    const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+    const recentLogs = localLogs.filter(l => l.timestamp >= cutoff);
+    const map: Record<string, number> = {};
+    recentLogs.forEach(l => {
+      if (l.trackId) {
+        map[l.trackId] = (map[l.trackId] || 0) + (Number(l.plays) || 1);
+      }
+    });
+    return map;
+  };
+
+  const [twoWeeksPlaysMap, setTwoWeeksPlaysMap] = useState<Record<string, number>>(() => getLocalTwoWeeksPlays());
+
+  // Load remote 2-week play logs from Supabase for all tracks belonging to this artist
+  useEffect(() => {
+    let isMounted = true;
+    setTwoWeeksPlaysMap(getLocalTwoWeeksPlays());
+
+    if (!isSupabaseConfigured()) return;
+
+    const fetchArtistTwoWeeksLogs = async () => {
+      try {
+        const cutoffISO = new Date(Date.now() - TWO_WEEKS_MS).toISOString();
+        const allIds: string[] = [];
+        artistTracks.forEach(t => {
+          if (t.id) allIds.push(t.id);
+          if (t.hueq) allIds.push(t.hueq);
+          if (t.title) allIds.push(t.title.trim());
+        });
+        const uniqueTrackIds = Array.from(new Set(allIds.filter(Boolean)));
+        if (uniqueTrackIds.length === 0) return;
+
+        const remoteLogs = await SupabaseService.fetchReleasePlayLogs(uniqueTrackIds, cutoffISO);
+        if (remoteLogs && isMounted) {
+          const map: Record<string, number> = {};
+          remoteLogs.forEach(r => {
+            if (r.track_id) {
+              map[r.track_id] = (map[r.track_id] || 0) + (Number(r.plays) || 1);
+            }
+          });
+
+          // Merge very recent local logs (last 2 minutes) not yet in remote
+          const localLogs = StorageService.load<Array<{ trackId: string; plays: number; timestamp: number }>>('huevify_play_logs', []);
+          const veryRecent = localLogs.filter(l => l.timestamp >= Date.now() - 120000);
+          veryRecent.forEach(l => {
+            if (l.trackId && !map[l.trackId]) {
+              map[l.trackId] = (map[l.trackId] || 0) + (Number(l.plays) || 1);
+            }
+          });
+
+          setTwoWeeksPlaysMap(map);
+        }
+      } catch (e) {
+        console.warn('Failed to load artist 2-week play logs:', e);
+      }
+    };
+
+    fetchArtistTwoWeeksLogs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [artistName, artistTracks.length]);
+
+  // Helper to get 2-week plays for a track
+  const getTrackTwoWeekPlays = (t: Track): number => {
+    let plays = 0;
+    const checked = new Set<string>();
+    if (t.id && twoWeeksPlaysMap[t.id]) {
+      plays += twoWeeksPlaysMap[t.id];
+      checked.add(t.id);
+    }
+    if (t.hueq && twoWeeksPlaysMap[t.hueq] && !checked.has(t.hueq)) {
+      plays += twoWeeksPlaysMap[t.hueq];
+      checked.add(t.hueq);
+    }
+    if (t.title) {
+      const trimmed = t.title.trim();
+      if (twoWeeksPlaysMap[trimmed] && !checked.has(trimmed)) {
+        plays += twoWeeksPlaysMap[trimmed];
+        checked.add(trimmed);
+      }
+    }
+    return plays;
+  };
+
+  // Top tracks for the last 2 weeks (descending), fallback to total plays
+  const topTracks = useMemo(() => {
+    return [...artistTracks].sort((a, b) => {
+      const playsA = getTrackTwoWeekPlays(a);
+      const playsB = getTrackTwoWeekPlays(b);
+      if (playsB !== playsA) {
+        return playsB - playsA;
+      }
+      return (b.plays || 0) - (a.plays || 0);
+    }).slice(0, 5);
+  }, [artistTracks, twoWeeksPlaysMap]);
+
+  // Собственные релизы артиста
+  const ownAlbums = albums.filter(a => a.artist === artistName || a.mainArtists?.includes(artistName));
+
+  const getAlbumReleaseTime = (album: any): number => {
+    if (album.releaseDate) {
+      const time = new Date(album.releaseDate).getTime();
+      if (!isNaN(time)) return time;
+    }
+    if (album.year) {
+      return new Date(`${album.year}-01-01`).getTime();
+    }
+    return 0;
+  };
+
+  const getAlbumPlays = (album: any): number => {
+    return (album.trackIds || []).reduce((sum: number, tid: string) => {
+      const tr = tracks.find(t => t.id === tid);
+      return sum + (tr?.plays || 0);
+    }, 0);
+  };
+
+  // Find upcoming expected release for this artist
+  const upcomingAlbums = ownAlbums.filter(a => a.isUpcoming);
+
+  // Released albums sorted by date (newest first)
+  const releasedAlbums = ownAlbums.filter(a => !a.isUpcoming);
+  const sortedByDate = [...releasedAlbums].sort((a, b) => {
+    const diff = getAlbumReleaseTime(b) - getAlbumReleaseTime(a);
+    if (diff !== 0) return diff;
+    return (b.year || 0) - (a.year || 0);
+  });
+
+  // 1-й релиз: последний
+  const latestRelease = sortedByDate[0] || null;
+
+  // Ещё 3 — самые прослушиваемые за месяц
+  const otherReleasesByPlays = latestRelease
+    ? sortedByDate.filter(a => a.id !== latestRelease.id).sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a)).slice(0, 3)
+    : [];
+
+  const releasedPreview = latestRelease ? [latestRelease, ...otherReleasesByPlays] : [];
+  const discographyPreview = [...upcomingAlbums, ...releasedPreview].slice(0, 5);
+
+  const { monthlyPlays, globalRank } = getArtistStats(artistName);
+
+  // Get Bio and Pick if available
+  const artistAccount = artistAccounts.find(a => a.artistName === artistName && a.status === 'APPROVED') ||
+                        artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === artistName.trim().toLowerCase());
+  const bio = artistAccount?.bio;
+  const pick = artistAccount?.artistPick;
+
+  // Only verify if account exists (registered in Huevify For Artists)
+  const isVerified = Boolean(artistAccount);
+  const artistPhoto = artistAccount?.avatar || getArtistAvatar(artistName) || (topTracks[0] ? getTrackCover(topTracks[0]) : '');
+
+  const isFollowing = isArtistFollowed(artistName);
+
+  return (
+    <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
+        {/* Artist Header */}
+        <div 
+            className="relative h-[44vh] sm:h-[48vh] md:h-[42vh] min-h-[310px] bg-cover bg-center flex items-end p-5 sm:p-6 md:p-8 animate-appear"
+            style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 35%, rgba(18,18,18,0.72) 72%, #121212 100%), url(${artistPhoto})` }}
+        >
+            <div className="absolute top-4 left-4 z-20">
+                <button 
+                  onClick={goBack} 
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
+                    isLiquidGlass
+                      ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:w-8 md:h-8 md:bg-black/50'
+                      : 'w-8 h-8 bg-black/50'
+                  }`}
+                >
+                  <ArrowLeft size={20}/>
+                </button>
+            </div>
+            <div className="relative z-10 w-full">
+                <h1 className="text-4xl sm:text-6xl md:text-8xl font-black tracking-tight mb-2 drop-shadow-2xl text-white leading-tight">{artistName}</h1>
+                
+                {isVerified && (
+                    <div className="mb-2">
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white/90 shadow-sm">
+                            <span className="w-3.5 h-3.5 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                                <Check size={8.5} strokeWidth={3.5} />
+                            </span>
+                            <span className="text-[10px] sm:text-[11px] font-medium tracking-wide">
+                                {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                <p className="text-zinc-300 font-medium text-sm sm:text-base md:text-lg drop-shadow-md">{formatCompactNumber(monthlyPlays, isEn)} {t('monthlyPlays')}</p>
+            </div>
+        </div>
+
+        <div className="px-4 sm:px-6 md:px-8 py-5 md:py-6 animate-slide-up">
+            <div className="flex items-center justify-between md:justify-start md:gap-5 mb-7">
+                {/* Actions group: on mobile Follow + Share sit on the left, Play sits on the right */}
+                <div className="flex items-center gap-3">
+                    {/* Follow Button */}
+                    <button 
+                        onClick={() => toggleFollowArtist(artistName)}
+                        className={`px-5 py-2 font-bold text-xs sm:text-sm rounded-full uppercase tracking-wider transition ${
+                          isLiquidGlass
+                            ? isFollowing 
+                              ? 'max-md:bg-white/20 max-md:backdrop-blur-xl max-md:border max-md:border-white/30 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] max-md:active:scale-95 md:border md:border-white md:text-white md:hover:bg-white/10'
+                              : 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:active:scale-95 md:border md:border-secondary md:text-white md:hover:border-white'
+                            : isFollowing 
+                              ? 'border border-white text-white hover:bg-white/10' 
+                              : 'border border-secondary text-white hover:border-white'
+                        }`}
+                    >
+                        {isFollowing ? t('following') : t('follow')}
+                    </button>
+
+                    {/* Share Artist Button */}
+                    <button 
+                        onClick={() => openShareModal({
+                          type: 'ARTIST',
+                          title: artistName,
+                          subtitle: t('artist', 'Артист'),
+                          cover: artistPhoto || '',
+                          artistName: artistName
+                        })}
+                        className={`transition flex items-center justify-center ${
+                          isLiquidGlass
+                            ? 'w-10 h-10 rounded-full bg-white/[0.08] backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 active:scale-90 shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]'
+                            : 'w-10 h-10 rounded-full border border-secondary text-secondary hover:text-white hover:border-white hover:scale-105 active:scale-95'
+                        }`}
+                        title="Поделиться в Telegram"
+                    >
+                        <Share2 size={18} />
+                    </button>
+                </div>
+
+                {/* Big Play Button: right on mobile, left on desktop */}
+                <button 
+                    onClick={() => topTracks.length && playTrack(topTracks[0], topTracks)} 
+                    className={`w-14 h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow md:order-first ${
+                      isLiquidGlass
+                        ? 'max-md:bg-primary/95 max-md:active:scale-95 md:hover:scale-105'
+                        : 'hover:scale-105 active:scale-95'
+                    }`}
+                >
+                    <Play size={28} fill="black" className="ml-1 text-black" />
+                </button>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-8">
+                {/* Main Content */}
+                <div className="flex-1">
+                    
+                    {/* Artist Pick */}
+                    {pick && (
+                        <div className="mb-8">
+                            <h2 className="text-2xl font-bold mb-4">{t('artistPick')}</h2>
+                            
+                            <div className="flex flex-col gap-2.5 max-w-xl">
+                                {/* Refined comment speech bubble: keeps the avatar & bubble tail but blends seamlessly with the dark/glass UI */}
+                                {pick.comment && (
+                                    <div className="relative self-start animate-fade-in mb-1 max-w-full">
+                                        <div className={`px-4 py-2.5 rounded-2xl flex items-center gap-3 relative z-10 transition shadow-lg ${
+                                          isLiquidGlass
+                                            ? 'bg-zinc-900/90 backdrop-blur-2xl border border-white/15 text-white shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]'
+                                            : 'bg-zinc-800/95 backdrop-blur-md border border-white/15 text-white shadow-xl'
+                                        }`}>
+                                            <img 
+                                                src={artistPhoto} 
+                                                alt={artistName} 
+                                                className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-white/25 shadow-sm"
+                                            />
+                                            <div className="text-xs sm:text-sm font-medium text-zinc-100 leading-snug break-words">
+                                                {pick.comment}
+                                            </div>
+                                        </div>
+                                        {/* Speech bubble pointer tail matching bubble glass aesthetic */}
+                                        <div className={`w-2.5 h-2.5 rotate-45 ml-6 -mt-1.5 relative z-0 border-r border-b ${
+                                          isLiquidGlass
+                                            ? 'bg-zinc-900/90 border-white/15'
+                                            : 'bg-zinc-800/95 border-white/15'
+                                        }`} />
+                                    </div>
+                                )}
+
+                                <div 
+                                    className={`flex items-start gap-3.5 sm:gap-4 cursor-pointer p-3.5 sm:p-4 transition group ${
+                                      isLiquidGlass
+                                        ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded-2xl md:bg-surface md:hover:bg-surface-highlight'
+                                        : 'rounded-2xl bg-surface hover:bg-surface-highlight active:scale-[0.98]'
+                                    }`}
+                                    onClick={() => {
+                                        if (!pick.id) return;
+                                        if (pick.type === 'TRACK') {
+                                            const targetTrack = tracks.find(t => t.id === pick.id || (t.hueq && t.hueq.toUpperCase() === pick.id.toUpperCase()));
+                                            if (targetTrack) {
+                                                playTrack(targetTrack);
+                                            } else {
+                                                const byTitle = tracks.find(t => t.artist === artistName && t.title.toLowerCase() === pick.subtitle?.toLowerCase());
+                                                if (byTitle) {
+                                                    playTrack(byTitle);
+                                                }
+                                            }
+                                        } else if (pick.type === 'ALBUM') {
+                                            setView({ type: 'ALBUM', id: pick.id });
+                                        } else if (pick.type === 'PLAYLIST') {
+                                            setView({ type: 'PLAYLIST', id: pick.id });
+                                        }
+                                    }}
+                                >
+                                    <div className="relative w-20 h-20 shrink-0 group">
+                                        <img src={pick.image} className="w-full h-full rounded-xl object-cover shadow-lg" alt={pick.subtitle || ''} />
+                                        {pick.type === 'TRACK' && (
+                                            <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <Play size={24} fill="white" className="text-white ml-0.5" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col justify-center min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+                                                <img src={artistPhoto} className="w-full h-full object-cover"/>
+                                            </div>
+                                            <span className="text-xs text-secondary font-bold truncate">{t('postedBy')} {artistName}</span>
+                                        </div>
+                                        <div className="font-bold group-hover:underline text-lg truncate">{pick.subtitle}</div>
+                                        <div className="text-sm text-secondary">
+                                            {pick.type === 'TRACK' ? 'Трек' : pick.type === 'PLAYLIST' ? 'Плейлист' : (t('latestRelease') || 'Релиз')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Популярное (самые прослушиваемые за последние 2 недели) */}
+                    <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
+                    <div className="flex flex-col gap-1 mb-8">
+                        {topTracks.map((track, idx) => (
+                            <TrackRow 
+                                key={track.id} 
+                                track={track} 
+                                index={idx} 
+                                queue={topTracks} 
+                            />
+                        ))}
+                    </div>
+
+                    {/* Дискография: вертикальный блок сверху вниз */}
+                    <div className="mb-8">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-2xl font-bold">{t('discography')}</h2>
+                            <button 
+                                onClick={() => setView({ type: 'ARTIST_DISCOGRAPHY', id: artistName })}
+                                className="text-xs md:text-sm font-bold text-secondary hover:text-white transition hover:underline"
+                            >
+                                {t('seeAllDiscography', 'Показать все')}
+                            </button>
+                        </div>
+
+                        {discographyPreview.length === 0 ? (
+                            <p className="text-secondary text-sm">{t('noReleases', 'Релизов пока нет')}</p>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                {discographyPreview.map((album, idx) => {
+                                    const isUpcoming = !!album.isUpcoming;
+                                    const isLatest = !isUpcoming && idx === 0 && latestRelease?.id === album.id;
+                                    const playsCount = getAlbumPlays(album);
+                                    const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : album.type === 'Mixtape' ? 'Микстейп' : t('album', 'Альбом');
+                                    return (
+                                        <div 
+                                            key={album.id} 
+                                            onClick={() => setView({ type: 'ALBUM', id: album.id })} 
+                                            className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
+                                              isLiquidGlass
+                                                ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:rounded-lg md:hover:bg-surface-highlight md:bg-surface/40 md:border md:border-white/5'
+                                                : 'rounded-lg hover:bg-surface-highlight bg-surface/40 border border-white/5'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
+                                                <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
+                                                    <img 
+                                                        src={getAlbumCover(album.id)} 
+                                                        alt={album.title}
+                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                                    />
+                                                    {!isUpcoming && (
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                                            <Play size={20} fill="white" className="text-white ml-0.5" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col overflow-hidden min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-white truncate text-base group-hover:underline">
+                                                            {album.title}
+                                                        </span>
+                                                        {isUpcoming && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
+                                                                {t('expectedRelease', 'Ожидаемый релиз')}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs text-secondary truncate mt-0.5">
+                                                        {album.year || (album.releaseDate ? new Date(album.releaseDate).getFullYear() : '')} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-secondary group-hover:text-white shrink-0 pl-2">
+                                                <ChevronRight size={18} className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* About Column */}
+                <div className="w-full md:w-1/3">
+                    <h2 className="text-2xl font-bold mb-4">{t('about')}</h2>
+                    <div 
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIsAboutArtistModalOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setIsAboutArtistModalOpen(true);
+                        }
+                      }}
+                      className={`overflow-hidden relative group cursor-pointer min-h-[300px] transition active:scale-[0.98] select-none touch-manipulation ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-3xl max-md:shadow-[0_12px_36px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:rounded-2xl md:hover:scale-[1.02]'
+                          : 'bg-surface rounded-2xl hover:scale-[1.02]'
+                      }`}
+                    >
+                        {/* Use avatar or fallback to first track cover */}
+                        <img 
+                            src={artistPhoto} 
+                            alt={artistName} 
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition absolute inset-0 bg-zinc-800 pointer-events-none" 
+                        />
+                        
+                        <div className="absolute inset-0 p-5 sm:p-6 flex flex-col justify-end z-10 pointer-events-none bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+                            <div className="flex items-center gap-4 mb-3">
+                                <div>
+                                    <div className="text-3xl font-black text-white leading-none">#{globalRank}</div>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 mt-1">{t('inTheWorld', 'в мире')}</div>
+                                </div>
+                                <div className="h-8 w-px bg-white/20" />
+                                <div>
+                                    <div className="text-2xl font-black text-white leading-none">{formatCompactNumber(monthlyPlays, isEn)}</div>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 mt-1">{t('monthlyPlays', 'прослушиваний за месяц')}</div>
+                                </div>
+                            </div>
+                            <p className="text-zinc-200 font-medium line-clamp-3 sm:line-clamp-4 text-sm leading-relaxed drop-shadow-md">
+                                {bio || `Слушайте ${artistName} в Huevify.`}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* About Artist Modal / Window rendered at document root via createPortal to prevent scroll trapping */}
+        {isAboutArtistModalOpen && typeof document !== 'undefined' && createPortal(
+          <div 
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-fade-in"
+            onClick={() => setIsAboutArtistModalOpen(false)}
+          >
+            <div 
+              className={`w-full max-w-2xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 sm:p-8 flex flex-col gap-6 relative shadow-[0_24px_64px_rgba(0,0,0,0.85)] border border-white/10 animate-zoom-in scrollbar-thin ${
+                isLiquidGlass
+                  ? 'bg-zinc-950/95 backdrop-blur-3xl'
+                  : 'bg-zinc-950'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Mobile drag handle */}
+              <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-1 sm:hidden shrink-0" />
+
+              {/* Header with Title & Close Button */}
+              <div className="flex items-center justify-between pb-2 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
+                    {t('about')} • {artistName}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAboutArtistModalOpen(false)}
+                  className="text-zinc-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition shrink-0"
+                  title="Закрыть"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* 1:1 Aspect Ratio Artist Photo (at the very top) */}
+              <div className="w-full max-w-[340px] sm:max-w-[380px] aspect-square mx-auto rounded-2xl sm:rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl shrink-0">
+                <img
+                  src={artistPhoto}
+                  alt={artistName}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Desktop Layout (md and up): Left (Rank, Monthly plays), Right (Verified badge, Bio) */}
+              <div className="hidden md:grid md:grid-cols-12 gap-8 items-start pt-2">
+                {/* Left Column */}
+                <div className="md:col-span-5 flex flex-col gap-5">
+                  <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
+                    <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
+                      #{globalRank}
+                    </span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
+                      {t('inTheWorld', 'в мире')}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
+                    <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
+                      {formatCompactNumber(monthlyPlays, isEn)}
+                    </span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
+                      {t('monthlyPlays', 'прослушиваний за месяц')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="md:col-span-7 flex flex-col gap-4">
+                  {isVerified && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
+                      <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                        <Check size={10} strokeWidth={3.5} />
+                      </span>
+                      <span className="text-xs font-bold tracking-wide">
+                        {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="text-zinc-200 text-sm sm:text-base leading-relaxed whitespace-pre-line">
+                    {bio || `Слушайте ${artistName} в Huevify.`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Phone / Mobile Layout (below md): 1. Галочка, 2. Место в мире, 3. Количество за месяц, 4. Био */}
+              <div className="flex md:hidden flex-col gap-4 pt-1">
+                {/* 1. Галочка (если зарегистрирован в Huevify For Artists) */}
+                {isVerified && (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
+                    <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                      <Check size={10} strokeWidth={3.5} />
+                    </span>
+                    <span className="text-xs font-bold tracking-wide">
+                      {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                    </span>
+                  </div>
+                )}
+
+                {/* 2. Место в мире */}
+                <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
+                  <span className="text-2xl font-black text-white tracking-tight">
+                    #{globalRank}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
+                    {t('inTheWorld', 'в мире')}
+                  </span>
+                </div>
+
+                {/* 3. Количество прослушиваний за месяц */}
+                <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
+                  <span className="text-2xl font-black text-white tracking-tight">
+                    {formatCompactNumber(monthlyPlays, isEn)}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
+                    {t('monthlyPlays', 'прослушиваний за месяц')}
+                  </span>
+                </div>
+
+                {/* 4. Био */}
+                <div className="text-zinc-200 text-sm leading-relaxed whitespace-pre-line pt-2 border-t border-white/10">
+                  {bio || `Слушайте ${artistName} в Huevify.`}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </div>
+  );
+};
+
 export const Library = () => {
   const { 
     view, playlists, tracks, albums, isLiked, toggleLike, playTrack, 
@@ -40,12 +667,11 @@ export const Library = () => {
     toggleAlbumLike, isAlbumLiked, deletePlaylist, openAddToPlaylist, recentlyPlayed,
     goToArtist, getArtistStats, followedArtists, toggleFollowArtist, isArtistFollowed,
     currentUser, togglePlaylistSave, getAlbumCover, changeAlbumCover, dailyChart, artistAccounts, getTrackCover, getArtistAvatar,
-    currentTrack, isPlaying, t, appSettings, showNotification, completeAnnouncementTransition
+    currentTrack, isPlaying, t, appSettings, showNotification, completeAnnouncementTransition, openShareModal
   } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
-  const [isAboutArtistModalOpen, setIsAboutArtistModalOpen] = useState(false);
 
   const handleCreate = () => {
     setPlaylistIdToEdit(null);
@@ -331,467 +957,7 @@ export const Library = () => {
 
   // --- ARTIST VIEW ---
   if (view.type === 'ARTIST') {
-      const artistName = (view as any).id;
-      const artistTracks = tracks.filter(t => t.artist === artistName || t.mainArtists?.includes(artistName));
-      const topTracks = [...artistTracks].sort((a, b) => b.plays - a.plays).slice(0, 5);
-      
-      // Собственные релизы артиста
-      const ownAlbums = albums.filter(a => a.artist === artistName || a.mainArtists?.includes(artistName));
-
-      const getAlbumReleaseTime = (album: any): number => {
-        if (album.releaseDate) {
-          const time = new Date(album.releaseDate).getTime();
-          if (!isNaN(time)) return time;
-        }
-        if (album.year) {
-          return new Date(`${album.year}-01-01`).getTime();
-        }
-        return 0;
-      };
-
-      const getAlbumPlays = (album: any): number => {
-        return (album.trackIds || []).reduce((sum: number, tid: string) => {
-          const tr = tracks.find(t => t.id === tid);
-          return sum + (tr?.plays || 0);
-        }, 0);
-      };
-
-      // Find upcoming expected release for this artist
-      const upcomingAlbums = ownAlbums.filter(a => a.isUpcoming);
-
-      // Released albums sorted by date (newest first)
-      const releasedAlbums = ownAlbums.filter(a => !a.isUpcoming);
-      const sortedByDate = [...releasedAlbums].sort((a, b) => {
-        const diff = getAlbumReleaseTime(b) - getAlbumReleaseTime(a);
-        if (diff !== 0) return diff;
-        return (b.year || 0) - (a.year || 0);
-      });
-
-      // 1-й релиз: последний
-      const latestRelease = sortedByDate[0] || null;
-
-      // Ещё 3 — самые прослушиваемые за месяц
-      const otherReleasesByPlays = latestRelease
-        ? sortedByDate.filter(a => a.id !== latestRelease.id).sort((a, b) => getAlbumPlays(b) - getAlbumPlays(a)).slice(0, 3)
-        : [];
-
-      // Итоговые релизы для отображения в карточке:
-      // Ожидаемый релиз(ы) ставится самым верхним 5-м альбомом, затем остальные вышедшие релизы
-      const releasedPreview = latestRelease ? [latestRelease, ...otherReleasesByPlays] : [];
-      const discographyPreview = [...upcomingAlbums, ...releasedPreview].slice(0, 5);
-      
-      const { monthlyPlays, globalRank } = getArtistStats(artistName);
-      
-      // Get Bio and Pick if available
-      const artistAccount = artistAccounts.find(a => a.artistName === artistName && a.status === 'APPROVED') ||
-                            artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === artistName.trim().toLowerCase());
-      const bio = artistAccount?.bio;
-      const pick = artistAccount?.artistPick;
-      
-      // Only verify if account exists (registered in Huevify For Artists)
-      const isVerified = Boolean(artistAccount);
-      const artistPhoto = artistAccount?.avatar || getArtistAvatar(artistName) || (topTracks[0] ? getTrackCover(topTracks[0]) : '');
-
-      const isFollowing = isArtistFollowed(artistName);
-
-      return (
-        <div className="h-full overflow-y-auto pb-32 relative w-full page-enter">
-            {/* Artist Header */}
-            <div 
-                className="relative h-[40vh] bg-cover bg-center flex items-end p-8 animate-appear"
-                style={{ backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.2), #121212), url(${artistPhoto})` }}
-            >
-                <div className="absolute top-4 left-4 z-20">
-                    <button 
-                      onClick={goBack} 
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-white transition active:scale-90 ${
-                        isLiquidGlass
-                          ? 'max-md:bg-white/[0.16] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:shadow-[0_4px_12px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] md:w-8 md:h-8 md:bg-black/50'
-                          : 'w-8 h-8 bg-black/50'
-                      }`}
-                    >
-                      <ArrowLeft size={20}/>
-                    </button>
-                </div>
-                <div className="relative z-10 w-full">
-                    <div className="flex items-center gap-2 mb-2 text-white">
-                        {isVerified && (
-                            <div className="flex items-center gap-2 text-white/95 drop-shadow-md">
-                                <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                                    <Check size={12} strokeWidth={3.5} />
-                                </span>
-                                <span className="text-xs md:text-sm font-semibold tracking-wide">
-                                    {t('verifiedArtist')}
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                    <h1 className="text-5xl md:text-8xl font-bold tracking-tight mb-4 drop-shadow-lg">{artistName}</h1>
-                    <p className="text-white font-medium text-lg drop-shadow-md">{formatPlays(monthlyPlays)} {t('monthlyPlays')}</p>
-                </div>
-            </div>
-
-            <div className="px-4 md:px-8 py-6 animate-slide-up">
-                <div className="flex items-center gap-4 mb-8">
-                    <button 
-                        onClick={() => topTracks.length && playTrack(topTracks[0], topTracks)} 
-                        className={`w-14 h-14 bg-primary rounded-full flex items-center justify-center transition shadow-primary-glow ${
-                          isLiquidGlass
-                            ? 'max-md:bg-primary/95 max-md:active:scale-95 md:hover:scale-105'
-                            : 'hover:scale-105'
-                        }`}
-                    >
-                        <Play size={28} fill="black" className="ml-1 text-black" />
-                    </button>
-                    
-                    {/* Follow Button */}
-                    <button 
-                        onClick={() => toggleFollowArtist(artistName)}
-                        className={`px-6 py-2 font-bold text-sm rounded-full uppercase tracking-widest transition ${
-                          isLiquidGlass
-                            ? isFollowing 
-                              ? 'max-md:bg-white/20 max-md:backdrop-blur-xl max-md:border max-md:border-white/30 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.35)] max-md:active:scale-95 md:border md:border-white md:text-white md:hover:bg-white/10'
-                              : 'max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/20 max-md:text-white max-md:shadow-[0_4px_16px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:active:scale-95 md:border md:border-secondary md:text-white md:hover:border-white'
-                            : isFollowing 
-                              ? 'border border-white text-white hover:bg-white/10' 
-                              : 'border border-secondary text-white hover:border-white'
-                        }`}
-                    >
-                        {isFollowing ? t('following') : t('follow')}
-                    </button>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-8">
-                    {/* Main Content */}
-                    <div className="flex-1">
-                        
-                        {/* Artist Pick */}
-                        {pick && (
-                            <div className="mb-8">
-                                <h2 className="text-2xl font-bold mb-4">{t('artistPick')}</h2>
-                                
-                                <div className="flex flex-col gap-2.5 max-w-xl">
-                                    {/* White comment bubble with artist avatar if comment exists */}
-                                    {pick.comment && (
-                                        <div className="relative self-start animate-fade-in">
-                                            <div className="bg-white text-black px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 border border-white/20 relative z-10">
-                                                <img 
-                                                    src={artistPhoto} 
-                                                    alt={artistName} 
-                                                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-black/10 shadow-sm"
-                                                />
-                                                <div className="text-xs sm:text-sm font-semibold text-zinc-900 leading-snug break-words">
-                                                    {pick.comment}
-                                                </div>
-                                            </div>
-                                            {/* Speech bubble pointer tail towards the pick card */}
-                                            <div className="w-3 h-3 bg-white rotate-45 ml-6 -mt-1.5 shadow-sm relative z-0" />
-                                        </div>
-                                    )}
-
-                                    <div 
-                                        className={`flex items-start gap-4 cursor-pointer p-4 transition group ${
-                                          isLiquidGlass
-                                            ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.25)] max-md:active:scale-[0.98] md:rounded-2xl md:bg-surface md:hover:bg-surface-highlight'
-                                            : 'rounded-2xl bg-surface hover:bg-surface-highlight'
-                                        }`}
-                                        onClick={() => {
-                                            if (!pick.id) return;
-                                            if (pick.type === 'TRACK') {
-                                                const targetTrack = tracks.find(t => t.id === pick.id || (t.hueq && t.hueq.toUpperCase() === pick.id.toUpperCase()));
-                                                if (targetTrack) {
-                                                    playTrack(targetTrack);
-                                                } else {
-                                                    const byTitle = tracks.find(t => t.artist === artistName && t.title.toLowerCase() === pick.subtitle?.toLowerCase());
-                                                    if (byTitle) {
-                                                        playTrack(byTitle);
-                                                    }
-                                                }
-                                            } else if (pick.type === 'ALBUM') {
-                                                setView({ type: 'ALBUM', id: pick.id });
-                                            } else if (pick.type === 'PLAYLIST') {
-                                                setView({ type: 'PLAYLIST', id: pick.id });
-                                            }
-                                        }}
-                                    >
-                                        <div className="relative w-20 h-20 shrink-0 group">
-                                            <img src={pick.image} className="w-full h-full rounded-xl object-cover shadow-lg" alt={pick.subtitle || ''} />
-                                            {pick.type === 'TRACK' && (
-                                                <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                    <Play size={24} fill="white" className="text-white ml-0.5" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col justify-center min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <div className="w-5 h-5 rounded-full overflow-hidden bg-zinc-800 shrink-0">
-                                                    <img src={artistPhoto} className="w-full h-full object-cover"/>
-                                                </div>
-                                                <span className="text-xs text-secondary font-bold truncate">{t('postedBy')} {artistName}</span>
-                                            </div>
-                                            <div className="font-bold group-hover:underline text-lg truncate">{pick.subtitle}</div>
-                                            <div className="text-sm text-secondary">
-                                                {pick.type === 'TRACK' ? 'Трек' : pick.type === 'PLAYLIST' ? 'Плейлист' : (t('latestRelease') || 'Релиз')}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
-                        <div className="flex flex-col gap-1 mb-8">
-                            {topTracks.map((track, idx) => (
-                                <TrackRow 
-                                    key={track.id} 
-                                    track={track} 
-                                    index={idx} 
-                                    queue={topTracks} 
-                                />
-                            ))}
-                        </div>
-
-                        {/* Дискография: вертикальный блок сверху вниз */}
-                        <div className="mb-8">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-2xl font-bold">{t('discography')}</h2>
-                                <button 
-                                    onClick={() => setView({ type: 'ARTIST_DISCOGRAPHY', id: artistName })}
-                                    className="text-xs md:text-sm font-bold text-secondary hover:text-white transition hover:underline"
-                                >
-                                    {t('seeAllDiscography', 'Показать все')}
-                                </button>
-                            </div>
-
-                            {discographyPreview.length === 0 ? (
-                                <p className="text-secondary text-sm">{t('noReleases', 'Релизов пока нет')}</p>
-                            ) : (
-                                <div className="flex flex-col gap-2">
-                                    {discographyPreview.map((album, idx) => {
-                                        const isUpcoming = !!album.isUpcoming;
-                                        const isLatest = !isUpcoming && idx === 0 && latestRelease?.id === album.id;
-                                        const playsCount = getAlbumPlays(album);
-                                        const releaseType = album.type === 'EP' ? 'EP' : album.type === 'Single' ? t('single', 'Сингл') : album.type === 'Mixtape' ? 'Микстейп' : t('album', 'Альбом');
-                                        return (
-                                            <div 
-                                                key={album.id} 
-                                                onClick={() => setView({ type: 'ALBUM', id: album.id })} 
-                                                className={`flex items-center justify-between p-2.5 transition group cursor-pointer ${
-                                                  isLiquidGlass
-                                                    ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl max-md:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.18)] max-md:active:scale-[0.98] md:rounded-lg md:hover:bg-surface-highlight md:bg-surface/40 md:border md:border-white/5'
-                                                    : 'rounded-lg hover:bg-surface-highlight bg-surface/40 border border-white/5'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-3.5 overflow-hidden min-w-0">
-                                                    <div className="relative w-14 h-14 md:w-16 md:h-16 shrink-0 rounded-xl overflow-hidden shadow-md">
-                                                        <img 
-                                                            src={getAlbumCover(album.id)} 
-                                                            alt={album.title}
-                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-                                                        />
-                                                        {!isUpcoming && (
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                                                <Play size={20} fill="white" className="text-white ml-0.5" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col overflow-hidden min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-semibold text-white truncate text-base group-hover:underline">
-                                                                {album.title}
-                                                            </span>
-                                                            {isUpcoming && (
-                                                                <span className="px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-normal text-secondary bg-white/5 border border-white/10 shrink-0">
-                                                                    {t('expectedRelease', 'Ожидаемый релиз')}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <span className="text-xs text-secondary truncate mt-0.5">
-                                                            {album.year || (album.releaseDate ? new Date(album.releaseDate).getFullYear() : '')} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-secondary group-hover:text-white shrink-0 pl-2">
-                                                    <ChevronRight size={18} className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* About Column */}
-                    <div className="w-full md:w-1/3">
-                        <h2 className="text-2xl font-bold mb-4">{t('about')}</h2>
-                        <div 
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setIsAboutArtistModalOpen(true)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              setIsAboutArtistModalOpen(true);
-                            }
-                          }}
-                          className={`overflow-hidden relative group cursor-pointer min-h-[300px] transition active:scale-[0.98] select-none touch-manipulation ${
-                            isLiquidGlass
-                              ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-3xl max-md:shadow-[0_12px_36px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)] md:bg-surface md:rounded-2xl md:hover:scale-[1.02]'
-                              : 'bg-surface rounded-2xl hover:scale-[1.02]'
-                          }`}
-                        >
-                            {/* Use avatar or fallback to first track cover */}
-                            <img 
-                                src={artistPhoto} 
-                                alt={artistName}
-                                className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition absolute inset-0 bg-zinc-800 pointer-events-none" 
-                            />
-                            
-                            <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 pointer-events-none">
-                                <div className="mb-4">
-                                    <div className="text-3xl font-bold text-white mb-2">#{globalRank}</div>
-                                    <div className="text-sm font-bold uppercase tracking-widest text-white">{t('inTheWorld')}</div>
-                                </div>
-                                <p className="text-white font-medium line-clamp-4 text-sm md:text-base drop-shadow-md">
-                                    {bio || `Listen to ${artistName} on Huevify. ${artistName} is verified artist.`}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* About Artist Modal / Window rendered at document root via createPortal to prevent scroll trapping */}
-            {isAboutArtistModalOpen && typeof document !== 'undefined' && createPortal(
-              <div 
-                className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-fade-in"
-                onClick={() => setIsAboutArtistModalOpen(false)}
-              >
-                <div 
-                  className={`w-full max-w-2xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 sm:p-8 flex flex-col gap-6 relative shadow-[0_24px_64px_rgba(0,0,0,0.85)] border border-white/10 animate-zoom-in scrollbar-thin ${
-                    isLiquidGlass
-                      ? 'bg-zinc-950/95 backdrop-blur-3xl'
-                      : 'bg-zinc-950'
-                  }`}
-                  onClick={e => e.stopPropagation()}
-                >
-                  {/* Mobile drag handle */}
-                  <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-1 sm:hidden shrink-0" />
-
-                  {/* Header with Title & Close Button */}
-                  <div className="flex items-center justify-between pb-2 border-b border-white/10 shrink-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
-                        {t('about')} • {artistName}
-                      </h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsAboutArtistModalOpen(false)}
-                      className="text-zinc-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition shrink-0"
-                      title="Закрыть"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-
-                  {/* 1:1 Aspect Ratio Artist Photo (at the very top) */}
-                  <div className="w-full max-w-[340px] sm:max-w-[380px] aspect-square mx-auto rounded-2xl sm:rounded-3xl overflow-hidden bg-zinc-900 border border-white/10 shadow-2xl shrink-0">
-                    <img
-                      src={artistPhoto}
-                      alt={artistName}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  {/* Desktop Layout (md and up): Left (Rank, Monthly plays), Right (Verified badge, Bio) */}
-                  <div className="hidden md:grid md:grid-cols-12 gap-8 items-start pt-2">
-                    {/* Left Column */}
-                    <div className="md:col-span-5 flex flex-col gap-5">
-                      <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
-                        <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
-                          #{globalRank}
-                        </span>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
-                          {t('inTheWorld', 'в мире')}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col p-4 rounded-2xl bg-white/[0.04] border border-white/10">
-                        <span className="text-3xl lg:text-4xl font-black text-white tracking-tight">
-                          {formatPlays(monthlyPlays)}
-                        </span>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-1">
-                          {t('monthlyPlays', 'прослушиваний за месяц')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Right Column */}
-                    <div className="md:col-span-7 flex flex-col gap-4">
-                      {isVerified && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
-                          <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                            <Check size={10} strokeWidth={3.5} />
-                          </span>
-                          <span className="text-xs font-bold tracking-wide">
-                            {t('verifiedArtist', 'Подтвержденный исполнитель')}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="text-zinc-200 text-sm sm:text-base leading-relaxed whitespace-pre-line">
-                        {bio || `Слушайте ${artistName} в Huevify.`}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Phone / Mobile Layout (below md): 1. Галочка, 2. Место в мире, 3. Количество за месяц, 4. Био */}
-                  <div className="flex md:hidden flex-col gap-4 pt-1">
-                    {/* 1. Галочка (если зарегистрирован в Huevify For Artists) */}
-                    {isVerified && (
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
-                        <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
-                          <Check size={10} strokeWidth={3.5} />
-                        </span>
-                        <span className="text-xs font-bold tracking-wide">
-                          {t('verifiedArtist', 'Подтвержденный исполнитель')}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* 2. Место в мире */}
-                    <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
-                      <span className="text-2xl font-black text-white tracking-tight">
-                        #{globalRank}
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
-                        {t('inTheWorld', 'в мире')}
-                      </span>
-                    </div>
-
-                    {/* 3. Количество прослушиваний за месяц */}
-                    <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">
-                      <span className="text-2xl font-black text-white tracking-tight">
-                        {formatPlays(monthlyPlays)}
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-secondary mt-0.5">
-                        {t('monthlyPlays', 'прослушиваний за месяц')}
-                      </span>
-                    </div>
-
-                    {/* 4. Био */}
-                    <div className="text-zinc-200 text-sm leading-relaxed whitespace-pre-line pt-2 border-t border-white/10">
-                      {bio || `Слушайте ${artistName} в Huevify.`}
-                    </div>
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
-        </div>
-      )
+      return <ArtistView artistName={(view as any).id} />;
   }
 
   // --- Render Album or Playlist Detail ---
@@ -1154,6 +1320,26 @@ export const Library = () => {
                     <span>Предварительно сохранить</span>
                   )}
                 </button>
+
+                {/* Share Upcoming Release Button */}
+                <button 
+                  onClick={() => openShareModal({
+                    type: 'ALBUM',
+                    title: title,
+                    subtitle: currentAlbumObj.artist,
+                    cover: cover,
+                    album: currentAlbumObj
+                  })}
+                  className={`px-4 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 transition select-none ${
+                    isLiquidGlass
+                      ? 'bg-white/[0.08] backdrop-blur-xl border border-white/20 text-white hover:bg-white/15 active:scale-95'
+                      : 'border border-secondary text-white hover:border-white hover:scale-105 active:scale-95'
+                  }`}
+                  title="Поделиться в Telegram"
+                >
+                  <Share2 size={16} />
+                  <span>Поделиться</span>
+                </button>
               </div>
             );
           })()
@@ -1185,16 +1371,38 @@ export const Library = () => {
             })()}
             
             {!isPlaylist && (
-               <button 
-                  onClick={() => toggleAlbumLike(id)} 
-                  className={`transition ${
-                    isLiquidGlass
-                      ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
-                      : 'hover:scale-105'
-                  }`} 
-               >
-                  <Heart size={isLiquidGlass ? 24 : 32} fill={isAlbumLiked(id) ? 'currentColor' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
-               </button>
+               <>
+                 <button 
+                    onClick={() => toggleAlbumLike(id)} 
+                    className={`transition ${
+                      isLiquidGlass
+                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:flex max-md:items-center max-md:justify-center max-md:active:scale-90 md:hover:scale-105'
+                        : 'hover:scale-105'
+                    }`} 
+                    title={isAlbumLiked(id) ? 'Удалить из медиатеки' : 'Сохранить в медиатеку'}
+                 >
+                    <Heart size={isLiquidGlass ? 24 : 32} fill={isAlbumLiked(id) ? 'currentColor' : 'none'} className={isAlbumLiked(id) ? 'text-primary' : 'text-secondary hover:text-white'} />
+                 </button>
+
+                 {/* Share Release Button */}
+                 <button 
+                    onClick={() => openShareModal({
+                      type: 'ALBUM',
+                      title: title,
+                      subtitle: allAlbumArtists.join(', ') || currentAlbumObj?.artist || subtitle,
+                      cover: cover,
+                      album: currentAlbumObj || { id, title, artist: allAlbumArtists.join(', ') || subtitle }
+                    })} 
+                    className={`transition flex items-center justify-center ${
+                      isLiquidGlass
+                        ? 'max-md:w-11 max-md:h-11 max-md:rounded-full max-md:bg-white/[0.08] max-md:backdrop-blur-xl max-md:border max-md:border-white/15 max-md:text-secondary max-md:hover:text-white max-md:active:scale-90 md:hover:scale-105'
+                        : 'text-secondary hover:text-white hover:scale-105'
+                    }`} 
+                    title="Поделиться в Telegram"
+                 >
+                    <Share2 size={isLiquidGlass ? 22 : 28} />
+                 </button>
+               </>
             )}
 
             {isPlaylist && isOwner && !isSystem && (

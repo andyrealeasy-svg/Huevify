@@ -11,6 +11,7 @@ import { DeletePlaylistModal } from './components/DeletePlaylistModal.tsx';
 import { ProfileModal } from './components/ProfileModal.tsx';
 import { QueueModal } from './components/QueueModal.tsx';
 import { ArtistHub } from './components/ArtistHub.tsx';
+import { ShareModal } from './components/ShareModal.tsx';
 import { Auth } from './components/Auth.tsx';
 import { Home } from './pages/Home.tsx';
 import { Search } from './pages/Search.tsx';
@@ -151,6 +152,7 @@ const AppContent = () => {
           <ProfileModal />
           <QueueModal />
           <ArtistHub />
+          <ShareModal />
           <NotificationOverlay />
         </div>
     );
