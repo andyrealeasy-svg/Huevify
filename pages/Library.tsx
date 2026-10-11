@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal, Share2 } from '../components/Icons.tsx';
+import { Play, Heart, ListMusic, Trash2, ArrowLeft, PlusSquare, Plus, Edit, Mic2, User, Check, ChevronLeft, ChevronRight, X, CheckCircle, Clock, MoreHorizontal, Share2, TrendingUp, Disc3 } from '../components/Icons.tsx';
 import { ArtistDiscography } from '../components/ArtistDiscography.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
@@ -52,6 +52,7 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
   const isEn = appSettings?.language === 'English';
 
   const [isAboutArtistModalOpen, setIsAboutArtistModalOpen] = useState(false);
+  const [popularMode, setPopularMode] = useState<'trending' | 'alltime'>('trending');
 
   // Artist's tracks (as main artist or additional artist)
   const artistTracks = useMemo(() => {
@@ -150,17 +151,19 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
     return plays;
   };
 
-  // Top tracks for the last 2 weeks (descending), fallback to total plays
+  // Top tracks (trending last 2 weeks or all-time descending)
   const topTracks = useMemo(() => {
     return [...artistTracks].sort((a, b) => {
-      const playsA = getTrackTwoWeekPlays(a);
-      const playsB = getTrackTwoWeekPlays(b);
-      if (playsB !== playsA) {
-        return playsB - playsA;
+      if (popularMode === 'trending') {
+        const playsA = getTrackTwoWeekPlays(a);
+        const playsB = getTrackTwoWeekPlays(b);
+        if (playsB !== playsA) {
+          return playsB - playsA;
+        }
       }
       return (b.plays || 0) - (a.plays || 0);
     }).slice(0, 5);
-  }, [artistTracks, twoWeeksPlaysMap]);
+  }, [artistTracks, twoWeeksPlaysMap, popularMode]);
 
   // Собственные релизы артиста
   const ownAlbums = albums.filter(a => a.artist === artistName || a.mainArtists?.includes(artistName));
@@ -397,8 +400,38 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
                         </div>
                     )}
 
-                    {/* Популярное (самые прослушиваемые за последние 2 недели) */}
-                    <h2 className="text-2xl font-bold mb-4">{t('popular')}</h2>
+                    {/* Популярное с переключателем Актуальное / За всё время */}
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-2xl font-bold">{t('popular')}</h2>
+                        <div className={`flex items-center p-0.5 rounded-full border ${
+                          isLiquidGlass
+                            ? 'bg-white/[0.06] backdrop-blur-xl border-white/15 shadow-inner'
+                            : 'bg-zinc-900 border-zinc-800'
+                        }`}>
+                            <button
+                                onClick={() => setPopularMode('trending')}
+                                className={`p-1.5 rounded-full transition ${
+                                    popularMode === 'trending'
+                                        ? 'bg-primary text-black shadow-sm font-bold'
+                                        : 'text-secondary hover:text-white'
+                                }`}
+                                title="Актуальное (за 2 недели)"
+                            >
+                                <TrendingUp size={16} />
+                            </button>
+                            <button
+                                onClick={() => setPopularMode('alltime')}
+                                className={`p-1.5 rounded-full transition ${
+                                    popularMode === 'alltime'
+                                        ? 'bg-primary text-black font-bold'
+                                        : 'text-secondary hover:text-white'
+                                }`}
+                                title="За всё время"
+                            >
+                                <Disc3 size={16} />
+                            </button>
+                        </div>
+                    </div>
                     <div className="flex flex-col gap-1 mb-8">
                         {topTracks.map((track, idx) => (
                             <TrackRow 

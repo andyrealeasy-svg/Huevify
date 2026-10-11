@@ -1077,7 +1077,7 @@ export const SupabaseService = {
 
   async uploadBlob(
     blob: Blob,
-    folder: 'tracks' | 'covers' | 'avatars' | 'playlists',
+    folder: 'tracks' | 'covers' | 'avatars' | 'playlists' | 'cards',
     fileNameHint?: string,
     mimeType?: string
   ): Promise<string | null> {

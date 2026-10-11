@@ -7,7 +7,7 @@ import {
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
   Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, RotateCw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
   Sparkles, Layers, Megaphone, EyeOff, Eye, Info, CalendarClock, Copy, GripVertical, Music, ArrowUpDown, Maximize2, Minimize2, FastForward,
-  Share2, Send, Download, ExternalLink
+  Share2, Send, Download, ExternalLink, TrendingUp, Disc3
 } from 'lucide-react';
 
 export const TelegramIcon: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
@@ -24,5 +24,5 @@ export {
   Shield, UploadCloud, Calendar, FileAudio, CheckCircle, XCircle, Clock, MoreVertical, ShieldAlert, BarChart2,
   Database, Key, ChevronUp, Bookmark, FileText, Save, RotateCcw, RotateCw, Loader2, Disc, Headphones, Sliders, SlidersHorizontal, Activity,
   Sparkles, Layers, Megaphone, EyeOff, Eye, Info, CalendarClock, Copy, GripVertical, Music, ArrowUpDown, Maximize2, Minimize2, FastForward,
-  Share2, Send, Download, ExternalLink
+  Share2, Send, Download, ExternalLink, TrendingUp, Disc3
 };

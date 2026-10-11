@@ -185,10 +185,22 @@ export const buildArtistShareData = (artistName: string) => {
 
 /**
  * Open Telegram share dialog
+ * In Telegram's official t.me/share/url protocol:
+ * - 'text' parameter is placed FIRST in the message input box.
+ * - 'url' parameter is placed at the END of the message.
+ * Passing cleanCaption in 'text' and shareUrl in 'url' ensures:
+ * 1) The text is always at the beginning.
+ * 2) The link is always at the end.
+ * 3) No duplication of the link occurs.
  */
 export const openTelegramShareDialog = (shareUrl: string, captionText: string) => {
   const tgWebApp = (window as any).Telegram?.WebApp;
-  const shareTgUrl = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(captionText)}`;
+  
+  // Remove URL from caption text if it was included to prevent duplicate links
+  const cleanCaption = captionText.replace(shareUrl, '').trim();
+
+  // Telegram client puts 'text' first and appends 'url' at the end
+  const shareTgUrl = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(cleanCaption)}`;
 
   if (tgWebApp?.openTelegramLink) {
     try {
@@ -206,5 +218,32 @@ export const openTelegramShareDialog = (shareUrl: string, captionText: string) =
   } catch (e) {
     window.location.href = shareTgUrl;
     return true;
+  }
+};
+
+/**
+ * Share image directly to Telegram Stories if available (WebApp 7.8+)
+ */
+export const shareToTelegramStory = (mediaUrl: string, captionText: string, widgetUrl?: string) => {
+  const tgWebApp = (window as any).Telegram?.WebApp;
+  if (!tgWebApp?.shareToStory) {
+    return false;
+  }
+
+  try {
+    const params: Record<string, any> = {
+      text: captionText
+    };
+    if (widgetUrl) {
+      params.widget_link = {
+        url: widgetUrl,
+        name: 'Huevify'
+      };
+    }
+    tgWebApp.shareToStory(mediaUrl, params);
+    return true;
+  } catch (err) {
+    console.warn('shareToStory failed:', err);
+    return false;
   }
 };

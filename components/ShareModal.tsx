@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { X, Copy, Check, Download, TelegramIcon, Loader2, Share2 } from './Icons.tsx';
+import { X, Copy, Check, Download, TelegramIcon, Loader2, Share2, Image } from './Icons.tsx';
 import { 
   buildReleaseShareData, 
   buildArtistShareData, 
@@ -19,6 +19,7 @@ export const ShareModal: React.FC = () => {
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [copied, setCopied] = useState(false);
+  const [photoCopied, setPhotoCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [cardDataUrl, setCardDataUrl] = useState<string>('');
   const [cardBlob, setCardBlob] = useState<Blob | null>(null);
@@ -39,6 +40,7 @@ export const ShareModal: React.FC = () => {
       setCardDataUrl('');
       setCardBlob(null);
       setCopied(false);
+      setPhotoCopied(false);
       return;
     }
 
@@ -88,7 +90,7 @@ export const ShareModal: React.FC = () => {
           await navigator.share({
             files: [file],
             title: shareData.title,
-            text: shareData.fullText
+            text: `${shareData.caption}\n${shareData.link}`
           });
           showNotification('Отправлено через Telegram', 'success');
           return;
@@ -99,9 +101,45 @@ export const ShareModal: React.FC = () => {
       }
     }
 
-    // 2. Open Telegram share dialogue
+    // 2. Try copying the photo-card to clipboard so user can immediately paste it into the Telegram chat
+    if (cardBlob && navigator.clipboard && (window as any).ClipboardItem) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': cardBlob })
+        ]);
+        showNotification('Фото скопировано! Открываем Telegram — вставьте его в чат', 'info');
+      } catch {
+        // Clipboard access might require user gesture or permissions
+      }
+    }
+
+    // 3. Open Telegram share dialogue (link is placed strictly at the end of the text)
     openTelegramShareDialog(shareData.link, shareData.caption);
-    showNotification('Открываем Telegram для отправки...', 'info');
+    showNotification('Открываем Telegram для отправки сообщения...', 'info');
+  };
+
+  // Handle Copy Photo Card to Clipboard
+  const handleCopyPhoto = async () => {
+    if (!cardBlob) {
+      showNotification('Карточка генерируется, подождите...', 'info');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && (window as any).ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': cardBlob })
+        ]);
+        setPhotoCopied(true);
+        showNotification('Фото-карточка скопирована в буфер! Вставьте её в чат Telegram', 'success');
+        setTimeout(() => setPhotoCopied(false), 2500);
+      } else {
+        handleDownloadPhoto();
+      }
+    } catch (e) {
+      console.warn('Copy photo error:', e);
+      handleDownloadPhoto();
+    }
   };
 
   // Handle Download Photo
@@ -122,17 +160,18 @@ export const ShareModal: React.FC = () => {
     }
   };
 
-  // Handle Copy Link
+  // Handle Copy Link & Text
   const handleCopyLink = async () => {
+    const formattedText = `${shareData.caption}\n${shareData.link}`;
     try {
-      await navigator.clipboard.writeText(shareData.fullText);
+      await navigator.clipboard.writeText(formattedText);
       setCopied(true);
-      showNotification('Ссылка и текст скопированы в буфер обмена', 'success');
+      showNotification('Текст и ссылка скопированы в буфер обмена', 'success');
       setTimeout(() => setCopied(false), 2500);
     } catch {
       // Fallback
-      const input = document.createElement('input');
-      input.value = shareData.fullText;
+      const input = document.createElement('textarea');
+      input.value = formattedText;
       document.body.appendChild(input);
       input.select();
       document.execCommand('copy');
@@ -176,9 +215,9 @@ export const ShareModal: React.FC = () => {
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 md:p-6 overflow-y-auto flex flex-col items-center gap-5">
+        <div className="p-4 md:p-6 overflow-y-auto flex flex-col items-center gap-4">
           {/* Card Preview Container (Spotify 9:16 Style) */}
-          <div className="relative group w-[210px] sm:w-[230px] aspect-[9/16] rounded-2xl overflow-hidden shadow-[0_16px_36px_rgba(0,0,0,0.65)] border border-white/15 bg-black/60 flex items-center justify-center shrink-0">
+          <div className="relative group w-[200px] sm:w-[220px] aspect-[9/16] rounded-2xl overflow-hidden shadow-[0_16px_36px_rgba(0,0,0,0.65)] border border-white/15 bg-black/60 flex items-center justify-center shrink-0">
             {isGenerating ? (
               <div className="flex flex-col items-center gap-2 text-secondary">
                 <Loader2 size={32} className="animate-spin text-primary" />
@@ -218,10 +257,16 @@ export const ShareModal: React.FC = () => {
               </span>
             </div>
             <p className="text-xs md:text-sm text-white/90 font-medium leading-relaxed break-words">
-              {shareData.caption}{' '}
+              {shareData.caption}
+              <br />
               <span className="text-[#24A1DE] underline underline-offset-2 break-all">{shareData.link}</span>
             </p>
           </div>
+
+          {/* Notice tip */}
+          <p className="text-[11px] text-secondary text-center px-1 leading-relaxed -mt-1">
+            Ссылка отправляется в конце сообщения. Фото-карточку можно вставить из буфера обмена.
+          </p>
 
           {/* Action Buttons */}
           <div className="w-full flex flex-col gap-2.5">
@@ -230,30 +275,34 @@ export const ShareModal: React.FC = () => {
               onClick={handleTelegramShare}
               className={`w-full py-3.5 px-5 rounded-full font-bold text-sm md:text-base flex items-center justify-center gap-2.5 transition shadow-lg ${
                 isLiquidGlass
-                  ? 'bg-[#24A1DE] hover:bg-[#2090C8] text-white shadow-[#24A1DE]/25 hover:scale-[1.02] active:scale-[0.98]'
-                  : 'bg-[#24A1DE] hover:bg-[#2090C8] text-white hover:scale-[1.02] active:scale-[0.98]'
+                  ? 'bg-[#24A1DE] hover:bg-[#2090C8] text-white shadow-[#24A1DE]/25 hover:scale-[1.01] active:scale-[0.98]'
+                  : 'bg-[#24A1DE] hover:bg-[#2090C8] text-white hover:scale-[1.01] active:scale-[0.98]'
               }`}
             >
               <TelegramIcon size={20} />
               <span>Поделиться в Telegram</span>
             </button>
 
-            {/* Secondary Actions: Download Photo + Copy Link */}
+            {/* Secondary Actions: Copy Photo + Copy Link */}
             <div className="grid grid-cols-2 gap-2.5 w-full">
+              {/* Copy Photo */}
               <button
-                onClick={handleDownloadPhoto}
-                disabled={!cardDataUrl && !cardBlob}
+                onClick={handleCopyPhoto}
+                disabled={!cardBlob}
                 className={`py-2.5 px-3 rounded-full font-semibold text-xs md:text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 ${
-                  isLiquidGlass
+                  photoCopied
+                    ? 'bg-primary text-black font-bold'
+                    : isLiquidGlass
                     ? 'bg-white/10 hover:bg-white/15 border border-white/15 text-white active:scale-95'
                     : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-600'
                 }`}
-                title="Скачать карточку в разрешении 1080x1920"
+                title="Скопировать фото-карточку в буфер обмена"
               >
-                <Download size={16} />
-                <span>Скачать фото</span>
+                {photoCopied ? <Check size={16} /> : <Image size={16} />}
+                <span>{photoCopied ? 'Скопировано' : 'Копия фото'}</span>
               </button>
 
+              {/* Copy Link */}
               <button
                 onClick={handleCopyLink}
                 className={`py-2.5 px-3 rounded-full font-semibold text-xs md:text-sm flex items-center justify-center gap-2 transition ${
@@ -263,9 +312,10 @@ export const ShareModal: React.FC = () => {
                     ? 'bg-white/10 hover:bg-white/15 border border-white/15 text-white active:scale-95'
                     : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-600'
                 }`}
+                title="Скопировать текст и ссылку"
               >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
-                <span>{copied ? 'Скопировано!' : 'Копировать'}</span>
+                <span>{copied ? 'Скопировано!' : 'Копия текста'}</span>
               </button>
             </div>
           </div>
