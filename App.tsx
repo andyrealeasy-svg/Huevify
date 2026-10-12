@@ -24,33 +24,52 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  error?: any;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: any, errorInfo: any) {
     console.error("Uncaught error:", error, errorInfo);
   }
 
+  handleReset = () => {
+    try {
+      // Clear view from sessionStorage/hash if any
+      if (window.location.hash) {
+        window.location.hash = '';
+      }
+    } catch {}
+    this.setState({ hasError: false, error: undefined });
+    window.location.reload();
+  };
+
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-screen w-full bg-black text-white p-4 text-center">
-          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mb-4">
+        <div className="flex flex-col items-center justify-center h-screen w-full bg-black text-white p-6 text-center">
+          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-red-600/30">
              <span className="text-2xl font-bold">!</span>
           </div>
-          <h1 className="text-2xl font-bold mb-2">Something went wrong.</h1>
-          <p className="text-secondary mb-6">Please try reloading the page.</p>
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">Something went wrong.</h1>
+          <p className="text-secondary text-sm mb-4 max-w-sm">
+            Произошла ошибка при загрузке страницы. Попробуйте перезагрузить приложение.
+          </p>
+          {this.state.error && (
+            <div className="max-w-md w-full bg-red-950/40 border border-red-800/40 rounded-xl p-3 mb-6 text-left overflow-auto max-h-40 text-xs font-mono text-red-300">
+              {String(this.state.error?.message || this.state.error)}
+            </div>
+          )}
           <button 
-            onClick={() => window.location.reload()} 
-            className="px-6 py-2 bg-white text-black font-bold rounded-full hover:scale-105 transition"
+            onClick={this.handleReset} 
+            className="px-6 py-2.5 bg-white text-black font-bold rounded-full hover:scale-105 active:scale-95 transition shadow-lg"
           >
-            Reload
+            Перезагрузить
           </button>
         </div>
       );

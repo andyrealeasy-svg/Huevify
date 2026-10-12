@@ -11,7 +11,6 @@ import { StorageService } from '../services/storage.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { Track } from '../types.ts';
 import { formatCompactNumber } from '../utils/formatters.ts';
-import { extractColorFromImage, getCachedColor, ExtractedColors } from '../utils/colorExtractor.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -1002,7 +1001,7 @@ export const Library = () => {
     let label = "";
     let isPlaylist = view.type === 'PLAYLIST';
     let id = (view as any).id;
-    let isLikedSongs = id.startsWith('liked');
+    let isLikedSongs = Boolean(id && typeof id === 'string' && id.startsWith('liked'));
     let isHistory = id === 'history';
     let isSystem = false;
     let playlistOwnerId: string | undefined;
@@ -1027,7 +1026,7 @@ export const Library = () => {
           let pl: any = undefined;
           if (isLikedSongs) {
               const currentLikedId = currentUser ? `liked_${currentUser.id}` : 'liked';
-              pl = playlists.find(p => p.id === currentLikedId || (currentUser && p.id.startsWith('liked') && p.ownerId === currentUser.id));
+              pl = playlists.find(p => p.id === currentLikedId || (currentUser && typeof p.id === 'string' && p.id.startsWith('liked') && p.ownerId === currentUser.id));
               if (!pl) {
                   pl = playlists.find(p => p.id === 'liked');
               }
@@ -1042,7 +1041,7 @@ export const Library = () => {
                   };
               }
           } else {
-              pl = playlists.find(p => p.id === id);
+              pl = playlists.find(p => p && (p.id === id || String(p.id) === String(id)));
           }
           if (!pl) {
              return (
@@ -1052,8 +1051,8 @@ export const Library = () => {
                  </div>
              );
           }
-          title = pl.name;
-          subtitle = `${t('playlist')} • ${pl.tracks.length} ${t('songs')}`;
+          title = pl.name || 'Плейлист';
+          subtitle = `${t('playlist')} • ${(pl.tracks || []).length} ${t('songs')}`;
           description = pl.description || "";
           isSystem = !!pl.isSystem;
           label = "Huevify User Playlist";
@@ -1062,68 +1061,48 @@ export const Library = () => {
           creatorAvatar = pl.creatorAvatar;
           releaseType = t('playlist');
           isPublic = !!pl.isPublic;
-          isSavedPlaylist = pl.savedBy?.includes(currentUser?.id || "") || false;
+          isSavedPlaylist = Boolean(currentUser && pl.savedBy && Array.isArray(pl.savedBy) && pl.savedBy.includes(currentUser.id));
           
           if (isLikedSongs) {
               title = t('likedSongs');
           } else if (pl.customCover) {
               cover = pl.customCover;
           } else {
-              const firstTrack = tracks.find(t => t.id === pl.tracks[0]);
+              const firstTrack = (pl.tracks || []).length > 0 ? tracks.find(t => t && t.id === pl.tracks[0]) : null;
               cover = firstTrack ? getTrackCover(firstTrack) : "";
           }
-          items = (pl.tracks || []).map((tid: string) => tracks.find(t => t.id === tid)).filter(Boolean);
+          items = (pl.tracks || []).map((tid: string) => tracks.find(t => t && t.id === tid)).filter(Boolean);
       }
     } else {
-      const alb = albums.find(a => a.id === id);
-      if (!alb) return <div>Not Found</div>;
-      title = alb.title;
+      const alb = albums.find(a => a && (a.id === id || String(a.id) === String(id) || (a.title && String(a.title).toLowerCase() === String(id || '').toLowerCase())));
+      if (!alb) {
+        return (
+          <div className="flex flex-col items-center justify-center h-full pb-32">
+            <h2 className="text-2xl font-bold mb-4">{t('notFound')}</h2>
+            <button onClick={() => setView({type:'HOME'})} className="px-6 py-2 bg-white text-black rounded-full font-bold">{t('returnHome')}</button>
+          </div>
+        );
+      }
+      title = alb.title || 'Релиз';
       currentAlbumObj = alb;
       
-      allAlbumArtists = [alb.artist, ...(alb.mainArtists || [])];
+      allAlbumArtists = [alb.artist, ...(alb.mainArtists || [])].filter(Boolean);
       
-      subtitle = `${alb.type || 'Album'} • ${alb.artist}`;
+      subtitle = `${alb.type || 'Album'} • ${alb.artist || ''}`;
       if (alb.year) subtitle += ` • ${alb.year}`;
       cover = getAlbumCover(alb.id);
-      items = alb.trackIds.map(tid => tracks.find(t => t.id === tid)).filter(Boolean);
+      items = (alb.trackIds || []).map(tid => tracks.find(t => t && t.id === tid)).filter(Boolean);
       year = alb.year;
       fullReleaseDate = alb.releaseDate;
       label = alb.recordLabel || "Huevify Records";
       releaseType = alb.type || "Album";
-      hasMultipleCovers = alb.covers.length > 1;
+      hasMultipleCovers = Boolean(alb.covers && Array.isArray(alb.covers) && alb.covers.length > 1);
     }
 
-    const totalDurationSeconds = items.reduce((acc, t) => acc + t.duration, 0);
+    const totalDurationSeconds = items.reduce((acc, t) => acc + (t?.duration || 0), 0);
     const totalMinutes = Math.floor(totalDurationSeconds / 60);
-    const totalReleasePlays = items.reduce((acc, t) => acc + t.plays, 0);
-    const isOwner = currentUser && playlistOwnerId === currentUser.id;
-
-    const [headerPalette, setHeaderPalette] = React.useState<ExtractedColors | null>(() => cover ? getCachedColor(cover) : null);
-
-    React.useEffect(() => {
-      if (!cover) {
-        setHeaderPalette(null);
-        return;
-      }
-      let isCancelled = false;
-      const cached = getCachedColor(cover);
-      if (cached) {
-        setHeaderPalette(cached);
-        return;
-      }
-      extractColorFromImage(cover, id + title).then(colors => {
-        if (!isCancelled) {
-          setHeaderPalette(colors);
-        }
-      });
-      return () => {
-        isCancelled = true;
-      };
-    }, [cover, id]);
-
-    const headerBgStyle = headerPalette 
-      ? { background: `linear-gradient(180deg, ${headerPalette.primary} 0%, rgba(18,18,18,0.95) 75%, #121212 100%)` }
-      : { background: 'linear-gradient(180deg, #334155 0%, rgba(18,18,18,0.95) 75%, #121212 100%)' };
+    const totalReleasePlays = items.reduce((acc, t) => acc + (t?.plays || 0), 0);
+    const isOwner = Boolean(currentUser && playlistOwnerId && playlistOwnerId === currentUser.id);
 
     // --- Empty Liked Songs View ---
     if (isLikedSongs && items.length === 0) {
@@ -1150,7 +1129,7 @@ export const Library = () => {
     return (
       <div className="h-full overflow-y-auto pb-64 relative w-full page-enter">
         {/* Header */}
-        <div className="relative p-6 md:p-8 animate-appear transition-colors duration-700" style={headerBgStyle}>
+        <div className="relative p-6 md:p-8 bg-gradient-to-b from-slate-700 to-background animate-appear">
           {/* Back Button */}
           <div className="absolute top-4 left-4 md:top-6 md:left-6 z-20">
             <button 
@@ -1598,7 +1577,7 @@ export const Library = () => {
                     <p className="text-xs text-secondary mb-4">Выберите предпочитаемую альтернативную обложку для этого релиза.</p>
                     
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 max-h-[60vh] overflow-y-auto pr-1 scrollbar-thin">
-                        {currentAlbumObj.covers.map((c: string, idx: number) => (
+                        {(currentAlbumObj.covers || []).map((c: string, idx: number) => (
                             <div 
                                 key={idx} 
                                 onClick={() => { changeAlbumCover(currentAlbumObj.id, idx); setCoverPickerOpen(false); }}

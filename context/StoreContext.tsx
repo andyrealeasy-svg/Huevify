@@ -959,11 +959,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (albums.length === 0) return;
 
     if (pendingDeepLink.type === 'ALBUM') {
-      const match = albums.find(a => 
-        a.id === pendingDeepLink.id || 
-        a.id.toLowerCase() === pendingDeepLink.id.toLowerCase() ||
-        a.title.toLowerCase() === pendingDeepLink.id.toLowerCase()
-      );
+      const targetId = String(pendingDeepLink.id || '').trim().toLowerCase();
+      const match = albums.find(a => {
+        if (!a) return false;
+        const aId = String(a.id || '').trim().toLowerCase();
+        const aTitle = String(a.title || '').trim().toLowerCase();
+        return (aId && aId === targetId) || (aTitle && aTitle === targetId);
+      });
       if (match) {
         setViewInternal({ type: 'ALBUM', id: match.id });
         setPendingDeepLink(null);
@@ -4189,7 +4191,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return updated;
     });
   };
-  const isAlbumLiked = (albumId: string) => likedAlbumIds.includes(albumId);
+  const isAlbumLiked = (albumId: string) => Boolean(albumId && Array.isArray(likedAlbumIds) && likedAlbumIds.includes(String(albumId)));
   const openAddToPlaylist = (trackId: string) => { setTrackIdToAdd(trackId); setAddToPlaylistOpen(true); };
   const closeAddToPlaylist = () => { setAddToPlaylistOpen(false); setTrackIdToAdd(null); };
 
