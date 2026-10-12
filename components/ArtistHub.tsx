@@ -13,6 +13,7 @@ import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { StorageService } from '../services/storage.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
 import { LyricsSyncModal } from './LyricsSyncModal.tsx';
+import { formatNumericReleaseDate, formatReleaseDateDisplay, extractReleaseDateParts } from '../utils/dateUtils.ts';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
 
@@ -1181,12 +1182,26 @@ export const ArtistHub = () => {
           setDistArtistName(release.artistName || release.artist);
       }
 
-      // Date Time parsing
-      const dateObj = release.releaseDate ? new Date(release.releaseDate) : new Date();
-      // Simple ISO to yyyy-MM-dd
-      setDistDate(dateObj.toISOString().split('T')[0]);
-      // Simple time
-      setDistTime(dateObj.toTimeString().slice(0, 5));
+      // Date Time parsing without timezone drift
+      const dateParts = release.releaseDate ? extractReleaseDateParts(release.releaseDate) : null;
+      if (dateParts) {
+        const yStr = String(dateParts.year);
+        const mStr = String(dateParts.month).padStart(2, '0');
+        const dStr = String(dateParts.day).padStart(2, '0');
+        setDistDate(`${yStr}-${mStr}-${dStr}`);
+      } else {
+        const dateObj = release.releaseDate ? new Date(release.releaseDate) : new Date();
+        setDistDate(dateObj.toISOString().split('T')[0]);
+      }
+
+      if (release.releaseTime) {
+        setDistTime(release.releaseTime);
+      } else if (release.releaseDate && release.releaseDate.includes('T')) {
+        const timePart = release.releaseDate.split('T')[1];
+        setDistTime(timePart ? timePart.slice(0, 5) : '00:00');
+      } else {
+        setDistTime('00:00');
+      }
 
       setDistMsg(release.releaseMessage || "");
 
@@ -1501,7 +1516,7 @@ export const ArtistHub = () => {
                                 </td>
                                 <td className="p-4 font-bold text-sm">{r.artistName}</td>
                                 <td className="p-4 text-sm text-secondary">{r.type}</td>
-                                <td className="p-4 text-sm text-secondary">{new Date(r.releaseDate).toLocaleDateString()}</td>
+                                <td className="p-4 text-sm text-secondary">{formatNumericReleaseDate(r.releaseDate)}</td>
                                 <td className="p-4">
                                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
                                         r.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
@@ -3546,7 +3561,7 @@ export const ArtistHub = () => {
                                     <span className="font-bold">{r.title}</span>
                                 </td>
                                 <td className="p-4 text-sm text-secondary">{r.type}</td>
-                                <td className="p-4 text-sm text-secondary">{new Date(r.releaseDate).toLocaleDateString()}</td>
+                                <td className="p-4 text-sm text-secondary">{formatNumericReleaseDate(r.releaseDate)}</td>
                                 <td className="p-4">
                                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
                                         r.status === 'LIVE' ? 'bg-green-500/20 text-green-500' :
@@ -3595,7 +3610,7 @@ export const ArtistHub = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="font-bold text-lg truncate">{r.title}</div>
-                            <div className="text-sm text-secondary truncate">{r.type} • {new Date(r.releaseDate).toLocaleDateString()}</div>
+                            <div className="text-sm text-secondary truncate">{r.type} • {formatNumericReleaseDate(r.releaseDate)}</div>
                             <div className={`text-xs font-bold mt-1 uppercase ${
                                 r.status === 'LIVE' ? 'text-green-500' :
                                 r.status === 'APPROVED' ? 'text-blue-500' :
@@ -4373,14 +4388,14 @@ export const ArtistHub = () => {
     }
 
     const formatDisplayDate = (dObj: Date | null, rawDateStr?: string): string => {
+      if (rawDateStr) {
+        return formatNumericReleaseDate(rawDateStr);
+      }
       if (dObj) {
         const day = String(dObj.getDate()).padStart(2, '0');
         const month = String(dObj.getMonth() + 1).padStart(2, '0');
         const year = dObj.getFullYear();
         return `${day}/${month}/${year}`;
-      }
-      if (rawDateStr) {
-        return rawDateStr;
       }
       return 'скоро';
     };

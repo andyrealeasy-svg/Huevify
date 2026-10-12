@@ -11,6 +11,8 @@ import { StorageService } from '../services/storage.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { Track } from '../types.ts';
 import { formatCompactNumber } from '../utils/formatters.ts';
+import { extractColorFromImage, getCachedColor, ExtractedColors } from '../utils/colorExtractor.ts';
+import { formatReleaseDateDisplay } from '../utils/dateUtils.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -20,21 +22,6 @@ const formatDuration = (seconds: number) => {
 
 const formatPlays = (plays: number) => {
     return new Intl.NumberFormat('en-US').format(plays);
-};
-
-const formatReleaseDateDisplay = (dateString?: string) => {
-    if (!dateString) return '';
-    try {
-        const d = new Date(dateString);
-        if (isNaN(d.getTime())) return dateString;
-        return d.toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
-    } catch {
-        return dateString;
-    }
 };
 
 interface ArtistViewProps {
@@ -706,6 +693,53 @@ export const Library = () => {
 
   const [isCoverPickerOpen, setCoverPickerOpen] = useState(false);
 
+  // Dynamic adaptive palette extracted from release/playlist cover
+  const [adaptivePalette, setAdaptivePalette] = useState<ExtractedColors | null>(null);
+
+  const currentDetailCover = useMemo(() => {
+    if (view.type === 'ALBUM') {
+      const albId = (view as any).id;
+      const alb = albums.find(a => a && (a.id === albId || String(a.id) === String(albId) || (a.title && String(a.title).toLowerCase() === String(albId || '').toLowerCase())));
+      if (alb) return getAlbumCover(alb.id);
+    } else if (view.type === 'PLAYLIST') {
+      const pid = (view as any).id;
+      if (pid === 'history') {
+        return recentlyPlayed.length > 0 ? getTrackCover(recentlyPlayed[0]) : '';
+      }
+      const pl = playlists.find(p => p && (p.id === pid || String(p.id) === String(pid)));
+      if (pl?.customCover) return pl.customCover;
+      if (pl?.tracks && pl.tracks.length > 0) {
+        const first = tracks.find(t => t && t.id === pl.tracks[0]);
+        if (first) return getTrackCover(first);
+      }
+    }
+    return '';
+  }, [view, albums, playlists, tracks, recentlyPlayed, getAlbumCover, getTrackCover, appSettings?.albumCoverIndexes]);
+
+  useEffect(() => {
+    if (!currentDetailCover) {
+      setAdaptivePalette(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const cached = getCachedColor(currentDetailCover);
+    if (cached) {
+      setAdaptivePalette(cached);
+      return;
+    }
+
+    extractColorFromImage(currentDetailCover, (view as any).id || '').then(colors => {
+      if (!isCancelled) {
+        setAdaptivePalette(colors);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentDetailCover, (view as any).id]);
+
   const handleCreate = () => {
     setPlaylistIdToEdit(null);
     setCreatePlaylistOpen(true);
@@ -1128,8 +1162,54 @@ export const Library = () => {
 
     return (
       <div className="h-full overflow-y-auto pb-64 relative w-full page-enter">
+        {/* Dynamic Cover Ambient Backdrop */}
+        <div 
+          className="absolute top-0 left-0 right-0 h-[850px] md:h-[950px] pointer-events-none overflow-hidden transition-all duration-700 ease-out z-0"
+          style={{
+            maskImage: 'linear-gradient(to bottom, black 0%, black 65%, rgba(0,0,0,0.85) 78%, rgba(0,0,0,0.3) 90%, transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 65%, rgba(0,0,0,0.85) 78%, rgba(0,0,0,0.3) 90%, transparent 100%)'
+          }}
+        >
+          {/* Layer 1: Adaptive Palette Gradient */}
+          <div 
+            className="absolute inset-0 transition-all duration-700 ease-out"
+            style={{
+              background: adaptivePalette?.backgroundGradient || (adaptivePalette
+                ? `linear-gradient(180deg, ${adaptivePalette.backgroundColor || adaptivePalette.primary} 0%, rgba(${adaptivePalette.backgroundRgb ? adaptivePalette.backgroundRgb.join(',') : adaptivePalette.rgb.join(',')}, 0.58) 28%, rgba(${adaptivePalette.rgb.join(',')}, 0.25) 50%, rgba(18, 18, 18, 0.75) 75%, #121212 95%, #121212 100%)`
+                : isLikedSongs
+                  ? 'linear-gradient(180deg, #4338ca 0%, rgba(30, 58, 138, 0.55) 36%, rgba(18, 18, 18, 0.95) 75%, #121212 100%)'
+                  : 'linear-gradient(180deg, #2b3040 0%, rgba(25, 30, 42, 0.55) 36%, rgba(18, 18, 18, 0.95) 75%, #121212 100%)')
+            }}
+          />
+
+          {/* Layer 2: True Cover Blurred Ambient Art (100% matches the artwork vibe & background) */}
+          {cover && !isLikedSongs && !isHistory && (
+            <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
+              <img 
+                src={cover} 
+                alt="" 
+                className="absolute -top-20 left-1/2 -translate-x-1/2 w-[150%] max-w-none md:w-[130%] h-[720px] md:h-[840px] object-cover blur-[90px] md:blur-[120px] scale-110 opacity-60 md:opacity-55 saturate-175 transform-gpu transition-all duration-700 ease-out" 
+              />
+              {/* Soft atmospheric gradient masks over the blurred cover to blend naturally into dark UI */}
+              <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/40 via-55% via-transparent to-[#121212] transition-colors duration-700" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-[#121212]/80 via-35% to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-black/40" />
+            </div>
+          )}
+
+          {/* Layer 3: Dynamic Ambient Glow behind cover art */}
+          <div 
+            className="absolute top-4 left-1/2 -translate-x-1/2 w-full max-w-3xl h-[420px] opacity-65 blur-3xl pointer-events-none transition-all duration-700"
+            style={{
+              background: adaptivePalette
+                ? `radial-gradient(circle at 50% 32%, rgba(${adaptivePalette.backgroundRgb ? adaptivePalette.backgroundRgb.join(',') : adaptivePalette.rgb.join(',')}, 0.75) 0%, rgba(${adaptivePalette.rgb.join(',')}, 0.25) 50%, transparent 72%)`
+                : 'radial-gradient(circle at 50% 32%, rgba(65, 80, 110, 0.4) 0%, transparent 70%)'
+            }}
+          />
+        </div>
+
         {/* Header */}
-        <div className="relative p-6 md:p-8 bg-gradient-to-b from-slate-700 to-background animate-appear">
+        <div className="relative p-6 md:p-8 animate-appear z-10">
           {/* Back Button */}
           <div className="absolute top-4 left-4 md:top-6 md:left-6 z-20">
             <button 
@@ -1155,6 +1235,11 @@ export const Library = () => {
                   } ${
                     hasMultipleCovers || (isPlaylist && isOwner && !isSystem) ? 'cursor-pointer' : ''
                   }`}
+                  style={adaptivePalette ? {
+                    boxShadow: `0 24px 60px rgba(${adaptivePalette.backgroundRgb ? adaptivePalette.backgroundRgb.join(',') : adaptivePalette.rgb.join(',')}, 0.45), 0 10px 30px rgba(0,0,0,0.7)`
+                  } : {
+                    boxShadow: '0 20px 48px rgba(0,0,0,0.6)'
+                  }}
                   onClick={(e) => { 
                     if (hasMultipleCovers) {
                       setCoverPickerOpen(true); 
@@ -1323,7 +1408,7 @@ export const Library = () => {
 
             if (isReleaseDue) {
               return (
-                <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 animate-appear bg-background">
+                <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 animate-appear bg-transparent relative z-10">
                   <button 
                     onClick={() => completeAnnouncementTransition(currentAlbumObj.id, currentAlbumObj.linkedAlbumId)}
                     className="px-8 py-3 rounded-full bg-primary hover:bg-primary-highlight text-black font-extrabold text-base flex items-center gap-2.5 transition shadow-lg hover:scale-105 active:scale-95 shadow-primary/25 select-none"
@@ -1339,7 +1424,7 @@ export const Library = () => {
             }
 
             return (
-              <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-3 animate-appear bg-background">
+              <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-3 animate-appear bg-transparent relative z-10">
                 <button 
                   onClick={() => {
                     toggleAlbumLike(id);
@@ -1384,7 +1469,7 @@ export const Library = () => {
             );
           })()
         ) : (
-          <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-background">
+          <div className="px-6 md:px-8 py-4 md:py-6 flex items-center gap-4 md:gap-6 animate-appear bg-transparent relative z-10">
             {(() => {
               const playableTracks = items.filter(t => !t.isUnreleased && Boolean(t.url));
 
@@ -1493,7 +1578,7 @@ export const Library = () => {
         )}
 
         {/* List */}
-        <div className="px-4 md:px-8 animate-slide-up">
+        <div className="px-4 md:px-8 animate-slide-up relative z-10">
            {currentAlbumObj?.isUpcoming && (
               <h2 className="text-xl md:text-2xl font-bold mb-4 text-white">
                 {t('tracklistPreview', 'Предпросмотр списка треков')}
