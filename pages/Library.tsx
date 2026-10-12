@@ -11,6 +11,7 @@ import { StorageService } from '../services/storage.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { Track } from '../types.ts';
 import { formatCompactNumber } from '../utils/formatters.ts';
+import { extractColorFromImage, getCachedColor, ExtractedColors } from '../utils/colorExtractor.ts';
 
 const formatDuration = (seconds: number) => {
     const min = Math.floor(seconds / 60);
@@ -1097,6 +1098,33 @@ export const Library = () => {
     const totalReleasePlays = items.reduce((acc, t) => acc + t.plays, 0);
     const isOwner = currentUser && playlistOwnerId === currentUser.id;
 
+    const [headerPalette, setHeaderPalette] = React.useState<ExtractedColors | null>(() => cover ? getCachedColor(cover) : null);
+
+    React.useEffect(() => {
+      if (!cover) {
+        setHeaderPalette(null);
+        return;
+      }
+      let isCancelled = false;
+      const cached = getCachedColor(cover);
+      if (cached) {
+        setHeaderPalette(cached);
+        return;
+      }
+      extractColorFromImage(cover, id + title).then(colors => {
+        if (!isCancelled) {
+          setHeaderPalette(colors);
+        }
+      });
+      return () => {
+        isCancelled = true;
+      };
+    }, [cover, id]);
+
+    const headerBgStyle = headerPalette 
+      ? { background: `linear-gradient(180deg, ${headerPalette.primary} 0%, rgba(18,18,18,0.95) 75%, #121212 100%)` }
+      : { background: 'linear-gradient(180deg, #334155 0%, rgba(18,18,18,0.95) 75%, #121212 100%)' };
+
     // --- Empty Liked Songs View ---
     if (isLikedSongs && items.length === 0) {
         return (
@@ -1122,7 +1150,7 @@ export const Library = () => {
     return (
       <div className="h-full overflow-y-auto pb-64 relative w-full page-enter">
         {/* Header */}
-        <div className="relative p-6 md:p-8 bg-gradient-to-b from-slate-700 to-background animate-appear">
+        <div className="relative p-6 md:p-8 animate-appear transition-colors duration-700" style={headerBgStyle}>
           {/* Back Button */}
           <div className="absolute top-4 left-4 md:top-6 md:left-6 z-20">
             <button 

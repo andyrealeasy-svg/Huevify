@@ -18,10 +18,15 @@ export const Home = () => {
   const { albums, setView, tracks, playTrack, recommendations, recentlyPlayed, currentUser, setProfileModalOpen, appSettings, dailyChart, goToArtist, likedPlaylistId, getTrackCover, getAlbumCover, getArtistAvatar, getArtistStats, existingArtists, artistAccounts, currentTrack, isPlaying, t } = useStore();
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
+  const [isLoading, setIsLoading] = useState(true);
   const [remotePlays14d, setRemotePlays14d] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let isMounted = true;
+    const timer = setTimeout(() => {
+      if (isMounted) setIsLoading(false);
+    }, 400);
+
     if (isSupabaseConfigured()) {
       const twoWeeksAgoISO = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -31,7 +36,10 @@ export const Home = () => {
         }
       }).catch(err => console.warn('Home 14d plays fetch error:', err));
     }
-    return () => { isMounted = false; };
+    return () => { 
+      isMounted = false; 
+      clearTimeout(timer);
+    };
   }, []);
 
   const previewCharts = dailyChart.slice(0, 5);
@@ -373,7 +381,23 @@ export const Home = () => {
       {/* Top 10 Artists Section */}
       <h3 className="text-xl md:text-2xl font-bold mb-4 animate-appear">{t('topArtists', 'Топ артистов')}</h3>
       <div className="flex overflow-x-auto gap-4 md:grid md:grid-cols-4 lg:grid-cols-5 pb-4 md:pb-0 snap-x no-scrollbar animate-slide-up">
-        {topArtists.length === 0 ? (
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div 
+              key={i}
+              className={`w-[155px] md:w-auto p-4 snap-start flex-shrink-0 flex flex-col items-center text-center skeleton-pulse ${
+                isLiquidGlass
+                  ? 'max-md:bg-white/[0.04] max-md:backdrop-blur-xl max-md:border max-md:border-white/10 max-md:rounded-2xl md:bg-surface/60 md:rounded-2xl'
+                  : 'bg-surface/60 rounded-2xl'
+              }`}
+            >
+              <div className="w-28 h-28 sm:w-32 sm:h-32 aspect-square rounded-full bg-zinc-800 mb-3" />
+              <div className="w-10 h-6 bg-zinc-800 rounded mb-2" />
+              <div className="w-24 h-5 bg-zinc-800 rounded mb-1.5" />
+              <div className="w-16 h-3.5 bg-zinc-800 rounded" />
+            </div>
+          ))
+        ) : topArtists.length === 0 ? (
           <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noResults', 'Нет артистов')}</div>
         ) : (
           topArtists.map((artist, idx) => (

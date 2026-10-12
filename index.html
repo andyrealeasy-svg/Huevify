@@ -111,6 +111,14 @@
       .animate-eq-2 { animation: eq-bounce-2 0.55s ease-in-out infinite; }
       .animate-eq-3 { animation: eq-bounce-3 0.85s ease-in-out infinite; }
       .animate-eq-4 { animation: eq-bounce-4 0.65s ease-in-out infinite; }
+
+      @keyframes skeletonPulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 0.8; }
+      }
+      .skeleton-pulse {
+        animation: skeletonPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
     </style>
     <script>
       window.addEventListener('error', function(e) {

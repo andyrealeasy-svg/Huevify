@@ -771,7 +771,13 @@ const computeRankChangesFromSupabaseLogs = async (
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // --- Auth State ---
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    return StorageService.load<User | null>('huevify_current_user', null);
+    const saved = StorageService.load<User | null>('huevify_current_user', null);
+    // Clean up any previously auto-created telegram guest or telegram accounts
+    if (saved && (saved.id?.startsWith('tg_') || saved.username === 'telegram_user')) {
+      StorageService.save('huevify_current_user', null);
+      return null;
+    }
+    return saved;
   });
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -918,7 +924,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     StorageService.save('huevify_popular_mode', mode);
   };
 
-  // --- Telegram Mini App Deep Linking & Auto-login ---
+  // --- Telegram Mini App Deep Linking ---
   const [pendingDeepLink, setPendingDeepLink] = useState<{ type: 'ALBUM' | 'ARTIST'; id: string } | null>(() => {
     const raw = getTelegramStartParam();
     return raw ? decodeTelegramStartParam(raw) : null;
@@ -934,24 +940,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (e) {
         console.warn('Telegram WebApp ready error:', e);
       }
-
-      if (!currentUser) {
-        const tgUser = tg.initDataUnsafe?.user;
-        const tgName = tgUser
-          ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'Telegram User'
-          : 'Telegram User';
-        const autoUser: User = {
-          id: tgUser ? `tg_${tgUser.id}` : `tg_guest_${Date.now()}`,
-          username: tgUser?.username || 'telegram_user',
-          password: '',
-          displayName: tgName,
-          avatar: tgUser?.photo_url || ''
-        };
-        setCurrentUser(autoUser);
-        StorageService.save('huevify_current_user', autoUser);
-      }
     }
-  }, [currentUser]);
+
+    // Clean up any stale auto-created telegram accounts from users list if any
+    try {
+      const users = StorageService.load<User[]>('huevify_users', []);
+      const filtered = users.filter(u => !u.id?.startsWith('tg_') && u.username !== 'telegram_user');
+      if (filtered.length !== users.length) {
+        StorageService.save('huevify_users', filtered);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!pendingDeepLink || !currentUser) return;
