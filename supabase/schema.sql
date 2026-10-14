@@ -49,9 +49,17 @@ CREATE TABLE IF NOT EXISTS public.artist_accounts (
     bio TEXT,
     status TEXT NOT NULL DEFAULT 'APPROVED',
     artist_pick JSONB,
+    is_verified BOOLEAN DEFAULT FALSE,
+    verified_at TIMESTAMPTZ,
+    verification_request_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration for artist_accounts table
+ALTER TABLE public.artist_accounts ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.artist_accounts ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE public.artist_accounts ADD COLUMN IF NOT EXISTS verification_request_id TEXT;
 
 -- 3. Users Table
 CREATE TABLE IF NOT EXISTS public.users (
@@ -182,6 +190,33 @@ CREATE TABLE IF NOT EXISTS public.track_play_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 12. Artist Verification Requests Table
+CREATE TABLE IF NOT EXISTS public.artist_verification_requests (
+    id TEXT PRIMARY KEY,
+    artist_id TEXT NOT NULL,
+    artist_name TEXT NOT NULL,
+    applicant_role TEXT NOT NULL DEFAULT 'ARTIST',
+    artist_name_check TEXT NOT NULL,
+    proof_method TEXT NOT NULL DEFAULT 'SOCIAL',
+    social_link TEXT,
+    verification_code TEXT,
+    telegram_username TEXT,
+    other_proof_text TEXT,
+    additional_info TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    submitted_at TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    rejected_at TIMESTAMPTZ,
+    rejection_reason TEXT,
+    criteria_snapshot JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Migration for artist_verification_requests
+ALTER TABLE public.artist_verification_requests ADD COLUMN IF NOT EXISTS proof_method TEXT DEFAULT 'SOCIAL';
+ALTER TABLE public.artist_verification_requests ADD COLUMN IF NOT EXISTS verification_code TEXT;
+ALTER TABLE public.artist_verification_requests ADD COLUMN IF NOT EXISTS criteria_snapshot JSONB DEFAULT '{}'::jsonb;
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.releases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.artist_accounts ENABLE ROW LEVEL SECURITY;
@@ -194,6 +229,7 @@ ALTER TABLE public.daily_chart ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profile_edit_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.release_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.track_play_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.artist_verification_requests ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read & write for app prototype clients with anon key
 DO $$ 
@@ -230,6 +266,9 @@ BEGIN
 
     DROP POLICY IF EXISTS "Public access track_play_logs" ON public.track_play_logs;
     CREATE POLICY "Public access track_play_logs" ON public.track_play_logs FOR ALL USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Public access artist_verification_requests" ON public.artist_verification_requests;
+    CREATE POLICY "Public access artist_verification_requests" ON public.artist_verification_requests FOR ALL USING (true) WITH CHECK (true);
 END $$;
 
 -- Enable Realtime publication for tables
@@ -242,6 +281,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.track_plays;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.track_play_logs;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_chart;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.profile_edit_requests;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.artist_verification_requests;
 
 -- ==============================================================================
 -- 9. STORAGE BUCKET CONFIGURATION ('media')

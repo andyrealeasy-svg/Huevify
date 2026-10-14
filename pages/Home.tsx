@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useStore } from '../context/StoreContext.tsx';
-import { Play, ListMusic, User as UserIcon, Clock } from '../components/Icons.tsx';
+import { Play, ListMusic, User as UserIcon, Clock, Check } from '../components/Icons.tsx';
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 import { TrackRow } from '../components/TrackRow.tsx';
@@ -400,47 +400,65 @@ export const Home = () => {
         ) : topArtists.length === 0 ? (
           <div className="text-secondary text-sm p-4 bg-surface/40 rounded-lg col-span-full">{t('noResults', 'Нет артистов')}</div>
         ) : (
-          topArtists.map((artist, idx) => (
-            <div 
-              key={artist.name} 
-              onClick={() => goToArtist(artist.name)}
-              className={`w-[155px] md:w-auto p-4 cursor-pointer group snap-start flex-shrink-0 hover-scale transition-all flex flex-col items-center text-center ${
-                isLiquidGlass
-                  ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] md:bg-surface md:hover:bg-surface-highlight md:rounded-2xl'
-                  : 'bg-surface hover:bg-surface-highlight rounded-2xl'
-              }`}
-            >
-              {/* фото артиста 1:1 круглое и без всяких бейджей */}
-              <div className="w-28 h-28 sm:w-32 sm:h-32 aspect-square rounded-full overflow-hidden bg-zinc-800 shadow-xl mb-3 flex-shrink-0">
-                {artist.photo ? (
-                  <img 
-                    src={artist.photo} 
-                    alt={artist.name} 
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-secondary">
-                    <UserIcon size={44} />
-                  </div>
-                )}
+          topArtists.map((artist, idx) => {
+            const acc = artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === (artist.name || '').trim().toLowerCase() && a.status === 'APPROVED') ||
+                        artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === (artist.name || '').trim().toLowerCase());
+            const isRegistered = Boolean(acc);
+            const isVerified = Boolean(acc && acc.isVerified);
+
+            return (
+              <div 
+                key={artist.name} 
+                onClick={() => goToArtist(artist.name)}
+                className={`w-[155px] md:w-auto p-4 cursor-pointer group snap-start flex-shrink-0 hover-scale transition-all flex flex-col items-center text-center ${
+                  isLiquidGlass
+                    ? 'max-md:bg-white/[0.06] max-md:backdrop-blur-2xl max-md:border max-md:border-white/15 max-md:rounded-2xl max-md:shadow-[0_8px_20px_-4px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] md:bg-surface md:hover:bg-surface-highlight md:rounded-2xl'
+                    : 'bg-surface hover:bg-surface-highlight rounded-2xl'
+                }`}
+              >
+                {/* фото артиста 1:1 круглое и без всяких бейджей */}
+                <div className="w-28 h-28 sm:w-32 sm:h-32 aspect-square rounded-full overflow-hidden bg-zinc-800 shadow-xl mb-3 flex-shrink-0">
+                  {artist.photo ? (
+                    <img 
+                      src={artist.photo} 
+                      alt={artist.name} 
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-secondary">
+                      <UserIcon size={44} />
+                    </div>
+                  )}
+                </div>
+
+                {/* ниже №Х большое белое */}
+                <div className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-1.5">
+                  №{idx + 1}
+                </div>
+
+                {/* ниже ник артиста с галочкой статуса */}
+                <div className="flex items-center justify-center gap-1.5 max-w-full px-1 mb-1">
+                  <h4 className="text-base md:text-lg font-bold text-white truncate group-hover:text-primary transition-colors leading-snug">
+                    {artist.name}
+                  </h4>
+                  {isVerified ? (
+                    <span title="Подтвержденный артист" className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/30">
+                      <Check size={9.5} strokeWidth={3.5} />
+                    </span>
+                  ) : isRegistered ? (
+                    <span title="Зарегистрированный артист" className="w-3.5 h-3.5 rounded-full bg-zinc-600 flex items-center justify-center text-zinc-200 shrink-0">
+                      <Check size={8} strokeWidth={3} />
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* ниже серым маленьким текстом количество прослушиваний */}
+                <p className="text-xs text-secondary truncate max-w-full font-medium">
+                  {formatArtistMonthlyPlays(artist.monthlyPlays)}
+                </p>
               </div>
-
-              {/* ниже №Х большое белое */}
-              <div className="text-2xl md:text-3xl font-black text-white tracking-tight leading-none mb-1.5">
-                №{idx + 1}
-              </div>
-
-              {/* ниже ник артиста тоже крупненько */}
-              <h4 className="text-base md:text-lg font-bold text-white truncate max-w-full px-1 group-hover:text-primary transition-colors leading-snug mb-1">
-                {artist.name}
-              </h4>
-
-              {/* ниже серым маленьким текстом количество прослушиваний */}
-              <p className="text-xs text-secondary truncate max-w-full font-medium">
-                {formatArtistMonthlyPlays(artist.monthlyPlays)}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

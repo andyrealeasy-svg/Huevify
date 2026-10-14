@@ -123,6 +123,37 @@ export enum PlayMode {
 
 export type ArtistVerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
+export type VerificationApplicationStatus = 'PENDING' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
+export type VerificationRole = 'ARTIST' | 'REPRESENTATIVE' | 'CATALOG_MANAGER';
+export type VerificationProofMethod = 'SOCIAL' | 'TELEGRAM' | 'OTHER';
+
+export interface VerificationCriteriaSnapshot {
+  monthlyPlays: number;
+  approvedReleasesCount: number;
+  uniqueListeners: number;
+  hasProfileFilled: boolean;
+}
+
+export interface ArtistVerificationRequest {
+  id: string;
+  artistId: string;
+  artistName: string;
+  applicantRole: VerificationRole;
+  artistNameCheck: string;
+  proofMethod: VerificationProofMethod;
+  socialLink?: string;
+  verificationCode?: string; // XX00XX-00
+  telegramUsername?: string;
+  otherProofText?: string;
+  additionalInfo?: string;
+  status: VerificationApplicationStatus;
+  submittedAt: string; // ISO String
+  reviewedAt?: string; // ISO String
+  rejectedAt?: string; // ISO String for 30-day cooldown
+  rejectionReason?: string;
+  criteriaSnapshot: VerificationCriteriaSnapshot;
+}
+
 export interface ArtistAccount {
   id: string; // Unique ID for the account
   artistName: string; // Displays as the Artist Name in app
@@ -130,7 +161,10 @@ export interface ArtistAccount {
   password: string; 
   avatar?: string;
   bio?: string; // Artist Description
-  status: ArtistVerificationStatus;
+  status: ArtistVerificationStatus; // Account registration status
+  isVerified?: boolean; // True when verified as "Подтвержденный артист"
+  verifiedAt?: string;
+  verificationRequestId?: string;
   artistPick?: {
     type: 'TRACK' | 'ALBUM' | 'PLAYLIST';
     id: string;

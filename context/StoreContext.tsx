@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ChartRankChange, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord } from '../types';
+import { Track, Playlist, Album, ViewState, PlayMode, User, AppSettings, DailyChartTrack, ChartRankChange, ArtistAccount, ReleaseRequest, ProfileEditRequest, ModeratorAccount, AppNotification, UserStreamRecord, ArtistVerificationRequest } from '../types';
 import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
 import { SupabaseService, isSupabaseConfigured, supabase } from '../services/supabase';
@@ -87,6 +87,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     noAppearsOn: "No appearances found",
     about: "About",
     inTheWorld: "in the world",
+    registeredArtist: "Registered Artist",
     verifiedArtist: "Verified Artist",
     following: "Following",
     follow: "Follow",
@@ -307,6 +308,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     noAppearsOn: "Участий в релизах пока нет",
     about: "Об исполнителе",
     inTheWorld: "в мире",
+    registeredArtist: "Зарегистрированный артист",
     verifiedArtist: "Подтвержденный артист",
     following: "Вы подписаны",
     follow: "Подписаться",
@@ -556,6 +558,28 @@ interface StoreContextType {
   rejectRelease: (id: string) => void;
   approveProfileEdit: (id: string) => void;
   rejectProfileEdit: (id: string) => void;
+
+  // Artist Verification System
+  verificationRequests: ArtistVerificationRequest[];
+  submitVerificationRequest: (req: Omit<ArtistVerificationRequest, 'id' | 'status' | 'submittedAt'>) => Promise<boolean>;
+  startReviewVerificationRequest: (id: string) => Promise<void>;
+  approveVerificationRequest: (id: string) => Promise<void>;
+  rejectVerificationRequest: (id: string, reason?: string) => Promise<void>;
+  getArtistVerificationCriteria: (artistName: string) => {
+    monthlyPlays: number;
+    playsTarget: number;
+    isPlaysMet: boolean;
+    approvedReleasesCount: number;
+    releasesTarget: number;
+    isReleasesMet: boolean;
+    uniqueListeners: number;
+    listenersTarget: number;
+    isListenersMet: boolean;
+    hasAvatar: boolean;
+    hasBio: boolean;
+    isProfileMet: boolean;
+    isAllMet: boolean;
+  };
 
   // HUEQ Helper
   getTrackByHueq: (hueq: string) => Track | undefined;
@@ -861,8 +885,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentArtist, setCurrentArtist] = useState<ArtistAccount | null>(null);
   const [currentModerator, setCurrentModerator] = useState<ModeratorAccount | null>(null);
   const [artistAccounts, setArtistAccounts] = useState<ArtistAccount[]>([]);
+  const artistAccountsRef = useRef<ArtistAccount[]>([]);
+  useEffect(() => {
+    artistAccountsRef.current = artistAccounts;
+  }, [artistAccounts]);
   const [releaseRequests, setReleaseRequests] = useState<ReleaseRequest[]>([]);
   const [profileEditRequests, setProfileEditRequests] = useState<ProfileEditRequest[]>([]);
+  const [verificationRequests, setVerificationRequests] = useState<ArtistVerificationRequest[]>(() =>
+    StorageService.load<ArtistVerificationRequest[]>('huevify_verification_requests', [])
+  );
   const [hasModerator, setHasModerator] = useState(false);
   const [existingArtists, setExistingArtists] = useState<string[]>([]);
   // Legacy deletions
@@ -1016,10 +1047,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (isSupabaseConfigured()) {
         try {
-          const [remoteReleases, remoteArtists, remoteProfiles] = await Promise.all([
+          const [remoteReleases, remoteArtists, remoteProfiles, remoteVerifications] = await Promise.all([
             SupabaseService.fetchReleases().catch(() => null),
             SupabaseService.fetchArtistAccounts().catch(() => null),
-            SupabaseService.fetchProfileEditRequests().catch(() => null)
+            SupabaseService.fetchProfileEditRequests().catch(() => null),
+            SupabaseService.fetchArtistVerificationRequests().catch(() => null)
           ]);
 
           if (remoteReleases) {
@@ -1042,6 +1074,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           } else {
             setProfileEditRequests(storedProfiles);
           }
+
+          if (remoteVerifications) {
+            setVerificationRequests(remoteVerifications);
+            StorageService.save('huevify_verification_requests', remoteVerifications);
+          }
         } catch (e) {
           setArtistAccounts(storedArtists);
           setReleaseRequests(storedRequests);
@@ -1054,6 +1091,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       setDeletedLegacyIds(storedLegacy);
+      const storedVerifications = StorageService.load<ArtistVerificationRequest[]>('huevify_verification_requests', []);
+      setVerificationRequests(storedVerifications);
       const reqsToRefresh = StorageService.load<ReleaseRequest[]>('huevify_release_requests', []);
       refreshLibrary(reqsToRefresh, storedPlays);
     } catch (err) {
@@ -1106,6 +1145,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               e.key === 'huevify_release_requests' ||
               e.key === 'huevify_artist_accounts' ||
               e.key === 'huevify_profile_requests' ||
+              e.key === 'huevify_verification_requests' ||
               e.key === 'huevify_deleted_legacy'
           ) {
               reloadArtistAndModerationData();
@@ -1514,7 +1554,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Supabase Cloud Sync
         if (isSupabaseConfigured()) {
           try {
-            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays, remoteDailyChart, remoteProfileRequests] = await Promise.all([
+            const [remoteReleases, remoteArtists, remotePlaylists, remoteMod, remoteUsers, remoteTrackPlays, remoteDailyChart, remoteProfileRequests, remoteVerifications] = await Promise.all([
               SupabaseService.fetchReleases(),
               SupabaseService.fetchArtistAccounts(),
               SupabaseService.fetchPlaylists(),
@@ -1522,7 +1562,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               SupabaseService.fetchUsers(),
               SupabaseService.fetchTrackPlays(),
               SupabaseService.fetchDailyChart(),
-              SupabaseService.fetchProfileEditRequests()
+              SupabaseService.fetchProfileEditRequests(),
+              SupabaseService.fetchArtistVerificationRequests()
             ]);
 
             // Sync track plays across all devices
@@ -1573,6 +1614,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const merged = Array.from(reqsMap.values());
               setProfileEditRequests(merged);
               StorageService.save('huevify_profile_requests', merged);
+            }
+            if (remoteVerifications !== null) {
+              const localVrs = StorageService.load<ArtistVerificationRequest[]>('huevify_verification_requests', []);
+              const vrsMap = new Map<string, ArtistVerificationRequest>();
+              localVrs.forEach(r => vrsMap.set(r.id, r));
+              remoteVerifications.forEach(r => vrsMap.set(r.id, r));
+              const merged = Array.from(vrsMap.values());
+              setVerificationRequests(merged);
+              StorageService.save('huevify_verification_requests', merged);
             }
             if (remotePlaylists !== null) {
               const localPls = StorageService.load<Playlist[]>('huevify_playlists', initialPlaylists);
@@ -1760,6 +1810,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (freshChartData.lastUpdate) {
             StorageService.save('huevify_last_chart_update', freshChartData.lastUpdate);
           }
+        }
+      } else if (table === 'artist_verification_requests') {
+        const freshVrs = await SupabaseService.fetchArtistVerificationRequests();
+        if (freshVrs) {
+          setVerificationRequests(freshVrs);
+          StorageService.save('huevify_verification_requests', freshVrs);
         }
       }
     });
@@ -2583,6 +2639,210 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           SupabaseService.saveProfileEditRequest({ ...req, status: 'REJECTED' }).catch(e => console.warn('Supabase reject profile edit error:', e));
       }
   };
+
+  // --- Artist Verification System Methods ---
+  const getArtistVerificationCriteria = (artistName: string) => {
+    const cleanName = (artistName || '').trim().toLowerCase();
+    const artistAcc = artistAccounts.find(a => (a.artistName || '').trim().toLowerCase() === cleanName);
+
+    // 1. Monthly plays (>= 300 000)
+    const { monthlyPlays } = getArtistStats(artistName);
+    const playsTarget = 300000;
+    const isPlaysMet = monthlyPlays >= playsTarget;
+
+    // 2. Approved releases (>= 3)
+    const myApprovedRequests = releaseRequests.filter(r => 
+      (r.status === 'APPROVED' || r.status === 'LIVE') && 
+      ((r.artistName || '').trim().toLowerCase() === cleanName || (artistAcc && r.artistId === artistAcc.id))
+    );
+    const myAlbums = albums.filter(a => (a.artist || '').trim().toLowerCase() === cleanName);
+    const releaseTitles = new Set([
+      ...myApprovedRequests.map(r => r.title.trim().toLowerCase()),
+      ...myAlbums.map(a => a.title.trim().toLowerCase())
+    ]);
+    const approvedReleasesCount = releaseTitles.size;
+    const releasesTarget = 3;
+    const isReleasesMet = approvedReleasesCount >= releasesTarget;
+
+    // 3. Unique listeners (>= 2)
+    const artistTrackIds = new Set(
+      tracks
+        .filter(t => (t.artist || '').trim().toLowerCase() === cleanName || 
+                     (Array.isArray(t.mainArtists) && t.mainArtists.some(ma => (ma || '').trim().toLowerCase() === cleanName)))
+        .map(t => t.id)
+    );
+    const streamHistory = StorageService.load<UserStreamRecord[]>('huevify_stream_history', []);
+    const listeners = new Set<string>();
+    streamHistory.forEach(s => {
+      if (artistTrackIds.has(s.trackId)) {
+        if (s.userId) listeners.add(s.userId);
+        if (s.deviceId) listeners.add(s.deviceId);
+      }
+    });
+    let uniqueListeners = listeners.size;
+    if (uniqueListeners < 2 && monthlyPlays >= 300000) {
+      uniqueListeners = Math.max(uniqueListeners, 2);
+    }
+    const listenersTarget = 2;
+    const isListenersMet = uniqueListeners >= listenersTarget;
+
+    // 4. Profile filled (avatar and bio)
+    const hasAvatar = Boolean(artistAcc?.avatar && artistAcc.avatar.trim().length > 0);
+    const hasBio = Boolean(artistAcc?.bio && artistAcc.bio.trim().length > 0);
+    const isProfileMet = hasAvatar && hasBio;
+
+    const isAllMet = isPlaysMet && isReleasesMet && isListenersMet && isProfileMet;
+
+    return {
+      monthlyPlays,
+      playsTarget,
+      isPlaysMet,
+      approvedReleasesCount,
+      releasesTarget,
+      isReleasesMet,
+      uniqueListeners,
+      listenersTarget,
+      isListenersMet,
+      hasAvatar,
+      hasBio,
+      isProfileMet,
+      isAllMet
+    };
+  };
+
+  const submitVerificationRequest = async (
+    reqData: Omit<ArtistVerificationRequest, 'id' | 'status' | 'submittedAt'>
+  ): Promise<boolean> => {
+    const id = `vr_${Date.now()}`;
+    const newReq: ArtistVerificationRequest = {
+      ...reqData,
+      id,
+      status: 'PENDING',
+      submittedAt: new Date().toISOString()
+    };
+    const updated = [newReq, ...verificationRequests.filter(r => r.artistId !== newReq.artistId)];
+    setVerificationRequests(updated);
+    StorageService.save('huevify_verification_requests', updated);
+    if (isSupabaseConfigured()) {
+      SupabaseService.saveArtistVerificationRequest(newReq).catch(e => console.warn('Supabase save verification request error:', e));
+    }
+    showNotification('Заявка на верификацию отправлена', 'success');
+    notifySync('ARTIST_DATA_UPDATE');
+    return true;
+  };
+
+  const startReviewVerificationRequest = async (id: string) => {
+    let updatedTarget: ArtistVerificationRequest | undefined;
+    const updated = verificationRequests.map(r => {
+      if (r.id === id) {
+        updatedTarget = {
+          ...r,
+          status: 'IN_REVIEW' as const,
+          reviewedAt: new Date().toISOString()
+        };
+        return updatedTarget;
+      }
+      return r;
+    });
+    setVerificationRequests(updated);
+    StorageService.save('huevify_verification_requests', updated);
+    if (isSupabaseConfigured() && updatedTarget) {
+      SupabaseService.saveArtistVerificationRequest(updatedTarget).catch(e => console.warn('Supabase update verification in_review error:', e));
+    }
+    showNotification('Заявка взята на рассмотрение', 'info');
+    notifySync('ARTIST_DATA_UPDATE');
+  };
+
+  const approveVerificationRequest = async (id: string) => {
+    const req = verificationRequests.find(r => r.id === id);
+    if (!req) return;
+
+    let updatedTarget: ArtistVerificationRequest | undefined;
+    const updatedReqs = verificationRequests.map(r => {
+      if (r.id === id) {
+        updatedTarget = {
+          ...r,
+          status: 'APPROVED' as const,
+          reviewedAt: new Date().toISOString()
+        };
+        return updatedTarget;
+      }
+      return r;
+    });
+    setVerificationRequests(updatedReqs);
+    StorageService.save('huevify_verification_requests', updatedReqs);
+    if (isSupabaseConfigured() && updatedTarget) {
+      SupabaseService.saveArtistVerificationRequest(updatedTarget).catch(e => console.warn('Supabase save verification approved error:', e));
+    }
+
+    const updatedAccounts = artistAccounts.map(a => 
+      (a.id === req.artistId || (a.artistName || '').trim().toLowerCase() === (req.artistName || '').trim().toLowerCase())
+        ? { ...a, isVerified: true, verifiedAt: new Date().toISOString(), verificationRequestId: id }
+        : a
+    );
+    setArtistAccounts(updatedAccounts);
+    StorageService.save('huevify_artist_accounts', updatedAccounts);
+
+    if (currentArtist && (currentArtist.id === req.artistId || currentArtist.artistName === req.artistName)) {
+      setCurrentArtist(prev => prev ? { ...prev, isVerified: true, verifiedAt: new Date().toISOString() } : null);
+    }
+
+    showNotification(`Верификация артиста ${req.artistName} одобрена`, 'success');
+    notifySync('ARTIST_DATA_UPDATE');
+
+    if (isSupabaseConfigured()) {
+      const updatedArtist = updatedAccounts.find(a => a.id === req.artistId);
+      if (updatedArtist) {
+        SupabaseService.saveArtistAccount(updatedArtist).catch(e => console.warn('Supabase save artist verification error:', e));
+      }
+    }
+  };
+
+  const rejectVerificationRequest = async (id: string, reason?: string) => {
+    const req = verificationRequests.find(r => r.id === id);
+    if (!req) return;
+
+    let updatedTarget: ArtistVerificationRequest | undefined;
+    const updatedReqs = verificationRequests.map(r => {
+      if (r.id === id) {
+        updatedTarget = {
+          ...r,
+          status: 'REJECTED' as const,
+          rejectedAt: new Date().toISOString(),
+          rejectionReason: reason || 'Недостаточно подтверждающих данных или не выполнены условия'
+        };
+        return updatedTarget;
+      }
+      return r;
+    });
+    setVerificationRequests(updatedReqs);
+    StorageService.save('huevify_verification_requests', updatedReqs);
+    if (isSupabaseConfigured() && updatedTarget) {
+      SupabaseService.saveArtistVerificationRequest(updatedTarget).catch(e => console.warn('Supabase save verification rejected error:', e));
+    }
+
+    const updatedAccounts = artistAccounts.map(a => 
+      (a.id === req.artistId || (a.artistName || '').trim().toLowerCase() === (req.artistName || '').trim().toLowerCase())
+        ? { ...a, isVerified: false }
+        : a
+    );
+    setArtistAccounts(updatedAccounts);
+    StorageService.save('huevify_artist_accounts', updatedAccounts);
+
+    if (currentArtist && (currentArtist.id === req.artistId || currentArtist.artistName === req.artistName)) {
+      setCurrentArtist(prev => prev ? { ...prev, isVerified: false } : null);
+    }
+
+    showNotification(`Заявка на верификацию ${req.artistName} отклонена`, 'info');
+    notifySync('ARTIST_DATA_UPDATE');
+
+    if (isSupabaseConfigured()) {
+      const updatedArtist = updatedAccounts.find(a => a.id === req.artistId);
+      if (updatedArtist) {
+        SupabaseService.saveArtistAccount(updatedArtist).catch(e => console.warn('Supabase save artist reject verification error:', e));
+      }
+    }
+  };
   
   const getTrackByHueq = (hueq: string): Track | undefined => {
       if (!hueq) return undefined;
@@ -2684,7 +2944,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const availableTracks = tracksRef.current;
     if (availableTracks.length === 0) return;
 
-    const liveTracks = availableTracks.filter(t => !isTestTrack(t));
+    // Only tracks whose artist is verified ("Подтвержденный артист") can enter Huevify Daily Top 25
+    const verifiedArtistNames = new Set(
+      artistAccountsRef.current
+        .filter(a => a.isVerified === true)
+        .map(a => (a.artistName || '').trim().toLowerCase())
+    );
+
+    const liveTracks = availableTracks.filter(t => {
+      if (isTestTrack(t)) return false;
+      const primaryArtist = (t.artist || '').trim().toLowerCase();
+      return verifiedArtistNames.has(primaryArtist) ||
+        (Array.isArray(t.mainArtists) && t.mainArtists.some(ma => verifiedArtistNames.has((ma || '').trim().toLowerCase())));
+    });
 
     // Spotify-style static daily chart: strictly tracks with dailyPlays > 0 during the COMPLETED 24h cycle
     const chartData: DailyChartTrack[] = liveTracks
@@ -4261,6 +4533,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isArtistHubOpen, setArtistHubOpen, currentArtist, currentModerator, artistAccounts,
       registerArtist, registerModerator, loginArtistOrMod, logoutArtistHub, submitRelease, submitProfileEdit, deleteRelease, completeAnnouncementTransition, deleteLegacyTrack, updateReleaseRequest, deleteArtistAccount, changeArtistPassword, changeModeratorPassword,
       approveArtist, rejectArtist, approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
+      verificationRequests, submitVerificationRequest, startReviewVerificationRequest, approveVerificationRequest, rejectVerificationRequest, getArtistVerificationCriteria,
       releaseRequests, profileEditRequests, hasModerator, existingArtists, getTrackByHueq,
       tracks, setTracks, albums, playlists, recommendations, recentlyPlayed, followedArtists, currentTrack, setCurrentTrack, currentQueue, isPlaying, playMode, isShuffle, volume, progress, duration, view,
       isCreatePlaylistOpen, setCreatePlaylistOpen, playlistIdToEdit, setPlaylistIdToEdit,

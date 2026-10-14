@@ -119,6 +119,15 @@
       .skeleton-pulse {
         animation: skeletonPulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
+
+      @keyframes hourglassFlip {
+        0%, 15% { transform: rotate(0deg); }
+        45%, 65% { transform: rotate(180deg); }
+        90%, 100% { transform: rotate(360deg); }
+      }
+      .animate-hourglass {
+        animation: hourglassFlip 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      }
     </style>
     <script>
       window.addEventListener('error', function(e) {

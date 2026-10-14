@@ -203,8 +203,10 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
   const bio = artistAccount?.bio;
   const pick = artistAccount?.artistPick;
 
-  // Only verify if account exists (registered in Huevify For Artists)
-  const isVerified = Boolean(artistAccount);
+  // 1. Registered artist in Huevify For Artists
+  const isRegistered = Boolean(artistAccount);
+  // 2. Verified artist (through verification system)
+  const isVerified = Boolean(artistAccount && artistAccount.isVerified);
   const artistPhoto = artistAccount?.avatar || getArtistAvatar(artistName) || (topTracks[0] ? getTrackCover(topTracks[0]) : '');
 
   const isFollowing = isArtistFollowed(artistName);
@@ -231,18 +233,29 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
             <div className="relative z-10 w-full">
                 <h1 className="text-4xl sm:text-6xl md:text-8xl font-black tracking-tight mb-2 drop-shadow-2xl text-white leading-tight">{artistName}</h1>
                 
-                {isVerified && (
+                {isVerified ? (
                     <div className="mb-2">
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-white/90 shadow-sm">
-                            <span className="w-3.5 h-3.5 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/15 backdrop-blur-md border border-blue-500/30 text-blue-400 shadow-sm">
+                            <span className="w-3.5 h-3.5 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/30">
                                 <Check size={8.5} strokeWidth={3.5} />
                             </span>
-                            <span className="text-[10px] sm:text-[11px] font-medium tracking-wide">
-                                {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                            <span className="text-[10px] sm:text-[11px] font-semibold tracking-wide">
+                                {t('verifiedArtist', 'Подтвержденный артист')}
                             </span>
                         </div>
                     </div>
-                )}
+                ) : isRegistered ? (
+                    <div className="mb-2">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-black/45 backdrop-blur-md border border-white/10 text-zinc-300 shadow-sm">
+                            <span className="w-3.5 h-3.5 rounded-full bg-zinc-600 flex items-center justify-center text-zinc-200 shrink-0 shadow-sm">
+                                <Check size={8.5} strokeWidth={3} />
+                            </span>
+                            <span className="text-[10px] sm:text-[11px] font-medium tracking-wide">
+                                {t('registeredArtist', 'Зарегистрированный артист')}
+                            </span>
+                        </div>
+                    </div>
+                ) : null}
 
                 <p className="text-zinc-300 font-medium text-sm sm:text-base md:text-lg drop-shadow-md">{formatCompactNumber(monthlyPlays, isEn)} {t('monthlyPlays')}</p>
             </div>
@@ -616,16 +629,25 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
 
                 {/* Right Column */}
                 <div className="md:col-span-7 flex flex-col gap-4">
-                  {isVerified && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
-                      <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                  {isVerified ? (
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 self-start shadow-sm">
+                      <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/30">
                         <Check size={10} strokeWidth={3.5} />
                       </span>
                       <span className="text-xs font-bold tracking-wide">
-                        {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                        {t('verifiedArtist', 'Подтвержденный артист')}
                       </span>
                     </div>
-                  )}
+                  ) : isRegistered ? (
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-zinc-300 self-start">
+                      <span className="w-4 h-4 rounded-full bg-zinc-600 flex items-center justify-center text-zinc-200 shrink-0 shadow-sm">
+                        <Check size={10} strokeWidth={3} />
+                      </span>
+                      <span className="text-xs font-medium tracking-wide">
+                        {t('registeredArtist', 'Зарегистрированный артист')}
+                      </span>
+                    </div>
+                  ) : null}
 
                   <div className="text-zinc-200 text-sm sm:text-base leading-relaxed whitespace-pre-line">
                     {bio || `Слушайте ${artistName} в Huevify.`}
@@ -635,17 +657,26 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
 
               {/* Phone / Mobile Layout (below md): 1. Галочка, 2. Место в мире, 3. Количество за месяц, 4. Био */}
               <div className="flex md:hidden flex-col gap-4 pt-1">
-                {/* 1. Галочка (если зарегистрирован в Huevify For Artists) */}
-                {isVerified && (
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 self-start">
-                    <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                {/* 1. Галочка */}
+                {isVerified ? (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 self-start shadow-sm">
+                    <span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm shadow-blue-500/30">
                       <Check size={10} strokeWidth={3.5} />
                     </span>
                     <span className="text-xs font-bold tracking-wide">
-                      {t('verifiedArtist', 'Подтвержденный исполнитель')}
+                      {t('verifiedArtist', 'Подтвержденный артист')}
                     </span>
                   </div>
-                )}
+                ) : isRegistered ? (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-zinc-300 self-start">
+                    <span className="w-4 h-4 rounded-full bg-zinc-600 flex items-center justify-center text-zinc-200 shrink-0 shadow-sm">
+                      <Check size={10} strokeWidth={3} />
+                    </span>
+                    <span className="text-xs font-medium tracking-wide">
+                      {t('registeredArtist', 'Зарегистрированный артист')}
+                    </span>
+                  </div>
+                ) : null}
 
                 {/* 2. Место в мире */}
                 <div className="flex flex-col p-3.5 rounded-2xl bg-white/[0.04] border border-white/10">

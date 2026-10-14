@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft, LyricsLine, TrackLyricsRecord } from '../types';
+import { ReleaseRequest, ProfileEditRequest, ArtistAccount, User, Playlist, DailyChartTrack, ModeratorAccount, ReleaseDraft, LyricsLine, TrackLyricsRecord, ArtistVerificationRequest } from '../types';
 import { FilebaseService } from './filebase';
 
 const metaEnv = (import.meta as any).env || {};
@@ -145,7 +145,10 @@ export const SupabaseService = {
         avatar: row.avatar,
         bio: row.bio,
         status: row.status,
-        artistPick: row.artist_pick
+        artistPick: row.artist_pick,
+        isVerified: row.is_verified ?? false,
+        verifiedAt: row.verified_at || undefined,
+        verificationRequestId: row.verification_request_id || undefined
       }));
     } catch (e) {
       console.warn('Supabase fetchArtistAccounts failed:', e);
@@ -172,7 +175,10 @@ export const SupabaseService = {
         avatar: data.avatar,
         bio: data.bio,
         status: data.status,
-        artistPick: data.artist_pick
+        artistPick: data.artist_pick,
+        isVerified: data.is_verified ?? false,
+        verifiedAt: data.verified_at || undefined,
+        verificationRequestId: data.verification_request_id || undefined
       };
     } catch (e) {
       console.warn('Supabase fetchArtistByUsername error:', e);
@@ -183,7 +189,7 @@ export const SupabaseService = {
   async saveArtistAccount(account: ArtistAccount): Promise<boolean> {
     if (!supabase) return false;
     try {
-      const row = {
+      const row: any = {
         id: account.id,
         artist_name: account.artistName,
         username: account.username.trim(),
@@ -191,10 +197,21 @@ export const SupabaseService = {
         avatar: account.avatar || null,
         bio: account.bio || null,
         status: account.status,
-        artist_pick: account.artistPick || null
+        artist_pick: account.artistPick || null,
+        is_verified: account.isVerified ?? false,
+        verified_at: account.verifiedAt || null,
+        verification_request_id: account.verificationRequestId || null
       };
-      const { error } = await supabase.from('artist_accounts').upsert(row, { onConflict: 'id' });
+      let { error } = await supabase.from('artist_accounts').upsert(row, { onConflict: 'id' });
       if (error) {
+        // Fallback update without new verification columns if remote schema hasn't migrated yet
+        if (error.message && (error.message.includes('is_verified') || error.message.includes('column') || error.message.includes('verification_request_id'))) {
+          delete row.is_verified;
+          delete row.verified_at;
+          delete row.verification_request_id;
+          const retry = await supabase.from('artist_accounts').upsert(row, { onConflict: 'id' });
+          if (!retry.error) return true;
+        }
         // Fallback update by username in case of ID discrepancy
         const { error: error2 } = await supabase.from('artist_accounts').update(row).ilike('username', account.username.trim());
         if (error2) {
@@ -965,6 +982,90 @@ export const SupabaseService = {
     }
   },
 
+  // --- ARTIST VERIFICATION REQUESTS ---
+  async fetchArtistVerificationRequests(): Promise<ArtistVerificationRequest[] | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.from('artist_verification_requests').select('*');
+      if (error) {
+        // Table might not exist yet if remote hasn't executed migration
+        return null;
+      }
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        artistId: row.artist_id,
+        artistName: row.artist_name,
+        applicantRole: row.applicant_role,
+        artistNameCheck: row.artist_name_check || row.artist_name,
+        proofMethod: row.proof_method,
+        socialLink: row.social_link || undefined,
+        verificationCode: row.verification_code || undefined,
+        telegramUsername: row.telegram_username || undefined,
+        otherProofText: row.other_proof_text || undefined,
+        additionalInfo: row.additional_info || undefined,
+        status: row.status,
+        submittedAt: row.submitted_at || row.created_at,
+        reviewedAt: row.reviewed_at || undefined,
+        rejectedAt: row.rejected_at || undefined,
+        rejectionReason: row.rejection_reason || undefined,
+        criteriaSnapshot: row.criteria_snapshot || {
+          monthlyPlays: 0,
+          approvedReleasesCount: 0,
+          uniqueListeners: 0,
+          hasProfileFilled: false
+        }
+      }));
+    } catch (e) {
+      console.warn('Supabase fetchArtistVerificationRequests failed:', e);
+      return null;
+    }
+  },
+
+  async saveArtistVerificationRequest(req: ArtistVerificationRequest): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const row = {
+        id: req.id,
+        artist_id: req.artistId,
+        artist_name: req.artistName,
+        applicant_role: req.applicantRole,
+        artist_name_check: req.artistNameCheck,
+        proof_method: req.proofMethod,
+        social_link: req.socialLink || null,
+        verification_code: req.verificationCode || null,
+        telegram_username: req.telegramUsername || null,
+        other_proof_text: req.otherProofText || null,
+        additional_info: req.additionalInfo || null,
+        status: req.status,
+        submitted_at: req.submittedAt,
+        reviewed_at: req.reviewedAt || null,
+        rejected_at: req.rejectedAt || null,
+        rejection_reason: req.rejectionReason || null,
+        criteria_snapshot: req.criteriaSnapshot
+      };
+      const { error } = await supabase.from('artist_verification_requests').upsert(row, { onConflict: 'id' });
+      if (error) {
+        console.warn('Supabase saveArtistVerificationRequest error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveArtistVerificationRequest failed:', e);
+      return false;
+    }
+  },
+
+  async deleteArtistVerificationRequest(id: string): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase.from('artist_verification_requests').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      console.warn('Supabase deleteArtistVerificationRequest failed:', e);
+      return false;
+    }
+  },
+
   // --- REALTIME SUBSCRIPTION ---
   subscribeToChanges(onUpdate: (table: string) => void): (() => void) | null {
     if (!supabase) return null;
@@ -980,6 +1081,7 @@ export const SupabaseService = {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_chart' }, () => onUpdate('daily_chart'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'track_play_logs' }, () => onUpdate('track_play_logs'))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profile_edit_requests' }, () => onUpdate('profile_edit_requests'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'artist_verification_requests' }, () => onUpdate('artist_verification_requests'))
         .subscribe();
 
       return () => {

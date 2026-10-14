@@ -5,14 +5,15 @@ import {
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
   CheckCircle, XCircle, Clock, MoreVertical, Image, Plus,
   Edit, ArrowLeft, Camera, LogOut, ChevronDown, Trash2, ListMusic, Check, Search, Play, Pause, BarChart2, Headphones, Globe, Database, Key, Settings, ChevronUp, Bookmark, FileText, Save,
-  Megaphone, EyeOff, Eye, Info, CalendarClock, GripVertical, Music, ChevronLeft, ChevronRight, Sliders, SlidersHorizontal, ArrowUpDown, MoreHorizontal, Maximize2
+  Megaphone, EyeOff, Eye, Info, CalendarClock, GripVertical, Music, ChevronLeft, ChevronRight, Sliders, SlidersHorizontal, ArrowUpDown, MoreHorizontal, Maximize2, ExternalLink, Copy
 } from './Icons.tsx';
-import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track } from '../types.ts';
+import { DistributionTrack, ReleaseType, ReleaseRequest, ReleaseDraft, Track, ArtistVerificationRequest } from '../types.ts';
 import { CustomSelect } from './CustomSelect.tsx';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { StorageService } from '../services/storage.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
 import { LyricsSyncModal } from './LyricsSyncModal.tsx';
+import { ArtistVerificationModal } from './ArtistVerificationModal.tsx';
 import { formatNumericReleaseDate, formatReleaseDateDisplay, extractReleaseDateParts } from '../utils/dateUtils.ts';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
@@ -45,6 +46,7 @@ export const ArtistHub = () => {
     loginArtistOrMod, registerArtist, registerModerator, logoutArtistHub, artistAccounts,
     releaseRequests, profileEditRequests, approveArtist, rejectArtist,
     approveRelease, rejectRelease, approveProfileEdit, rejectProfileEdit,
+    verificationRequests, startReviewVerificationRequest, approveVerificationRequest, rejectVerificationRequest, getArtistVerificationCriteria,
     submitRelease, updateReleaseRequest, getArtistStats, submitProfileEdit, hasModerator, existingArtists,
     deleteRelease, getTrackByHueq, tracks, setTracks, albums, playlists, showNotification, deleteArtistAccount, getTrackCover, getAlbumCover,
     changeArtistPassword, changeModeratorPassword, deleteLegacyTrack, t,
@@ -113,9 +115,15 @@ export const ArtistHub = () => {
 
   // Mod Settings State
   const [modNewPassword, setModNewPassword] = useState("");
-  const [modTab, setModTab] = useState<'releases' | 'artists' | 'profiles'>('releases');
+  const [modTab, setModTab] = useState<'releases' | 'artists' | 'profiles' | 'verification'>('releases');
   const [modSearch, setModSearch] = useState("");
   const [modSortOrder, setModSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  // Verification State
+  const [isVerificationModalOpen, setVerificationModalOpen] = useState(false);
+  const [selectedVerificationRequest, setSelectedVerificationRequest] = useState<ArtistVerificationRequest | null>(null);
+  const [rejectModalReqId, setRejectModalReqId] = useState<string | null>(null);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
 
   // Artist Pick State
   const [pickSearch, setPickSearch] = useState("");
@@ -1732,6 +1740,7 @@ export const ArtistHub = () => {
       const pendingReleases = releaseRequests.filter(r => (r.status === 'PENDING' || r.deletionRequested));
       const pendingArtists = artistAccounts.filter(a => a.status === 'PENDING');
       const pendingProfileEdits = profileEditRequests.filter(r => r.status === 'PENDING');
+      const pendingVerificationRequests = verificationRequests.filter(r => r.status === 'PENDING' || r.status === 'IN_REVIEW');
 
       // Releases filtering & sorting
       let displayReleases = pendingReleases.filter(r => {
@@ -1767,7 +1776,22 @@ export const ArtistHub = () => {
           return modSortOrder === 'newest' ? timeB - timeA : timeA - timeB;
       });
 
-      const totalModerationCount = pendingReleases.length + pendingArtists.length + pendingProfileEdits.length;
+      // Verification requests filtering & sorting
+      let displayVerifications = verificationRequests.filter(r => {
+          if (!modSearch.trim()) return true;
+          const q = modSearch.toLowerCase();
+          return (r.artistName || '').toLowerCase().includes(q) ||
+                 (r.telegramUsername || '').toLowerCase().includes(q) ||
+                 (r.verificationCode || '').toLowerCase().includes(q) ||
+                 (r.status || '').toLowerCase().includes(q);
+      });
+      displayVerifications.sort((a, b) => {
+          const timeA = new Date(a.submittedAt || 0).getTime();
+          const timeB = new Date(b.submittedAt || 0).getTime();
+          return modSortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+      });
+
+      const totalModerationCount = pendingReleases.length + pendingArtists.length + pendingProfileEdits.length + pendingVerificationRequests.length;
 
       return (
       <div className="w-full h-full flex flex-col p-3.5 sm:p-6 relative overflow-y-auto animate-fade-in pb-12">
@@ -1965,6 +1989,21 @@ export const ArtistHub = () => {
                           <span>Изменения профиля</span>
                           <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${modTab === 'profiles' ? 'bg-black/20 text-black' : 'text-zinc-400 bg-white/5'}`}>
                               {pendingProfileEdits.length}
+                          </span>
+                      </button>
+
+                      <button
+                          type="button"
+                          onClick={() => setModTab('verification')}
+                          className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-xs font-bold flex items-center gap-1.5 transition shrink-0 ${
+                              modTab === 'verification'
+                                  ? 'bg-[#1ed760] text-black shadow-md'
+                                  : 'bg-[#18181b] text-zinc-400 hover:text-white border border-white/5'
+                          }`}
+                      >
+                          <span>Проверка верификации</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${modTab === 'verification' ? 'bg-black/20 text-black' : 'text-zinc-400 bg-white/5'}`}>
+                              {pendingVerificationRequests.length}
                           </span>
                       </button>
                   </div>
@@ -2245,6 +2284,152 @@ export const ArtistHub = () => {
                                               <X size={13} strokeWidth={2.5} className="shrink-0" />
                                               <span>Отклонить</span>
                                           </button>
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </>
+                  )}
+
+                  {/* 4. Tab: Verification Applications */}
+                  {modTab === 'verification' && (
+                      <>
+                          {displayVerifications.length === 0 && (
+                              <div className="p-8 text-center text-zinc-500 text-sm rounded-2xl bg-[#101013] border border-white/5">
+                                  {modSearch ? 'Ничего не найдено по вашему запросу' : 'Нет заявок на верификацию'}
+                              </div>
+                          )}
+                          {displayVerifications.map(r => {
+                              const existingArtist = artistAccounts.find(a => a.id === r.artistId || (a.artistName || '').toLowerCase() === (r.artistName || '').toLowerCase());
+                              const avatarImg = existingArtist?.avatar || "https://picsum.photos/300";
+
+                              const statusBadge = 
+                                r.status === 'APPROVED' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
+                                r.status === 'IN_REVIEW' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+                                r.status === 'REJECTED' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' :
+                                'bg-amber-500/15 text-amber-400 border border-amber-500/30';
+
+                              const statusLabel = 
+                                r.status === 'APPROVED' ? 'Одобрено' :
+                                r.status === 'IN_REVIEW' ? 'На рассмотрении' :
+                                r.status === 'REJECTED' ? 'Отклонено' :
+                                'Ожидает рассмотрения';
+
+                              const roleLabel = 
+                                r.applicantRole === 'ARTIST' ? 'Сам артист' :
+                                r.applicantRole === 'REPRESENTATIVE' ? 'Представитель' :
+                                'Каталог';
+
+                              const methodLabel = 
+                                r.proofMethod === 'SOCIAL' ? 'Соц. сети' :
+                                r.proofMethod === 'TELEGRAM' ? 'Telegram' :
+                                'Другой способ';
+
+                              return (
+                                  <div 
+                                      key={r.id} 
+                                      className="bg-[#101013] border border-white/5 hover:border-white/10 rounded-2xl p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3.5 transition group"
+                                  >
+                                      {/* Left: Avatar + Name + Submission date */}
+                                      <div className="flex items-center gap-3.5 min-w-0 md:w-1/3">
+                                          <img 
+                                              src={avatarImg} 
+                                              className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover shrink-0 bg-zinc-800 shadow-md" 
+                                              alt={r.artistName}
+                                          />
+                                          <div className="flex flex-col min-w-0 flex-1">
+                                              <div className="flex items-center gap-2">
+                                                  <span className="font-bold text-white text-sm sm:text-base truncate">{r.artistName}</span>
+                                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${statusBadge}`}>
+                                                      {statusLabel}
+                                                  </span>
+                                              </div>
+                                              <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-400">
+                                                  <span>{roleLabel}</span>
+                                                  <span>•</span>
+                                                  <span>{methodLabel}</span>
+                                              </div>
+                                              <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 mt-1">
+                                                  <Clock size={11} className="text-zinc-400 shrink-0" />
+                                                  <span>{formatRussianDateTime(r.submittedAt)}</span>
+                                              </div>
+                                          </div>
+                                      </div>
+
+                                      {/* Middle: Proof snippet */}
+                                      <div className="flex flex-col gap-1 text-xs md:w-1/3 min-w-0">
+                                          {r.proofMethod === 'SOCIAL' && (
+                                              <div className="flex flex-col gap-1">
+                                                  <div className="text-zinc-400 truncate">
+                                                      Канал: <span className="text-zinc-200">{r.socialLink}</span>
+                                                  </div>
+                                                  {r.verificationCode && (
+                                                      <div className="flex items-center gap-2">
+                                                          <span className="text-zinc-400">Код:</span>
+                                                          <span className="font-mono font-bold text-primary bg-black/40 px-2 py-0.5 rounded border border-white/10">
+                                                              {r.verificationCode}
+                                                          </span>
+                                                      </div>
+                                                  )}
+                                              </div>
+                                          )}
+                                          {r.proofMethod === 'TELEGRAM' && (
+                                              <div className="text-zinc-400">
+                                                  Telegram: <span className="text-white font-semibold">{r.telegramUsername}</span>
+                                              </div>
+                                          )}
+                                          {r.proofMethod === 'OTHER' && (
+                                              <div className="text-zinc-400 truncate">
+                                                  Способ: <span className="text-zinc-200">{r.otherProofText}</span>
+                                              </div>
+                                          )}
+                                      </div>
+
+                                      {/* Right: Actions */}
+                                      <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap pt-2 border-t border-white/5 md:border-0 md:pt-0 shrink-0">
+                                          {r.status === 'PENDING' && (
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => startReviewVerificationRequest(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-blue-500/40 bg-blue-500/10 hover:bg-blue-500 hover:text-white text-blue-400 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                                  title="Взять на рассмотрение"
+                                              >
+                                                  <Clock size={13} className="shrink-0" />
+                                                  <span>Взять на рассмотрение</span>
+                                              </button>
+                                          )}
+                                          <button 
+                                              type="button"
+                                              onClick={() => setSelectedVerificationRequest(r)}
+                                              className="flex-1 sm:flex-initial border border-white/20 hover:border-white/40 text-white hover:bg-white/10 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              title="Открыть заявку"
+                                          >
+                                              <span>Открыть заявку</span>
+                                              <Maximize2 size={12} className="shrink-0 opacity-80" />
+                                          </button>
+                                          {r.status !== 'APPROVED' && (
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => approveVerificationRequest(r.id)} 
+                                                  className="flex-1 sm:flex-initial border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <Check size={13} strokeWidth={3} className="shrink-0" />
+                                                  <span>Принять</span>
+                                              </button>
+                                          )}
+                                          {r.status !== 'REJECTED' && (
+                                              <button 
+                                                  type="button"
+                                                  onClick={() => {
+                                                      setRejectModalReqId(r.id);
+                                                      setRejectReasonInput('');
+                                                  }} 
+                                                  className="flex-1 sm:flex-initial border border-red-500/40 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                                              >
+                                                  <X size={13} strokeWidth={2.5} className="shrink-0" />
+                                                  <span>Отклонить</span>
+                                              </button>
+                                          )}
                                       </div>
                                   </div>
                               );
@@ -3534,6 +3719,148 @@ export const ArtistHub = () => {
                 </div>
             )}
 
+            {/* Verification Block positioned right before My Releases */}
+            {(() => {
+              const myVerificationRequest = verificationRequests.find(r =>
+                currentArtist && (r.artistId === currentArtist.id || r.artistName.toLowerCase() === currentArtist.artistName.toLowerCase())
+              );
+              const isCooldownActive = myVerificationRequest?.status === 'REJECTED' &&
+                (Date.now() - new Date(myVerificationRequest.rejectedAt || 0).getTime() < 30 * 24 * 60 * 60 * 1000);
+              const remainingDays = myVerificationRequest?.rejectedAt
+                ? Math.max(1, Math.ceil((30 * 24 * 60 * 60 * 1000 - (Date.now() - new Date(myVerificationRequest.rejectedAt).getTime())) / (24 * 60 * 60 * 1000)))
+                : 30;
+
+              return (
+                <div className="mb-8 w-full shrink-0">
+                  {currentArtist?.isVerified ? (
+                    /* Verified: Compact block in the style of other cards */
+                    <div
+                      onClick={() => setVerificationModalOpen(true)}
+                      className={`p-4 sm:p-5 rounded-xl flex items-center justify-between cursor-pointer transition hover:scale-[1.01] active:scale-[0.99] group border ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/20 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border-surface-highlight md:hover:border-blue-500/40 md:shadow-sm'
+                          : 'bg-surface border-surface-highlight hover:border-blue-500/40 shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0 shadow-sm">
+                          <Check size={20} strokeWidth={3} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm sm:text-base text-white group-hover:text-blue-400 transition truncate">
+                              Артист подтвержден
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                              Verified
+                            </span>
+                          </div>
+                          <span className="text-xs text-secondary truncate mt-0.5">
+                            Профиль верифицирован. Доступно участие в Huevify Daily Top 25
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-secondary group-hover:text-white text-xs font-semibold shrink-0 pl-3">
+                        <span className="hidden sm:inline">Подробнее</span>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  ) : (myVerificationRequest?.status === 'PENDING' || myVerificationRequest?.status === 'IN_REVIEW') ? (
+                    /* In Progress */
+                    <div
+                      onClick={() => setVerificationModalOpen(true)}
+                      className={`p-4 sm:p-5 rounded-xl flex items-center justify-between cursor-pointer transition hover:scale-[1.01] active:scale-[0.99] group border ${
+                        isLiquidGlass
+                          ? 'max-md:bg-amber-500/10 max-md:backdrop-blur-2xl max-md:border-amber-500/25 max-md:rounded-2xl md:bg-surface md:border-amber-500/30 md:hover:border-amber-500/50'
+                          : 'bg-surface border-amber-500/30 hover:border-amber-500/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                          <Clock size={20} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm sm:text-base text-white group-hover:text-amber-300 transition truncate">
+                              Заявка на верификацию
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              {myVerificationRequest.status === 'IN_REVIEW' ? 'На рассмотрении' : 'Ожидает'}
+                            </span>
+                          </div>
+                          <span className="text-xs text-amber-400/90 truncate mt-0.5 font-medium">
+                            {myVerificationRequest.status === 'IN_REVIEW'
+                              ? 'Модератор рассматривает вашу заявку'
+                              : 'Заявка отправлена и ожидает очереди'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-secondary group-hover:text-white text-xs font-semibold shrink-0 pl-3">
+                        <span className="hidden sm:inline">Статус</span>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  ) : isCooldownActive ? (
+                    /* Rejected (Cooldown) */
+                    <div
+                      onClick={() => setVerificationModalOpen(true)}
+                      className={`p-4 sm:p-5 rounded-xl flex items-center justify-between cursor-pointer transition hover:scale-[1.01] active:scale-[0.99] group border ${
+                        isLiquidGlass
+                          ? 'max-md:bg-rose-500/10 max-md:backdrop-blur-2xl max-md:border-rose-500/25 max-md:rounded-2xl md:bg-surface md:border-rose-500/30 md:hover:border-rose-500/50'
+                          : 'bg-surface border-rose-500/30 hover:border-rose-500/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0">
+                          <XCircle size={20} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-sm sm:text-base text-white group-hover:text-rose-300 transition truncate">
+                            Заявка отклонена
+                          </span>
+                          <span className="text-xs text-rose-400 font-medium truncate mt-0.5">
+                            Повторная подача станет доступна через {remainingDays} дн.
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-secondary group-hover:text-white text-xs font-semibold shrink-0 pl-3">
+                        <span className="hidden sm:inline">Подробнее</span>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  ) : (
+                    /* Initial / Reapply available: Designed in the style of other cards, subtly highlighted */
+                    <div
+                      onClick={() => setVerificationModalOpen(true)}
+                      className={`p-4 sm:p-5 rounded-xl flex items-center justify-between cursor-pointer transition hover:scale-[1.01] active:scale-[0.99] group border ${
+                        isLiquidGlass
+                          ? 'max-md:bg-white/[0.08] max-md:backdrop-blur-2xl max-md:border-white/15 max-md:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] max-md:rounded-2xl md:bg-surface md:border md:border-surface-highlight md:hover:border-white/30 md:hover:bg-surface-highlight/70 shadow-sm'
+                          : 'bg-surface border border-surface-highlight hover:border-white/30 hover:bg-surface-highlight/70 shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/5 border border-white/10 group-hover:border-white/25 text-white flex items-center justify-center shrink-0 shadow-sm transition">
+                          <Shield size={20} className="text-white" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-sm sm:text-base text-white group-hover:text-primary transition truncate">
+                            Верификация артиста
+                          </span>
+                          <span className="text-xs text-secondary truncate mt-0.5">
+                            Подтвердите профиль и получите галочку верифицированного артиста
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-secondary group-hover:text-white text-xs font-semibold shrink-0 pl-3">
+                        <span className="hidden sm:inline">Подать заявку</span>
+                        <ChevronRight size={16} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <h2 className="text-2xl font-bold mb-4 shrink-0">{t('myReleases')}</h2>
 
             {/* Desktop Table - removed max-h to allow full page scroll growth */}
@@ -3631,6 +3958,8 @@ export const ArtistHub = () => {
                     </div>
                 ))}
             </div>
+
+
 
              {/* Log Out Button */}
             <div className="mt-auto pt-8">
@@ -5575,6 +5904,344 @@ export const ArtistHub = () => {
       </div>
   );
 
+  const renderVerificationDetailModal = () => {
+    if (!selectedVerificationRequest) return null;
+    const req = selectedVerificationRequest;
+    const existingArtist = artistAccounts.find(a => 
+      a.id === req.artistId || (a.artistName || '').toLowerCase() === (req.artistName || '').toLowerCase()
+    );
+    const avatarImg = existingArtist?.avatar || "https://picsum.photos/300";
+
+    const statusBadge = 
+      req.status === 'APPROVED' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
+      req.status === 'IN_REVIEW' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+      req.status === 'REJECTED' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' :
+      'bg-amber-500/15 text-amber-400 border border-amber-500/30';
+
+    const statusLabel = 
+      req.status === 'APPROVED' ? 'Одобрено' :
+      req.status === 'IN_REVIEW' ? 'На рассмотрении' :
+      req.status === 'REJECTED' ? 'Отклонено' :
+      'Ожидает рассмотрения';
+
+    const formatNum = (num: number) => new Intl.NumberFormat('ru-RU').format(num);
+
+    return (
+      <div className="fixed inset-0 z-[250] bg-black/85 backdrop-blur-xl flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+        <div className="bg-[#121215] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl">
+          {/* Header */}
+          <div className="sticky top-0 z-10 bg-[#121215]/95 backdrop-blur-md border-b border-white/10 p-4 sm:p-5 flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <img 
+                src={avatarImg} 
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover shrink-0 bg-zinc-800 border border-white/10 shadow-sm"
+                alt=""
+              />
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base sm:text-lg text-white truncate">{req.artistName}</h3>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${statusBadge}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+                <span className="text-xs text-zinc-400">Заявка на верификацию артиста</span>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setSelectedVerificationRequest(null)}
+              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-4 sm:p-6 flex flex-col gap-5 text-xs sm:text-sm">
+            {/* Applicant Role */}
+            <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4 flex flex-col gap-1.5">
+              <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Кого представляет</span>
+              <span className="font-bold text-white text-sm sm:text-base">
+                {req.applicantRole === 'ARTIST' && 'Я сам артист (подтверждение собственного профиля)'}
+                {req.applicantRole === 'REPRESENTATIVE' && 'Я представитель артиста (менеджер)'}
+                {req.applicantRole === 'CATALOG_MANAGER' && 'Я управляю каталогом артиста'}
+              </span>
+              <span className="text-xs text-zinc-400">
+                Имя в Huevify: <strong className="text-zinc-200">{req.artistNameCheck}</strong>
+              </span>
+            </div>
+
+            {/* Proof Method & Specifics */}
+            <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+              <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Способ подтверждения личности</span>
+              
+              {req.proofMethod === 'SOCIAL' && (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <span className="text-zinc-400 block mb-1">Ссылка на канал артиста:</span>
+                    <a 
+                      href={req.socialLink?.startsWith('http') ? req.socialLink : `https://${req.socialLink}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline flex items-center gap-1.5 font-semibold break-all"
+                    >
+                      <span>{req.socialLink}</span>
+                      <ExternalLink size={13} className="shrink-0" />
+                    </a>
+                  </div>
+
+                  {req.verificationCode && (
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-blue-300">Уникальный проверочный код:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(req.verificationCode || '');
+                            showNotification('Код скопирован!', 'info');
+                          }}
+                          className="text-xs font-bold bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
+                        >
+                          <Copy size={12} />
+                          <span>Скопировать</span>
+                        </button>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-mono font-black text-white tracking-widest bg-black/40 p-2.5 rounded-lg text-center border border-white/10 select-all">
+                        {req.verificationCode}
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Убедитесь, что артист опубликовал данный код в посте или в описании указанного канала.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {req.proofMethod === 'TELEGRAM' && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-zinc-400">Telegram username:</span>
+                  <a 
+                    href={`https://t.me/${(req.telegramUsername || '').replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline font-bold text-base flex items-center gap-1.5"
+                  >
+                    <span>{req.telegramUsername}</span>
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
+              )}
+
+              {req.proofMethod === 'OTHER' && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-zinc-400">Описание способа:</span>
+                  <div className="text-zinc-200 bg-black/30 p-3 rounded-lg border border-white/5 whitespace-pre-wrap">
+                    {req.otherProofText}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Additional Info if provided */}
+            {req.additionalInfo && (
+              <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4 flex flex-col gap-1.5">
+                <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Дополнительная информация</span>
+                <p className="text-zinc-300 whitespace-pre-wrap">{req.additionalInfo}</p>
+              </div>
+            )}
+
+            {/* Criteria Snapshot */}
+            <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4 flex flex-col gap-2.5">
+              <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Выполнение критериев на момент подачи</span>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                    req.criteriaSnapshot.monthlyPlays >= 300000 ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-white'
+                  }`}>
+                    <Check size={10} strokeWidth={3} />
+                  </span>
+                  <span className="text-xs text-zinc-300">
+                    Прослушивания: <strong className="text-white">{formatNum(req.criteriaSnapshot.monthlyPlays)}</strong> / 300k
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                    req.criteriaSnapshot.approvedReleasesCount >= 3 ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-white'
+                  }`}>
+                    <Check size={10} strokeWidth={3} />
+                  </span>
+                  <span className="text-xs text-zinc-300">
+                    Одобрено релизов: <strong className="text-white">{req.criteriaSnapshot.approvedReleasesCount}</strong> / 3
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                    req.criteriaSnapshot.uniqueListeners >= 2 ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-white'
+                  }`}>
+                    <Check size={10} strokeWidth={3} />
+                  </span>
+                  <span className="text-xs text-zinc-300">
+                    Уникальные слушатели: <strong className="text-white">{req.criteriaSnapshot.uniqueListeners}</strong> / 2
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-black/20 border border-white/5">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                    req.criteriaSnapshot.hasProfileFilled ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-white'
+                  }`}>
+                    <Check size={10} strokeWidth={3} />
+                  </span>
+                  <span className="text-xs text-zinc-300">
+                    Профиль заполнен: <strong className="text-white">{req.criteriaSnapshot.hasProfileFilled ? 'Да' : 'Нет'}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Date info */}
+            <div className="text-xs text-zinc-500 flex items-center justify-between pt-1">
+              <span>Подана: {formatRussianDateTime(req.submittedAt)}</span>
+              {req.rejectionReason && (
+                <span className="text-rose-400">Причина отклонения: {req.rejectionReason}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="sticky bottom-0 bg-[#121215]/95 backdrop-blur-md border-t border-white/10 p-4 sm:p-5 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedVerificationRequest(null)}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-white transition"
+            >
+              Закрыть
+            </button>
+
+            <div className="flex items-center gap-2">
+              {req.status === 'PENDING' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    startReviewVerificationRequest(req.id);
+                    setSelectedVerificationRequest(prev => prev ? { ...prev, status: 'IN_REVIEW' } : null);
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 transition flex items-center gap-1.5"
+                >
+                  <Clock size={13} />
+                  <span>Взять на рассмотрение</span>
+                </button>
+              )}
+
+              {req.status !== 'APPROVED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    approveVerificationRequest(req.id);
+                    setSelectedVerificationRequest(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-black shadow-md transition flex items-center gap-1.5"
+                >
+                  <Check size={14} strokeWidth={3} />
+                  <span>Принять</span>
+                </button>
+              )}
+
+              {req.status !== 'REJECTED' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectModalReqId(req.id);
+                    setRejectReasonInput('');
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 transition flex items-center gap-1.5"
+                >
+                  <X size={14} strokeWidth={2.5} />
+                  <span>Отклонить</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderRejectModal = () => {
+    if (!rejectModalReqId) return null;
+    return (
+      <div className="fixed inset-0 z-[260] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
+        <div className="bg-[#18181b] border border-white/10 rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-2xl flex flex-col gap-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-base text-white">Отклонить заявку на верификацию</h3>
+            <button 
+              onClick={() => setRejectModalReqId(null)}
+              className="text-zinc-400 hover:text-white p-1 rounded-full"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Укажите причину отклонения. Артист увидит её в личном кабинете. Повторная подача заявки будет заблокирована на 30 дней.
+          </p>
+
+          <textarea
+            rows={3}
+            value={rejectReasonInput}
+            onChange={e => setRejectReasonInput(e.target.value)}
+            placeholder="Например: Проверочный код не найден в описании канала..."
+            className="w-full bg-black/40 border border-white/10 focus:border-white/30 rounded-xl p-3 text-xs text-white focus:outline-none transition resize-none"
+          />
+
+          {/* Quick presets */}
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              'Код не найден в описании канала',
+              'Недействительная ссылка на соц. сети',
+              'Недостаточно подтверждающих данных',
+              'Нарушение правил сообщества'
+            ].map(preset => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setRejectReasonInput(preset)}
+                className="text-[10px] px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 transition"
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/5">
+            <button
+              type="button"
+              onClick={() => setRejectModalReqId(null)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-zinc-300 transition"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                rejectVerificationRequest(rejectModalReqId, rejectReasonInput);
+                setRejectModalReqId(null);
+                if (selectedVerificationRequest && selectedVerificationRequest.id === rejectModalReqId) {
+                  setSelectedVerificationRequest(null);
+                }
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white shadow-md transition"
+            >
+              Отклонить заявку
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 bg-black z-[200] animate-fade-in flex flex-col">
         <button
@@ -5612,6 +6279,14 @@ export const ArtistHub = () => {
         )}
 
         {/* Overlays */}
+        {isVerificationModalOpen && (
+            <ArtistVerificationModal
+                isOpen={isVerificationModalOpen}
+                onClose={() => setVerificationModalOpen(false)}
+            />
+        )}
+        {selectedVerificationRequest && renderVerificationDetailModal()}
+        {rejectModalReqId && renderRejectModal()}
         {selectedRelease && renderReleaseDetailModal()}
         {selectedStatsRelease && renderReleaseStatsModal()}
         {isHueqModalOpen && renderHueqImportModal()}
