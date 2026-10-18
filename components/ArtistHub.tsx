@@ -867,6 +867,7 @@ export const ArtistHub = () => {
       }
 
       const newTrack: DistributionTrack = {
+          id: targetTrack.id,
           title: targetTrack.title,
           explicit: targetTrack.explicit || false,
           feat: targetTrack.feat || "",
@@ -876,7 +877,10 @@ export const ArtistHub = () => {
           fileUrl: targetTrack.url,
           existingHueq: finalHueq,
           generatedHueq: finalHueq,
-          artist: targetTrack.artist
+          artist: targetTrack.artist,
+          lyrics: targetTrack.lyrics,
+          syncedLyrics: targetTrack.syncedLyrics,
+          plays: targetTrack.plays || 0
       };
 
       setDistTracks(prev => [...prev, newTrack]);
@@ -897,14 +901,20 @@ export const ArtistHub = () => {
               const newTracks = [...prev];
               newTracks[idx] = {
                   ...newTracks[idx],
+                  id: existing.id,
                   title: existing.title,
                   explicit: existing.explicit || false,
                   feat: existing.feat || "",
                   existingHueq: existing.hueq || clean,
+                  generatedHueq: existing.hueq || clean,
                   fileUrl: existing.url,
                   duration: existing.duration,
                   genre: existing.genre || newTracks[idx].genre,
-                  mainArtists: existing.mainArtists || []
+                  mainArtists: existing.mainArtists || [],
+                  artist: existing.artist,
+                  lyrics: existing.lyrics || newTracks[idx].lyrics,
+                  syncedLyrics: existing.syncedLyrics || newTracks[idx].syncedLyrics,
+                  plays: existing.plays || 0
               };
               return newTracks;
           });
@@ -1182,6 +1192,7 @@ export const ArtistHub = () => {
       setDistMainArtists(release.additionalMainArtists || release.mainArtists || []);
       setDistTracks((release.tracks || []).map((t: any) => ({
           ...t,
+          existingHueq: t.existingHueq || t.generatedHueq,
           generatedHueq: t.generatedHueq || t.existingHueq || generateHUEQ()
       })));
 
@@ -3756,7 +3767,7 @@ export const ArtistHub = () => {
                             </span>
                           </div>
                           <span className="text-xs text-secondary truncate mt-0.5">
-                            Профиль верифицирован. Доступно участие в Huevify Daily Top 25
+                            Профиль верифицирован
                           </span>
                         </div>
                       </div>
@@ -4516,12 +4527,16 @@ export const ArtistHub = () => {
                               const displayArtist = isHiddenMeta ? selectedRelease.artistName : (track.artist || selectedRelease.artistName || "Артист");
 
                               // Comprehensive HUEQ lookup: existing, generated, or matched in library
-                              const matchingStoreTrack = tracks.find(t => 
-                                  t.title?.trim().toLowerCase() === track.title?.trim().toLowerCase() && 
+                              const targetHueq = (track.generatedHueq || track.existingHueq || (track as any).hueq || '').trim().toUpperCase();
+                              const matchingTracks = tracks.filter(t => 
+                                  (track.id && t.id === track.id) ||
+                                  (targetHueq && t.hueq && t.hueq.trim().toUpperCase() === targetHueq) ||
+                                  (t.title?.trim().toLowerCase() === track.title?.trim().toLowerCase() && 
                                   (t.artist?.trim().toLowerCase() === (track.artist || selectedRelease.artistName)?.trim().toLowerCase() ||
-                                   t.album?.trim().toLowerCase() === selectedRelease.title?.trim().toLowerCase())
+                                   t.album?.trim().toLowerCase() === selectedRelease.title?.trim().toLowerCase()))
                               );
-                              const trackHueq = track.generatedHueq || track.existingHueq || (track as any).hueq || matchingStoreTrack?.hueq;
+                              const matchingStoreTrack = matchingTracks.sort((a, b) => (b.plays || 0) - (a.plays || 0))[0];
+                              const trackHueq = targetHueq || matchingStoreTrack?.hueq;
 
                               const hasAudio = Boolean(track.fileUrl || matchingStoreTrack?.url);
                               const isStoreTrackReleased = Boolean(matchingStoreTrack && !matchingStoreTrack.isUnreleased);
@@ -4542,6 +4557,7 @@ export const ArtistHub = () => {
 
                               const playableUrl = track.fileUrl || matchingStoreTrack?.url;
                               const trackDuration = track.duration || matchingStoreTrack?.duration || 180;
+                              const resolvedPlays = Math.max(matchingStoreTrack?.plays || 0, track.plays || 0);
 
                               const handlePlayTrackRow = (e: React.MouseEvent) => {
                                   e.stopPropagation();
@@ -4554,21 +4570,20 @@ export const ArtistHub = () => {
                                       return;
                                   }
                                   const trackToPlay: Track = matchingStoreTrack || {
-                                      id: `prev_${selectedRelease.id}_${idx}`,
+                                      id: track.id || `prev_${selectedRelease.id}_${idx}`,
                                       title: track.title || displayTitle,
                                       artist: track.artist || selectedRelease.artistName,
                                       album: selectedRelease.title,
                                       cover: selectedRelease.covers[0],
                                       duration: trackDuration,
                                       url: playableUrl,
-                                      plays: 0,
+                                      plays: resolvedPlays,
                                       explicit: track.explicit,
                                       hueq: trackHueq,
                                       genre: normalizeClassicGenre(track.genre || selectedRelease.genre)
                                   };
                                   playTrack(trackToPlay);
                               };
-
                               return (
                                   <div
                                       key={idx}
@@ -4802,24 +4817,27 @@ export const ArtistHub = () => {
       const displayTitle = dt.title?.trim() || `Трек ${idx + 1}`;
       const displayArtist = dt.artist || release.artistName || 'Артист';
 
-      const matchingStoreTrack = tracks.find(t =>
+      const dtHueq = (dt.existingHueq || dt.generatedHueq || (dt as any).hueq || '').trim().toUpperCase();
+
+      const matchingTracks = tracks.filter(t =>
         (dt.id && t.id === dt.id) ||
-        (dt.existingHueq && t.hueq && t.hueq.toLowerCase() === dt.existingHueq.toLowerCase()) ||
-        (dt.generatedHueq && t.hueq && t.hueq.toLowerCase() === dt.generatedHueq.toLowerCase()) ||
+        (dtHueq && t.hueq && t.hueq.trim().toUpperCase() === dtHueq) ||
         (t.title?.trim().toLowerCase() === displayTitle.toLowerCase() &&
          (t.artist?.trim().toLowerCase() === displayArtist.toLowerCase() ||
           t.album?.trim().toLowerCase() === release.title?.trim().toLowerCase()))
       );
+      const matchingStoreTrack = matchingTracks.sort((a, b) => (b.plays || 0) - (a.plays || 0))[0];
 
-      const allIds = [
+      const allIds = Array.from(new Set([
         dt.id,
-        matchingStoreTrack?.id,
+        ...matchingTracks.map(t => t.id),
         dt.existingHueq,
         dt.generatedHueq,
-        matchingStoreTrack?.hueq,
+        dtHueq,
+        ...matchingTracks.map(t => t.hueq).filter(Boolean),
         displayTitle,
         matchingStoreTrack?.title?.trim()
-      ].filter(Boolean) as string[];
+      ].filter(Boolean) as string[]));
 
       const isMatch = (logTrackId?: string): boolean => {
         if (!logTrackId) return false;
@@ -4841,8 +4859,17 @@ export const ArtistHub = () => {
       );
       const staticYesterdayPlays = prevPrevLogs.reduce((acc, l) => acc + getLogPlaysCount(l), 0);
 
-      // Exact total plays matching store track catalog or track metadata
-      const staticTotalPlays = matchingStoreTrack ? (matchingStoreTrack.plays || 0) : ((dt as any).plays || 0);
+      // Exact total plays matching store track catalog or track metadata or storedPlays
+      const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
+      let maxStoredPlays = 0;
+      allIds.forEach(id => {
+        if (storedPlays[id]) maxStoredPlays = Math.max(maxStoredPlays, storedPlays[id]);
+      });
+      const staticTotalPlays = Math.max(
+        matchingStoreTrack?.plays || 0,
+        (dt as any).plays || 0,
+        maxStoredPlays
+      );
 
       // Real mathematical percentage change between the two static cycles
       let changePercent = 0;

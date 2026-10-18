@@ -195,6 +195,7 @@ export interface DistributionTrack {
   isUnreleased?: boolean;
   lyrics?: string;
   syncedLyrics?: LyricsLine[];
+  plays?: number;
 }
 
 export type ReleaseType = 'Single' | 'Album' | 'EP' | 'Mixtape';

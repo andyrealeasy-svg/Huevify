@@ -179,7 +179,7 @@ export const ArtistVerificationModal: React.FC<ArtistVerificationModalProps> = (
       statusBadgeClass = 'bg-blue-500/15 border-blue-500/30 text-blue-400';
     } else if (status === 'APPROVED') {
       statusLabel = 'Одобрено';
-      statusDesc = 'Поздравляем! Ваш профиль верифицирован. Вы получили синюю галочку и возможность попадания в Huevify Daily Top 25.';
+      statusDesc = 'Поздравляем! Ваш профиль верифицирован. Вы получили синюю галочку.';
       statusBadgeClass = 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400';
     } else if (status === 'REJECTED') {
       statusLabel = 'Отклонено';

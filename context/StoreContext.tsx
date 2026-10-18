@@ -1301,7 +1301,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               if (isTestAlbum(req)) return false;
               return true;
           });
-          validRequests.forEach(req => {
+
+          // Chronological sorting so earlier releases (e.g. single with plays) are processed before subsequent releases (e.g. album)
+          const sortedRequests = [...validRequests].sort((a, b) => {
+              const timeA = new Date(a.submissionTime || a.releaseDate).getTime() || 0;
+              const timeB = new Date(b.submissionTime || b.releaseDate).getTime() || 0;
+              return timeA - timeB;
+          });
+
+          // Pre-build index of known tracks across initial data & all requests to find existing tracks regardless of release order
+          const knownTrackByHueq = new Map<string, Track>();
+          const knownTrackById = new Map<string, Track>();
+          const hueqPlaysMap = new Map<string, number>();
+
+          initialTracks.forEach(t => {
+              knownTrackById.set(t.id, t);
+              const code = (t.hueq || '').trim().toUpperCase();
+              if (code) {
+                  knownTrackByHueq.set(code, t);
+                  const p = Math.max(t.plays || 0, plays[t.id] || 0);
+                  hueqPlaysMap.set(code, Math.max(hueqPlaysMap.get(code) || 0, p));
+              }
+          });
+
+          validRequests.forEach(r => {
+              (r.tracks || []).forEach((t, idx) => {
+                  const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || '').trim().toUpperCase();
+                  const tid = t.id || `dist_trk_${r.id}_${idx}`;
+                  const p = Math.max((t as any).plays || 0, plays[tid] || 0, t.id ? (plays[t.id] || 0) : 0);
+                  if (code) {
+                      hueqPlaysMap.set(code, Math.max(hueqPlaysMap.get(code) || 0, p));
+                  }
+              });
+          });
+
+          Object.entries(plays).forEach(([k, p]) => {
+              if (p > 0) {
+                  const cleanK = k.trim().toUpperCase();
+                  if (hueqPlaysMap.has(cleanK)) {
+                      hueqPlaysMap.set(cleanK, Math.max(hueqPlaysMap.get(cleanK) || 0, p));
+                  }
+              }
+          });
+
+          sortedRequests.forEach(req => {
               // Safety check for malformed requests
               if (!req || !req.tracks) return;
 
@@ -1319,8 +1362,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       announcementTimestamp = new Date(`${req.announcementDate}T${aTime}:00`).getTime();
                   }
                   const announcementDue = !announcementTimestamp || isNaN(announcementTimestamp) || announcementTimestamp <= now;
-                  // Announcement stays active once announcement date is reached, even when releaseDate arrives,
-                  // so the countdown/album view can display the "Слушать" button to transfer listeners to the real release.
                   isAnnouncementActive = announcementDue;
               }
 
@@ -1364,42 +1405,115 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       let trackId: string;
                       let existingTrack: Track | undefined;
 
-                      if (t.existingHueq) {
-                           existingTrack = mergedTracks.find(mt => mt.hueq === t.existingHueq);
+                      const trackHueq = (t.existingHueq || t.generatedHueq || (t as any).hueq || '').trim().toUpperCase();
+
+                      // 1. Try finding by explicit id
+                      if (t.id) {
+                          existingTrack = mergedTracks.find(mt => mt.id === t.id) || knownTrackById.get(t.id);
+                      }
+
+                      // 2. Try finding by HUEQ in mergedTracks
+                      if (!existingTrack && trackHueq) {
+                          existingTrack = mergedTracks.find(mt => mt.hueq && mt.hueq.trim().toUpperCase() === trackHueq);
+                      }
+
+                      // 3. Try finding by HUEQ in known pre-existing tracks
+                      if (!existingTrack && trackHueq) {
+                          existingTrack = knownTrackByHueq.get(trackHueq);
+                      }
+
+                      // 4. Try finding across other release requests
+                      if (!existingTrack && trackHueq) {
+                          for (const otherReq of validRequests) {
+                              if (otherReq.id === req.id) continue;
+                              const otherIdx = (otherReq.tracks || []).findIndex(ot => 
+                                  (ot.existingHueq || ot.generatedHueq || (ot as any).hueq || '').trim().toUpperCase() === trackHueq
+                              );
+                              if (otherIdx !== -1) {
+                                  const ot = otherReq.tracks[otherIdx];
+                                  const candidateId = ot.id || `dist_trk_${otherReq.id}_${otherIdx}`;
+                                  existingTrack = mergedTracks.find(mt => mt.id === candidateId);
+                                  if (!existingTrack) {
+                                      const otPlays = Math.max((ot as any).plays || 0, plays[candidateId] || 0, hueqPlaysMap.get(trackHueq) || 0);
+                                      existingTrack = {
+                                          id: candidateId,
+                                          title: ot.title,
+                                          artist: ot.artist || otherReq.artistName,
+                                          album: otherReq.title,
+                                          cover: otherReq.covers?.[0] || "https://picsum.photos/300",
+                                          duration: ot.duration || 180,
+                                          url: ot.fileUrl,
+                                          plays: otPlays,
+                                          genre: ot.genre || otherReq.genre,
+                                          explicit: ot.explicit,
+                                          feat: ot.feat,
+                                          hueq: trackHueq,
+                                          mainArtists: ot.mainArtists || [],
+                                          lyrics: ot.lyrics,
+                                          syncedLyrics: ot.syncedLyrics
+                                      };
+                                      mergedTracks.push(existingTrack);
+                                  }
+                                  break;
+                              }
+                          }
                       }
 
                       if (existingTrack) {
                           trackId = existingTrack.id;
+                          // Use the existing track directly - DO NOT create a new track!
+                          newAlbum.trackIds.push(trackId);
+
+                          const canonicalPlays = Math.max(
+                              existingTrack.plays || 0,
+                              plays[trackId] || 0,
+                              trackHueq ? (hueqPlaysMap.get(trackHueq) || 0) : 0,
+                              (t as any).plays || 0
+                          );
+                          existingTrack.plays = canonicalPlays;
+                          plays[trackId] = canonicalPlays;
+
                           const trackIndex = mergedTracks.findIndex(tr => tr.id === trackId);
                           if (trackIndex !== -1) {
                               mergedTracks[trackIndex] = {
                                   ...mergedTracks[trackIndex],
-                                  title: t.title,
-                                  artist: t.artist || req.artistName, // Use track override or release artist
-                                  genre: t.genre || req.genre || mergedTracks[trackIndex].genre,
-                                  explicit: t.explicit,
-                                  isUnreleased: false, // Previously released tracks remain released!
+                                  plays: canonicalPlays,
+                                  isUnreleased: false,
                                   lyrics: t.lyrics || mergedTracks[trackIndex].lyrics,
                                   syncedLyrics: t.syncedLyrics || mergedTracks[trackIndex].syncedLyrics
                               };
+                          } else {
+                              mergedTracks.push(existingTrack);
                           }
+
+                          knownTrackById.set(trackId, existingTrack);
+                          if (trackHueq) knownTrackByHueq.set(trackHueq, existingTrack);
                       } else {
+                          // Brand new track for this release
                           trackId = `dist_trk_${req.id}_${idx}`;
                           const releaseLevelArtists = req.additionalMainArtists || [];
                           const trackLevelArtists = t.mainArtists || [];
                           const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
 
                           const isUnreleasedTrack = isAnnouncementActive || Boolean(t.isEmpty) || Boolean(t.isUnreleased) || !t.fileUrl;
+                          const initialTrackPlays = Math.max(
+                              (t as any).plays || 0,
+                              plays[trackId] || 0,
+                              trackHueq ? (hueqPlaysMap.get(trackHueq) || 0) : 0
+                          );
+                          if (initialTrackPlays > 0) {
+                              plays[trackId] = initialTrackPlays;
+                          }
 
-                          newTracksForThisAlbum.push({
+                          const newTrackItem: Track = {
                               id: trackId,
                               title: (isAnnouncementActive && req.hideTrackMetadata) ? `Track ${idx + 1}` : t.title,
-                              artist: (isAnnouncementActive && req.hideTrackMetadata) ? req.artistName : (t.artist || req.artistName), // Use track override or release artist
+                              artist: (isAnnouncementActive && req.hideTrackMetadata) ? req.artistName : (t.artist || req.artistName),
                               album: req.title,
                               cover: req.covers && req.covers.length > 0 ? req.covers[0] : "https://picsum.photos/300", 
                               duration: t.duration || 0, 
                               url: isUnreleasedTrack ? "" : t.fileUrl, 
-                              plays: 0,
+                              plays: initialTrackPlays,
                               genre: t.genre || req.genre,
                               explicit: (isAnnouncementActive && req.hideTrackMetadata) ? false : t.explicit,
                               feat: (isAnnouncementActive && req.hideTrackMetadata) ? undefined : t.feat,
@@ -1408,10 +1522,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               isUnreleased: isUnreleasedTrack,
                               lyrics: t.lyrics,
                               syncedLyrics: t.syncedLyrics
-                          });
-                      }
+                          };
 
-                      newAlbum.trackIds.push(trackId);
+                          newTracksForThisAlbum.push(newTrackItem);
+                          newAlbum.trackIds.push(trackId);
+                          knownTrackById.set(trackId, newTrackItem);
+                          if (trackHueq) knownTrackByHueq.set(trackHueq, newTrackItem);
+                      }
                   });
 
                   if (existingAlbumIndex !== -1) {
@@ -1482,10 +1599,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Unique Tracks (Prevent duplicates if refresh called multiple times awkwardly)
           const uniqueTracks = Array.from(new Map(mergedTracks.map(item => [item.id, item])).values());
 
-          const tracksWithPlays = uniqueTracks.map(t => ({
-              ...t,
-              plays: plays[t.id] !== undefined ? plays[t.id] : t.plays
-          }));
+          // Final unification pass for any track with HUEQ code
+          const finalHueqPlaysMap = new Map<string, number>();
+          uniqueTracks.forEach(t => {
+              const code = (t.hueq || '').trim().toUpperCase();
+              if (code) {
+                  const p = Math.max(t.plays || 0, plays[t.id] || 0, hueqPlaysMap.get(code) || 0);
+                  finalHueqPlaysMap.set(code, Math.max(finalHueqPlaysMap.get(code) || 0, p));
+              }
+          });
+
+          const tracksWithPlays = uniqueTracks.map(t => {
+              const code = (t.hueq || '').trim().toUpperCase();
+              let effectivePlays = plays[t.id] !== undefined ? plays[t.id] : (t.plays || 0);
+              if (code && finalHueqPlaysMap.has(code)) {
+                  effectivePlays = Math.max(effectivePlays, finalHueqPlaysMap.get(code)!);
+              }
+              plays[t.id] = effectivePlays;
+              return {
+                  ...t,
+                  plays: effectivePlays
+              };
+          });
+
+          StorageService.save('huevify_plays', plays);
 
           setTracks(tracksWithPlays);
           setAlbums(mergedAlbums);
@@ -2311,11 +2448,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!artistId || !artistName) return;
 
-      // Ensure tracks have HUEQs if applicable
-      const tracksWithHueqs = (releaseData.tracks || []).map(t => ({
-          ...t,
-          generatedHueq: t.generatedHueq || t.existingHueq || generateHUEQ()
-      }));
+      // Ensure tracks have HUEQs if applicable and preserve existing track identity
+      const tracksWithHueqs = (releaseData.tracks || []).map(t => {
+          const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || generateHUEQ()).trim().toUpperCase();
+          return {
+              ...t,
+              id: t.id,
+              existingHueq: t.existingHueq ? t.existingHueq.trim().toUpperCase() : (t.id ? code : undefined),
+              generatedHueq: code,
+              plays: t.plays !== undefined ? t.plays : (t as any).plays
+          };
+      });
 
       const newRelease: ReleaseRequest = {
           ...releaseData,
@@ -2531,9 +2674,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               // HUEQ is NOT awarded to tracks in expected releases (announcements) or empty tracks
               return t;
           }
-          if (t.existingHueq) return t; 
-          if (t.generatedHueq) return t;
-          return { ...t, generatedHueq: generateHUEQ() }; 
+          const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || generateHUEQ()).trim().toUpperCase();
+          return {
+              ...t,
+              id: t.id,
+              existingHueq: t.existingHueq ? t.existingHueq.trim().toUpperCase() : (t.id ? code : undefined),
+              generatedHueq: code,
+              plays: t.plays !== undefined ? t.plays : (t as any).plays
+          };
       });
 
       const updatedRequests = releaseRequests.map(r => 
@@ -2847,27 +2995,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getTrackByHueq = (hueq: string): Track | undefined => {
       if (!hueq) return undefined;
       const clean = hueq.trim().toUpperCase();
-      const live = tracks.find(t => t.hueq && t.hueq.trim().toUpperCase() === clean);
-      if (live) return live;
+
+      // Look in live tracks first - pick highest plays
+      const liveMatches = tracks.filter(t => t.hueq && t.hueq.trim().toUpperCase() === clean);
+      if (liveMatches.length > 0) {
+          liveMatches.sort((a, b) => (b.plays || 0) - (a.plays || 0));
+          return liveMatches[0];
+      }
+
+      const storedPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
 
       for (const req of releaseRequests) {
-          for (const dt of req.tracks || []) {
-              const code = (dt.existingHueq || dt.generatedHueq || '').trim().toUpperCase();
+          for (let idx = 0; idx < (req.tracks || []).length; idx++) {
+              const dt = req.tracks[idx];
+              const code = (dt.existingHueq || dt.generatedHueq || (dt as any).hueq || '').trim().toUpperCase();
               if (code && code === clean) {
+                  const tid = dt.id || `dist_trk_${req.id}_${idx}`;
+                  const p = Math.max((dt as any).plays || 0, storedPlays[tid] || 0, dt.id ? (storedPlays[dt.id] || 0) : 0);
                   return {
-                      id: `req_trk_${req.id}_${dt.title}`,
+                      id: tid,
                       title: dt.title,
                       artist: dt.artist || req.artistName,
                       album: req.title,
                       cover: req.covers && req.covers.length > 0 ? req.covers[0] : (albums.find(a => a.title === req.title)?.covers?.[0] || ''),
                       duration: dt.duration || 180,
                       url: dt.fileUrl,
-                      plays: 0,
+                      plays: p,
                       genre: dt.genre || req.genre,
                       explicit: dt.explicit,
                       feat: dt.feat,
                       hueq: code,
-                      mainArtists: dt.mainArtists
+                      mainArtists: dt.mainArtists,
+                      lyrics: dt.lyrics,
+                      syncedLyrics: dt.syncedLyrics
                   };
               }
           }
@@ -3795,8 +3955,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const addedPlays = Math.floor(Math.random() * (10000 - 100 + 1)) + 100;
     const currentBasePlays = track.plays || 0;
 
+    const targetHueq = track.hueq ? track.hueq.trim().toUpperCase() : null;
+
     setTracks(prev => {
-        const updated = prev.map(t => t.id === track.id ? { ...t, plays: (t.plays || 0) + addedPlays } : t);
+        const updated = prev.map(t => {
+            const isMatch = t.id === track.id || Boolean(targetHueq && t.hueq && t.hueq.trim().toUpperCase() === targetHueq);
+            return isMatch ? { ...t, plays: (t.plays || 0) + addedPlays } : t;
+        });
         const playCounts = updated.reduce((acc, t) => ({ ...acc, [t.id]: t.plays }), {});
         StorageService.save('huevify_plays', playCounts);
         notifySync('TRACKS_UPDATE');
@@ -3813,9 +3978,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const effectiveUserId = currentUser?.id ? `user_${currentUser.id}` : getOrCreateDeviceId();
         SupabaseService.recordPlayLog(track.id, effectiveUserId, addedPlays, currentBasePlays).then(newCount => {
             if (newCount !== null) {
-                setTracks(prev => prev.map(t => t.id === track.id ? { ...t, plays: newCount } : t));
+                setTracks(prev => prev.map(t => {
+                    const isMatch = t.id === track.id || Boolean(targetHueq && t.hueq && t.hueq.trim().toUpperCase() === targetHueq);
+                    return isMatch ? { ...t, plays: newCount } : t;
+                }));
                 const currentPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
                 currentPlays[track.id] = newCount;
+                tracksRef.current.forEach(t => {
+                    if (targetHueq && t.hueq && t.hueq.trim().toUpperCase() === targetHueq) {
+                        currentPlays[t.id] = newCount;
+                    }
+                });
                 StorageService.save('huevify_plays', currentPlays);
             }
         }).catch(e => console.warn('Record play log error:', e));
