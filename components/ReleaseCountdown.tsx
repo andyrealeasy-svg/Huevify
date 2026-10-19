@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Play } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { getReleaseTimestamp } from '../utils/dateUtils';
 
 interface ReleaseCountdownProps {
   targetDate: string;
@@ -36,13 +37,7 @@ export const ReleaseCountdown: React.FC<ReleaseCountdownProps> = ({
     }
 
     try {
-      let targetTimestamp: number;
-      if (targetDate.includes('T')) {
-        targetTimestamp = new Date(targetDate).getTime();
-      } else {
-        const timePart = targetTime && targetTime.length >= 4 ? targetTime : "00:00";
-        targetTimestamp = new Date(`${targetDate}T${timePart}:00`).getTime();
-      }
+      const targetTimestamp = getReleaseTimestamp(targetDate, targetTime);
 
       if (isNaN(targetTimestamp)) {
         return { days: 0, hours: 0, minutes: 0, seconds: 0, isPast: true };

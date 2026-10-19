@@ -4,6 +4,7 @@ import { Search as SearchIcon, Play, Heart, ListMusic, User, ArrowLeft, Music2 }
 import { ExplicitBadge } from '../components/ExplicitBadge.tsx';
 import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 import { TrackRow } from '../components/TrackRow.tsx';
+import { extractReleaseDateParts } from '../utils/dateUtils.ts';
 
 const formatDuration = (seconds: number) => {
     // Ensure seconds is an integer to avoid float residuals like .123 showing up in modulo
@@ -220,8 +221,8 @@ export const Search = () => {
           const alb = albums.find(a => a.trackIds && a.trackIds.includes(track.id));
           if (alb?.year) return alb.year;
           if (alb?.releaseDate) {
-              const y = new Date(alb.releaseDate).getFullYear();
-              if (!isNaN(y)) return y;
+              const y = extractReleaseDateParts(alb.releaseDate)?.year;
+              if (y !== undefined) return y;
           }
 
           if (track.id && typeof track.id === 'string' && track.id.startsWith('dist_trk_')) {
@@ -229,8 +230,8 @@ export const Search = () => {
               const reqId = parts.slice(2, -1).join('_');
               const matchedReq = releaseRequests?.find(r => r.id === reqId);
               if (matchedReq?.releaseDate) {
-                  const y = new Date(matchedReq.releaseDate).getFullYear();
-                  if (!isNaN(y)) return y;
+                  const y = extractReleaseDateParts(matchedReq.releaseDate)?.year;
+                  if (y !== undefined) return y;
               }
           }
 
@@ -238,8 +239,8 @@ export const Search = () => {
               const albByTitle = albums.find(a => a.title && a.title.trim().toLowerCase() === track.album.trim().toLowerCase());
               if (albByTitle?.year) return albByTitle.year;
               if (albByTitle?.releaseDate) {
-                  const y = new Date(albByTitle.releaseDate).getFullYear();
-                  if (!isNaN(y)) return y;
+                  const y = extractReleaseDateParts(albByTitle.releaseDate)?.year;
+                  if (y !== undefined) return y;
               }
           }
 
@@ -248,8 +249,8 @@ export const Search = () => {
               (r.title && track.album && r.title.trim().toLowerCase() === track.album.trim().toLowerCase())
           );
           if (req?.releaseDate) {
-              const y = new Date(req.releaseDate).getFullYear();
-              if (!isNaN(y)) return y;
+              const y = extractReleaseDateParts(req.releaseDate)?.year;
+              if (y !== undefined) return y;
           }
 
           if (track.year && typeof track.year === 'number') {

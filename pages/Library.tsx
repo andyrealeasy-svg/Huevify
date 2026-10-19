@@ -8,6 +8,7 @@ import { PlayingVisualizer } from '../components/PlayingVisualizer.tsx';
 import { ReleaseCountdown } from '../components/ReleaseCountdown.tsx';
 import { TrackRow } from '../components/TrackRow.tsx';
 import { StorageService } from '../services/storage.ts';
+import { extractReleaseDateParts, getReleaseTimestamp } from '../utils/dateUtils.ts';
 import { SupabaseService, isSupabaseConfigured } from '../services/supabase.ts';
 import { Track } from '../types.ts';
 import { formatCompactNumber } from '../utils/formatters.ts';
@@ -499,7 +500,7 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
                                                         )}
                                                     </div>
                                                     <span className="text-xs text-secondary truncate mt-0.5">
-                                                        {album.year || (album.releaseDate ? new Date(album.releaseDate).getFullYear() : '')} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
+                                                        {album.year || extractReleaseDateParts(album.releaseDate)?.year || ''} • {releaseType} • {album.trackIds.length} {album.trackIds.length === 1 ? t('trackOne', 'трек') : t('tracksCount', 'треков')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -1434,7 +1435,7 @@ export const Library = () => {
         {/* Action Bar */}
         {currentAlbumObj?.isUpcoming ? (
           (() => {
-            const releaseTargetTimestamp = new Date(currentAlbumObj.releaseTime ? `${currentAlbumObj.releaseDate}T${currentAlbumObj.releaseTime}:00` : `${currentAlbumObj.releaseDate}T00:00:00`).getTime();
+            const releaseTargetTimestamp = getReleaseTimestamp(currentAlbumObj.releaseDate, currentAlbumObj.releaseTime);
             const isReleaseDue = !isNaN(releaseTargetTimestamp) && releaseTargetTimestamp <= Date.now();
 
             if (isReleaseDue) {

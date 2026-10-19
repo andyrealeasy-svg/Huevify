@@ -52,6 +52,21 @@ export function extractReleaseDateParts(dateString?: string): ExtractedDateParts
   const str = String(dateString).trim();
   if (!str) return null;
 
+  // Legacy releases store the selected UTC+3 date/time as a UTC timestamp.
+  // Recover the intended calendar date for those values.
+  const isUtcMidnightAnchor = /T00:00:00(?:\.000)?(?:Z|\+00:00)$/i.test(str);
+  if (!isUtcMidnightAnchor && /T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(str)) {
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      const utcPlusThree = new Date(parsed.getTime() + 3 * 60 * 60 * 1000);
+      return {
+        year: utcPlusThree.getUTCFullYear(),
+        month: utcPlusThree.getUTCMonth() + 1,
+        day: utcPlusThree.getUTCDate()
+      };
+    }
+  }
+
   // 1. Matches standard YYYY-MM-DD (e.g. "2026-02-15", "2026-02-15T...", "2026-02-15 00:00:00")
   const ymdMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   if (ymdMatch) {
@@ -89,6 +104,23 @@ export function extractReleaseDateParts(dateString?: string): ExtractedDateParts
   }
 
   return null;
+}
+
+export function getReleaseTimestamp(dateString?: string, time = '00:00'): number {
+  if (!dateString) return NaN;
+  const str = String(dateString).trim();
+  if (!str) return NaN;
+
+  // Existing releases store the complete release instant in an ISO timestamp.
+  if (!/T00:00:00(?:\.000)?(?:Z|\+00:00)$/i.test(str) && /T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(str)) {
+    return new Date(str).getTime();
+  }
+
+  const parts = extractReleaseDateParts(str);
+  if (!parts) return NaN;
+  const date = `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+  const normalizedTime = /^\d{2}:\d{2}$/.test(time) ? time : '00:00';
+  return new Date(`${date}T${normalizedTime}:00+03:00`).getTime();
 }
 
 /**

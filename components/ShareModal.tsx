@@ -83,7 +83,7 @@ export const ShareModal: React.FC = () => {
       try {
         const file = new File(
           [cardBlob], 
-          `Huevify_${(shareModalData?.title || 'share').replace(/[^a-zA-Z0-9а-яА-ЯёЁ_-]/g, '_')}.png`, 
+          `Huevify_${(shareModalData?.title || 'share').replace(/[^\p{L}\p{N}_-]/gu, '_')}.png`,
           { type: 'image/png' }
         );
         if (navigator.canShare({ files: [file] })) {
@@ -148,7 +148,7 @@ export const ShareModal: React.FC = () => {
 
     try {
       const link = document.createElement('a');
-      link.download = `Huevify_${(shareModalData?.title || 'share').replace(/[^a-zA-Z0-9а-яА-ЯёЁ_-]/g, '_')}.png`;
+      link.download = `Huevify_${(shareModalData?.title || 'share').replace(/[^\p{L}\p{N}_-]/gu, '_')}.png`;
       link.href = cardDataUrl || URL.createObjectURL(cardBlob!);
       document.body.appendChild(link);
       link.click();
