@@ -4,6 +4,7 @@ import { generateInitialData, StorageService } from '../services/data';
 import { isTestTrack, isTestAlbum, isTestArtist } from '../services/storage';
 import { SupabaseService, isSupabaseConfigured, supabase } from '../services/supabase';
 import { getTelegramStartParam, decodeTelegramStartParam } from '../utils/telegramShare.ts';
+import { extractReleaseDateParts, getReleaseTimestamp } from '../utils/dateUtils.ts';
 
 export interface ShareModalData {
   isOpen: boolean;
@@ -679,6 +680,35 @@ export const generateHUEQ = (): string => {
     return `${randomDigit()}${randomDigit()}${randomDigit()}${randomChar()}${randomChar()}${randomDigit()}`;
 };
 
+export const getTrackIdFromHueq = (hueq: string): string =>
+    `dist_trk_hueq_${encodeURIComponent(hueq.trim().toUpperCase())}`;
+
+const LEGACY_TRACK_IDS_BY_HUEQ: Record<string, string[]> = {
+    '782BK1': ['dist_trk_rel_1792097971231_0']
+};
+
+const getPlaysForTrack = (track: Track, plays: Record<string, number>): number =>
+    Math.max(
+        track.plays || 0,
+        plays[track.id] || 0,
+        ...(track.legacyIds || []).map(id => plays[id] || 0)
+    );
+
+const canonicalizeDailyPlays = (plays: Record<string, number>, availableTracks: Track[]): Record<string, number> => {
+    const canonical = { ...plays };
+    availableTracks.forEach(track => {
+        const legacyPlays = (track.legacyIds || []).reduce((sum, id) => {
+            const count = canonical[id] || 0;
+            delete canonical[id];
+            return sum + count;
+        }, 0);
+        if (legacyPlays > 0) {
+            canonical[track.id] = (canonical[track.id] || 0) + legacyPlays;
+        }
+    });
+    return canonical;
+};
+
 // Anti-stream-farming limit: max counted plays per track from a user/device within rolling 24 hours
 export const DAILY_COUNTED_STREAMS_PER_TRACK = 20;
 
@@ -1254,7 +1284,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           StorageService.save('huevify_plays', merged);
           setTracks(prev => prev.map(t => ({
             ...t,
-            plays: merged[t.id] !== undefined ? merged[t.id] : t.plays
+          plays: getPlaysForTrack(t, merged)
           })));
         }
       } catch (e) {
@@ -1296,7 +1326,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           
           const artistSet = new Set(mergedAlbums.map(a => a.artist));
 
-          const validRequests = (Array.isArray(requests) ? requests : []).filter(req => {
+          let validRequests = (Array.isArray(requests) ? requests : []).filter(req => {
               if (!req || !req.tracks) return false;
               if (isTestAlbum(req)) return false;
               return true;
@@ -1324,11 +1354,79 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
           });
 
+          // Keep identities from the current library available while rebuilding it.
+          // A live track can outlast the release request that originally introduced it.
+          tracks.forEach(t => {
+              knownTrackById.set(t.id, t);
+              const code = (t.hueq || '').trim().toUpperCase();
+              if (code) {
+                  const knownTrack = knownTrackByHueq.get(code);
+                  if (!knownTrack || (t.plays || 0) > (knownTrack.plays || 0)) {
+                      knownTrackByHueq.set(code, t);
+                  }
+                  const p = Math.max(t.plays || 0, plays[t.id] || 0);
+                  hueqPlaysMap.set(code, Math.max(hueqPlaysMap.get(code) || 0, p));
+              }
+          });
+
+          const trackIdsByHueq = new Map<string, string>();
+          knownTrackByHueq.forEach((track, code) => trackIdsByHueq.set(code, track.id));
+          const requestsByTrackOrder = [...validRequests].sort((a, b) => {
+              const timeA = new Date(a.submissionTime || a.releaseDate).getTime() || 0;
+              const timeB = new Date(b.submissionTime || b.releaseDate).getTime() || 0;
+              return timeA - timeB;
+          });
+          const normalizedRequestsById = new Map<string, ReleaseRequest>();
+          const requestsWithAssignedTrackIds = new Set<string>();
+
+          requestsByTrackOrder.forEach(req => {
+              const normalizedTracks = req.tracks.map((track, idx) => {
+                  const code = (track.existingHueq || track.generatedHueq || (track as any).hueq || '').trim().toUpperCase();
+                  const matchedTrackId = code ? trackIdsByHueq.get(code) : undefined;
+                  const trackId = matchedTrackId || track.id || (code ? getTrackIdFromHueq(code) : `dist_trk_${req.id}_${idx}`);
+
+                  if (code && req.status !== 'REJECTED' && !matchedTrackId) {
+                      trackIdsByHueq.set(code, trackId);
+                  }
+                  const legacyIds = Array.from(new Set([
+                      ...(track.legacyIds || []),
+                      ...(LEGACY_TRACK_IDS_BY_HUEQ[code] || []),
+                      ...(track.id && track.id !== trackId ? [track.id] : [])
+                  ])).filter(id => id !== trackId);
+                  if (track.id !== trackId || legacyIds.length !== (track.legacyIds || []).length) {
+                      requestsWithAssignedTrackIds.add(req.id);
+                  }
+                  return track.id === trackId && legacyIds.length === (track.legacyIds || []).length
+                      ? track
+                      : { ...track, id: trackId, legacyIds };
+              });
+
+              normalizedRequestsById.set(req.id, { ...req, tracks: normalizedTracks });
+          });
+
+          if (requestsWithAssignedTrackIds.size > 0) {
+              const normalizedRequests = requests.map(req => normalizedRequestsById.get(req.id) || req);
+              validRequests = validRequests.map(req => normalizedRequestsById.get(req.id) || req);
+              setReleaseRequests(normalizedRequests);
+              StorageService.save('huevify_release_requests', normalizedRequests);
+              if (isSupabaseConfigured()) {
+                  normalizedRequests.forEach(req => {
+                      if (requestsWithAssignedTrackIds.has(req.id)) {
+                          SupabaseService.saveRelease(req).catch(e => console.warn('Supabase track identity migration error:', e));
+                      }
+                  });
+              }
+          }
+
           validRequests.forEach(r => {
               (r.tracks || []).forEach((t, idx) => {
                   const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || '').trim().toUpperCase();
                   const tid = t.id || `dist_trk_${r.id}_${idx}`;
-                  const p = Math.max((t as any).plays || 0, plays[tid] || 0, t.id ? (plays[t.id] || 0) : 0);
+                  const p = Math.max(
+                      (t as any).plays || 0,
+                      plays[tid] || 0,
+                      ...(t.legacyIds || []).map(id => plays[id] || 0)
+                  );
                   if (code) {
                       hueqPlaysMap.set(code, Math.max(hueqPlaysMap.get(code) || 0, p));
                   }
@@ -1349,9 +1447,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               if (!req || !req.tracks) return;
 
               const isLive = req.status === 'LIVE';
-              const releaseTimestamp = new Date(req.releaseTime ? `${req.releaseDate}T${req.releaseTime}:00` : `${req.releaseDate}T00:00:00`).getTime();
+              const releaseTimestamp = getReleaseTimestamp(req.releaseDate, req.releaseTime);
               const now = Date.now();
-              const isApprovedAndDue = req.status === 'APPROVED' && (!isNaN(releaseTimestamp) ? releaseTimestamp <= now : new Date(req.releaseDate).getTime() <= now) && !req.isAnnouncement;
+              const isApprovedAndDue = req.status === 'APPROVED' && releaseTimestamp <= now && !req.isAnnouncement;
               
               // Expected release announcement check
               let isAnnouncementActive = false;
@@ -1383,7 +1481,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                       artist: req.artistName,
                       covers: req.covers && req.covers.length > 0 ? req.covers : ["https://picsum.photos/300"],
                       trackIds: [],
-                      year: new Date(req.releaseDate).getFullYear(),
+                      year: extractReleaseDateParts(req.releaseDate)?.year || new Date(req.releaseDate).getFullYear(),
                       releaseDate: req.releaseDate,
                       releaseTime: req.releaseTime || "00:00",
                       recordLabel: req.label,
@@ -1468,7 +1566,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               existingTrack.plays || 0,
                               plays[trackId] || 0,
                               trackHueq ? (hueqPlaysMap.get(trackHueq) || 0) : 0,
-                              (t as any).plays || 0
+                              (t as any).plays || 0,
+                              ...(t.legacyIds || []).map(id => plays[id] || 0)
                           );
                           existingTrack.plays = canonicalPlays;
                           plays[trackId] = canonicalPlays;
@@ -1478,6 +1577,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               mergedTracks[trackIndex] = {
                                   ...mergedTracks[trackIndex],
                                   plays: canonicalPlays,
+                                  legacyIds: Array.from(new Set([
+                                      ...(mergedTracks[trackIndex].legacyIds || []),
+                                      ...(t.legacyIds || [])
+                                  ])).filter(id => id !== trackId),
                                   isUnreleased: false,
                                   lyrics: t.lyrics || mergedTracks[trackIndex].lyrics,
                                   syncedLyrics: t.syncedLyrics || mergedTracks[trackIndex].syncedLyrics
@@ -1490,7 +1593,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                           if (trackHueq) knownTrackByHueq.set(trackHueq, existingTrack);
                       } else {
                           // Brand new track for this release
-                          trackId = `dist_trk_${req.id}_${idx}`;
+                          trackId = t.id || (trackHueq ? getTrackIdFromHueq(trackHueq) : `dist_trk_${req.id}_${idx}`);
                           const releaseLevelArtists = req.additionalMainArtists || [];
                           const trackLevelArtists = t.mainArtists || [];
                           const combinedMainArtists = Array.from(new Set([...releaseLevelArtists, ...trackLevelArtists]));
@@ -1518,6 +1621,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                               explicit: (isAnnouncementActive && req.hideTrackMetadata) ? false : t.explicit,
                               feat: (isAnnouncementActive && req.hideTrackMetadata) ? undefined : t.feat,
                               hueq: (isAnnouncementActive || isUnreleasedTrack) ? undefined : (t.generatedHueq || t.existingHueq),
+                              legacyIds: (t.legacyIds || []).filter(id => id !== trackId),
                               mainArtists: (isAnnouncementActive && req.hideTrackMetadata) ? [] : combinedMainArtists,
                               isUnreleased: isUnreleasedTrack,
                               lyrics: t.lyrics,
@@ -1575,7 +1679,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               let updatedLiked = [...likedAlbumIds];
               mergedAlbums.forEach(alb => {
                   if ((alb.isAnnouncement || alb.isUpcoming) && alb.linkedAlbumId) {
-                      const releaseTs = new Date(alb.releaseTime ? `${alb.releaseDate}T${alb.releaseTime}:00` : `${alb.releaseDate}T00:00:00`).getTime();
+                      const releaseTs = getReleaseTimestamp(alb.releaseDate, alb.releaseTime);
                       if (!isNaN(releaseTs) && releaseTs <= Date.now()) {
                           const annId = alb.id;
                           const annBaseId = alb.id.replace('dist_alb_', '');
@@ -1897,7 +2001,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           StorageService.save('huevify_plays', merged);
           setTracks(prev => prev.map(t => ({
             ...t,
-            plays: merged[t.id] !== undefined ? merged[t.id] : t.plays
+            plays: getPlaysForTrack(t, merged)
           })));
         }
       } else if (table === 'playlists') {
@@ -1932,7 +2036,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const localPlays = StorageService.load<Record<string, number>>('huevify_plays', {});
           const mergedPlays = { ...localPlays, ...freshPlays };
           StorageService.save('huevify_plays', mergedPlays);
-          setTracks(prev => prev.map(t => ({ ...t, plays: mergedPlays[t.id] ?? t.plays ?? 0 })));
+          setTracks(prev => prev.map(t => ({ ...t, plays: getPlaysForTrack(t, mergedPlays) })));
         }
       } else if (table === 'daily_chart') {
         const freshChartData = await SupabaseService.fetchDailyChart();
@@ -2062,7 +2166,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const now = new Date();
               let changed = false;
               const updatedRequests = releaseRequests.map(req => {
-                  if (req.status === 'APPROVED' && new Date(req.releaseDate).getTime() <= now.getTime()) {
+                  if (req.status === 'APPROVED' && getReleaseTimestamp(req.releaseDate, req.releaseTime) <= now.getTime()) {
                       changed = true;
                       return { ...req, status: 'LIVE' as const };
                   }
@@ -2453,7 +2557,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || generateHUEQ()).trim().toUpperCase();
           return {
               ...t,
-              id: t.id,
+              id: t.id || getTrackIdFromHueq(code),
               existingHueq: t.existingHueq ? t.existingHueq.trim().toUpperCase() : (t.id ? code : undefined),
               generatedHueq: code,
               plays: t.plays !== undefined ? t.plays : (t as any).plays
@@ -2474,7 +2578,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (overrideArtist) {
           newRelease.status = 'APPROVED';
           // Check if date is in past, if so make LIVE
-          if (new Date(newRelease.releaseDate).getTime() <= Date.now()) {
+          if (getReleaseTimestamp(newRelease.releaseDate, newRelease.releaseTime) <= Date.now()) {
               newRelease.status = 'LIVE';
           }
       }
@@ -2677,7 +2781,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const code = (t.existingHueq || t.generatedHueq || (t as any).hueq || generateHUEQ()).trim().toUpperCase();
           return {
               ...t,
-              id: t.id,
+              id: t.id || getTrackIdFromHueq(code),
               existingHueq: t.existingHueq ? t.existingHueq.trim().toUpperCase() : (t.id ? code : undefined),
               generatedHueq: code,
               plays: t.plays !== undefined ? t.plays : (t as any).plays
@@ -2696,7 +2800,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       const req = updatedRequests.find(r => r.id === id);
       if (req) {
-          const isDue = new Date(req.releaseTime ? `${req.releaseDate}T${req.releaseTime}:00` : req.releaseDate).getTime() <= Date.now();
+          const isDue = getReleaseTimestamp(req.releaseDate, req.releaseTime) <= Date.now();
           if (isDue || req.isAnnouncement) {
               refreshLibrary(updatedRequests);
           }
@@ -3063,10 +3167,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isSupabaseConfigured()) {
       const existing = await SupabaseService.fetchDailyChart();
       if (existing && existing.lastUpdate === publicationPoint.toISOString() && Array.isArray(existing.chart) && existing.chart.length > 0) {
-        setDailyChart(existing.chart);
-        StorageService.save('huevify_daily_chart', existing.chart);
-        StorageService.save('huevify_last_chart_update', existing.lastUpdate);
-        return;
+        const shouldRebuildForLegacyIds = tracksRef.current.some(track => {
+          const legacyChartRowExists = (track.legacyIds || []).some(id =>
+            existing.chart.some(item => item.id === id)
+          );
+          const legacyPlays = (track.legacyIds || []).reduce(
+            (sum, id) => sum + (existing.snapshot[id] || 0),
+            0
+          );
+          if (legacyPlays <= 0) return legacyChartRowExists;
+          const publishedTrack = existing.chart.find(item => item.id === track.id);
+          return !publishedTrack || publishedTrack.dailyPlays !== (existing.snapshot[track.id] || 0) + legacyPlays;
+        });
+        if (!shouldRebuildForLegacyIds) {
+          setDailyChart(existing.chart);
+          StorageService.save('huevify_daily_chart', existing.chart);
+          StorageService.save('huevify_last_chart_update', existing.lastUpdate);
+          return;
+        }
       }
     }
 
@@ -3103,6 +3221,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Safety guard: only calculate if track catalog is populated in memory
     const availableTracks = tracksRef.current;
     if (availableTracks.length === 0) return;
+    dailyPlaysMap = canonicalizeDailyPlays(dailyPlaysMap, availableTracks);
 
     // Only tracks whose artist is verified ("Подтвержденный артист") can enter Huevify Daily Top 25
     const verifiedArtistNames = new Set(
@@ -3173,9 +3292,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const latestPt = getLatestPublicationPoint();
       const savedLastUpdate = StorageService.load<string | null>('huevify_last_chart_update', null);
       const savedChart = StorageService.load<DailyChartTrack[]>('huevify_daily_chart', []);
+      const hasLegacyTrackIds = tracksRef.current.some(track => (track.legacyIds || []).length > 0);
 
       // 1. If local storage already has valid, full static chart for latestPt, keep it!
-      if (savedLastUpdate && savedLastUpdate === latestPt.toISOString() && savedChart.length > 0) {
+      if (!hasLegacyTrackIds && savedLastUpdate && savedLastUpdate === latestPt.toISOString() && savedChart.length > 0) {
         const enriched = await computeRankChangesFromSupabaseLogs(savedChart, latestPt, tracksRef.current);
         setDailyChart(enriched);
         return;
@@ -3185,6 +3305,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isSupabaseConfigured()) {
         const remoteData = await SupabaseService.fetchDailyChart();
         if (remoteData && remoteData.lastUpdate === latestPt.toISOString() && Array.isArray(remoteData.chart) && remoteData.chart.length > 0) {
+          if (hasLegacyTrackIds) {
+            await computeAndPublishDailyChart(latestPt);
+            return;
+          }
           const enriched = await computeRankChangesFromSupabaseLogs(remoteData.chart, latestPt, tracksRef.current);
           setDailyChart(enriched);
           StorageService.save('huevify_daily_chart', enriched);

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useStore, generateHUEQ } from '../context/StoreContext.tsx';
+import { useStore, generateHUEQ, getTrackIdFromHueq } from '../context/StoreContext.tsx';
 import { compressImage } from '../utils/imageCompressor.ts';
 import {
   X, Mic2, Shield, User, UploadCloud, Calendar, FileAudio,
@@ -14,7 +14,7 @@ import { StorageService } from '../services/storage.ts';
 import { ExplicitBadge } from './ExplicitBadge.tsx';
 import { LyricsSyncModal } from './LyricsSyncModal.tsx';
 import { ArtistVerificationModal } from './ArtistVerificationModal.tsx';
-import { formatNumericReleaseDate, formatReleaseDateDisplay, extractReleaseDateParts } from '../utils/dateUtils.ts';
+import { formatNumericReleaseDate, formatReleaseDateDisplay, extractReleaseDateParts, getReleaseTimestamp } from '../utils/dateUtils.ts';
 
 type HubView = 'AUTH' | 'ARTIST_DASH' | 'MOD_DASH' | 'DISTRIBUTION' | 'PROFILE_EDIT' | 'ARTIST_PICK' | 'MOD_CREDENTIALS' | 'MOD_ALL_RELEASES' | 'MOD_SETTINGS' | 'MOD_ALL_TRACKS';
 
@@ -173,6 +173,7 @@ export const ArtistHub = () => {
           const releaseTrackIds: string[] = [];
           (selectedStatsRelease.tracks || []).forEach(dt => {
               if (dt.id) releaseTrackIds.push(dt.id);
+              if (dt.legacyIds) releaseTrackIds.push(...dt.legacyIds);
               if (dt.title) releaseTrackIds.push(dt.title.trim());
               const match = tracks.find(t =>
                   (dt.id && t.id === dt.id) ||
@@ -593,14 +594,16 @@ export const ArtistHub = () => {
                   showNotification(`Трек "${file.name.replace(/\.[^/.]+$/, "")}" успешно загружен!`, "success");
               }
 
+              const generatedHueq = generateHUEQ();
               const newTrack: DistributionTrack = {
+                  id: getTrackIdFromHueq(generatedHueq),
                   title: file.name.replace(/\.[^/.]+$/, ""),
                   explicit: false,
                   mainArtists: [],
                   genre: distGenre || "Pop",
                   duration: duration,
                   fileUrl: finalUrl,
-                  generatedHueq: generateHUEQ()
+                  generatedHueq
               };
 
               setDistTracks(prev => [...prev, newTrack]);
@@ -755,8 +758,11 @@ export const ArtistHub = () => {
           setDistTracks(prev => {
               const next = [...prev];
               if (next[trackToAttachAudioIdx]) {
+                  const generatedHueq = next[trackToAttachAudioIdx].generatedHueq || generateHUEQ();
                   next[trackToAttachAudioIdx] = {
                       ...next[trackToAttachAudioIdx],
+                      id: next[trackToAttachAudioIdx].id || getTrackIdFromHueq(generatedHueq),
+                      generatedHueq,
                       fileUrl: finalUrl || "",
                       duration: duration,
                       isEmpty: false,
@@ -864,6 +870,7 @@ export const ArtistHub = () => {
 
       if (alreadyExists) {
           showNotification(`Трек "${targetTrack.title}" уже в списке релиза`, "info");
+          return;
       }
 
       const newTrack: DistributionTrack = {
@@ -950,14 +957,16 @@ export const ArtistHub = () => {
   };
 
   const addNewTrack = () => {
+      const generatedHueq = generateHUEQ();
       const newTrack: DistributionTrack = {
+          id: getTrackIdFromHueq(generatedHueq),
           title: ``,
           explicit: false,
           duration: 180,
           genre: distGenre || 'Pop',
           fileUrl: "",
           mainArtists: [],
-          generatedHueq: generateHUEQ()
+          generatedHueq
       };
       setDistTracks(prev => [...prev, newTrack]);
   };
@@ -967,8 +976,6 @@ export const ArtistHub = () => {
           showNotification(t('specifyDate'), "error");
           return;
       }
-
-      const dateTime = new Date(`${distDate}T${distTime}:00+03:00`);
 
       // Determine Artist Identity
       const overrideArtist = currentModerator ? {
@@ -1014,7 +1021,7 @@ export const ArtistHub = () => {
           covers: finalCovers,
           additionalMainArtists: distMainArtists,
           tracks: finalTracks,
-          releaseDate: dateTime.toISOString(),
+          releaseDate: distDate,
           releaseTime: distTime,
           releaseMessage: distMsg,
           isAnnouncement: isAnnouncement,
@@ -1190,11 +1197,16 @@ export const ArtistHub = () => {
       setDistLabel(release.label || release.recordLabel || "");
       setDistCovers(release.covers);
       setDistMainArtists(release.additionalMainArtists || release.mainArtists || []);
-      setDistTracks((release.tracks || []).map((t: any) => ({
-          ...t,
-          existingHueq: t.existingHueq || t.generatedHueq,
-          generatedHueq: t.generatedHueq || t.existingHueq || generateHUEQ()
-      })));
+      setDistTracks((release.tracks || []).map((t: any, idx: number) => {
+          const hueq = (t.existingHueq || t.generatedHueq || t.hueq || generateHUEQ()).trim().toUpperCase();
+          const existingTrack = hueq ? getTrackByHueq(hueq) : undefined;
+          return {
+              ...t,
+              id: existingTrack?.id || t.id || (hueq ? getTrackIdFromHueq(hueq) : `dist_trk_${release.id}_${idx}`),
+              existingHueq: t.existingHueq || t.generatedHueq,
+              generatedHueq: t.generatedHueq || t.existingHueq || hueq
+          };
+      }));
 
       // If mod, allow editing artist name
       if (currentModerator) {
@@ -1210,7 +1222,7 @@ export const ArtistHub = () => {
         setDistDate(`${yStr}-${mStr}-${dStr}`);
       } else {
         const dateObj = release.releaseDate ? new Date(release.releaseDate) : new Date();
-        setDistDate(dateObj.toISOString().split('T')[0]);
+        setDistDate(`${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`);
       }
 
       if (release.releaseTime) {
@@ -3290,14 +3302,17 @@ export const ArtistHub = () => {
                                       {availableAnnouncements.map(ann => {
                                           const isSelected = distLinkedAnnouncementId === ann.id;
                                           const cover = ann.covers && ann.covers[0] ? ann.covers[0] : "";
-                                          const annDate = ann.releaseDate ? new Date(ann.releaseDate).toLocaleDateString() : "";
+                                          const annDate = ann.releaseDate ? formatReleaseDateDisplay(ann.releaseDate) : "";
                                           return (
                                               <div 
                                                   key={ann.id}
                                                   onClick={() => {
                                                       setDistLinkedAnnouncementId(ann.id);
                                                       if (ann.releaseDate) {
-                                                          setDistDate(new Date(ann.releaseDate).toISOString().split('T')[0]);
+                                                          const parts = extractReleaseDateParts(ann.releaseDate);
+                                                          if (parts) {
+                                                              setDistDate(`${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`);
+                                                          }
                                                       }
                                                       if (ann.releaseTime) {
                                                           setDistTime(ann.releaseTime);
@@ -4291,7 +4306,7 @@ export const ArtistHub = () => {
 
       const artistAccount = artistAccounts.find(a => a.artistName?.toLowerCase() === selectedRelease.artistName?.toLowerCase());
       const artistAvatar = artistAccount?.avatar || selectedRelease.covers?.[0] || "";
-      const releaseYear = selectedRelease.releaseDate ? new Date(selectedRelease.releaseDate).getFullYear() : 2026;
+      const releaseYear = extractReleaseDateParts(selectedRelease.releaseDate)?.year || 2026;
       const count = previewTracks.length;
       const trackCountText = `${count} ${count === 1 ? 'трек' : (count >= 2 && count <= 4) ? 'трека' : 'треков'}`;
       const totalSeconds = previewTracks.reduce((acc, t) => acc + (t.duration || 180), 0);
@@ -4352,7 +4367,7 @@ export const ArtistHub = () => {
 
       const isApprovedOrLive = selectedRelease.status === 'LIVE' || selectedRelease.status === 'APPROVED';
       const isReleaseOut = selectedRelease.status === 'LIVE' || 
-          Boolean(selectedRelease.releaseDate && new Date(selectedRelease.releaseDate).getTime() <= Date.now());
+          Boolean(selectedRelease.releaseDate && getReleaseTimestamp(selectedRelease.releaseDate, selectedRelease.releaseTime) <= Date.now());
 
       return (
           <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[250] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 animate-fade-in" onClick={() => setSelectedRelease(null)}>
@@ -4694,7 +4709,7 @@ export const ArtistHub = () => {
     const releaseTracks = release.tracks || [];
     const count = releaseTracks.length;
     const trackCountText = `${count} ${count === 1 ? 'трек' : (count >= 2 && count <= 4) ? 'трека' : 'треков'}`;
-    const releaseYear = release.releaseDate ? new Date(release.releaseDate).getFullYear() : 2026;
+    const releaseYear = extractReleaseDateParts(release.releaseDate)?.year || 2026;
     const coverUrl = release.covers && release.covers.length > 0 ? release.covers[0] : '';
 
     const statusBadgeClass =
@@ -4830,6 +4845,7 @@ export const ArtistHub = () => {
 
       const allIds = Array.from(new Set([
         dt.id,
+        ...(dt.legacyIds || []),
         ...matchingTracks.map(t => t.id),
         dt.existingHueq,
         dt.generatedHueq,
@@ -5246,8 +5262,8 @@ export const ArtistHub = () => {
                         ? 'text-red-400 bg-red-500/10 border-red-500/20'
                         : 'text-secondary bg-surface-highlight border-surface-highlight'
                     }`}>
-                      {releaseChangeType === 'positive' && '↑ '}
-                      {releaseChangeType === 'negative' && '↓ '}
+                      {releaseChangeType === 'positive' && 'тЖС '}
+                      {releaseChangeType === 'negative' && 'тЖУ '}
                       {releaseChangeLabel} чем вчера
                     </span>
                   </div>
@@ -5512,8 +5528,8 @@ export const ArtistHub = () => {
                           ? 'text-red-400'
                           : 'text-secondary/60'
                       }`}>
-                        {trk.changeType === 'positive' && '↑ '}
-                        {trk.changeType === 'negative' && '↓ '}
+                        {trk.changeType === 'positive' && 'тЖС '}
+                        {trk.changeType === 'negative' && 'тЖУ '}
                         {trk.changeLabel}
                       </span>
                     </div>
@@ -5573,8 +5589,8 @@ export const ArtistHub = () => {
                           ? 'text-red-400'
                           : 'text-secondary/60'
                       }`}>
-                        {trk.changeType === 'positive' && '↑ '}
-                        {trk.changeType === 'negative' && '↓ '}
+                        {trk.changeType === 'positive' && 'тЖС '}
+                        {trk.changeType === 'negative' && 'тЖУ '}
                         {trk.changeLabel}
                       </div>
                     </div>

@@ -28,6 +28,7 @@ export interface Track {
   explicit?: boolean;
   feat?: string;
   hueq?: string; // ISRC equivalent
+  legacyIds?: string[];
   mainArtists?: string[]; // Array of additional main artists
   isUnreleased?: boolean; // For tracks in expected releases that are not yet released
   dailyPlays?: number; // Optional daily plays count
@@ -181,6 +182,7 @@ export interface ModeratorAccount {
 
 export interface DistributionTrack {
   id?: string;
+  legacyIds?: string[];
   title: string;
   explicit: boolean;
   feat?: string; // Featured artists
