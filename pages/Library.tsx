@@ -79,6 +79,7 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
         const allIds: string[] = [];
         artistTracks.forEach(t => {
           if (t.id) allIds.push(t.id);
+          if (t.legacyIds) allIds.push(...t.legacyIds);
           if (t.hueq) allIds.push(t.hueq);
           if (t.title) allIds.push(t.title.trim());
         });
@@ -115,28 +116,17 @@ const ArtistView: React.FC<ArtistViewProps> = ({ artistName }) => {
     return () => {
       isMounted = false;
     };
-  }, [artistName, artistTracks.length]);
+  }, [artistName, artistTracks]);
 
   // Helper to get 2-week plays for a track
   const getTrackTwoWeekPlays = (t: Track): number => {
-    let plays = 0;
-    const checked = new Set<string>();
-    if (t.id && twoWeeksPlaysMap[t.id]) {
-      plays += twoWeeksPlaysMap[t.id];
-      checked.add(t.id);
-    }
-    if (t.hueq && twoWeeksPlaysMap[t.hueq] && !checked.has(t.hueq)) {
-      plays += twoWeeksPlaysMap[t.hueq];
-      checked.add(t.hueq);
-    }
-    if (t.title) {
-      const trimmed = t.title.trim();
-      if (twoWeeksPlaysMap[trimmed] && !checked.has(trimmed)) {
-        plays += twoWeeksPlaysMap[trimmed];
-        checked.add(trimmed);
-      }
-    }
-    return plays;
+    const identifiers = new Set([
+      t.id,
+      ...(t.legacyIds || []),
+      t.hueq,
+      t.title?.trim()
+    ].filter((id): id is string => Boolean(id)));
+    return Array.from(identifiers).reduce((total, id) => total + (twoWeeksPlaysMap[id] || 0), 0);
   };
 
   // Top tracks (trending last 2 weeks or all-time descending)

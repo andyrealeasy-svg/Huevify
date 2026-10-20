@@ -545,7 +545,7 @@ interface StoreContextType {
   ) => void;
   updateReleaseRequest: (id: string, data: Partial<ReleaseRequest>) => void;
   submitProfileEdit: (edit: Omit<ProfileEditRequest, 'id' | 'status' | 'artistId' | 'artistName'>) => void;
-  deleteRelease: (releaseId: string) => void;
+  deleteRelease: (releaseId: string) => void | Promise<void>;
   completeAnnouncementTransition: (announcementAlbumId: string, targetAlbumId?: string) => void;
   deleteLegacyTrack: (trackId: string) => void; // New function for root structure
   deleteArtistAccount: (artistId: string) => void;
@@ -765,17 +765,28 @@ const computeRankChangesFromSupabaseLogs = async (
     });
   }
 
+  const currentIdByPreviousId = new Map<string, string>();
+  availableTracks.forEach(track => {
+    currentIdByPreviousId.set(track.id, track.id);
+    (track.legacyIds || []).forEach(id => currentIdByPreviousId.set(id, track.id));
+  });
+  const canonicalPreviousPlays: Record<string, number> = {};
+  Object.entries(prevDailyPlaysMap).forEach(([id, plays]) => {
+    const currentId = currentIdByPreviousId.get(id) || id;
+    canonicalPreviousPlays[currentId] = (canonicalPreviousPlays[currentId] || 0) + plays;
+  });
+
   const savedPreviousChart = StorageService.load<DailyChartTrack[]>('huevify_previous_daily_chart', []);
 
   // Build the previous cycle Top 25
   const liveTracks = availableTracks.filter(t => !isTestTrack(t));
   let prevTop25Ids: string[] = [];
 
-  if (Object.keys(prevDailyPlaysMap).length > 0) {
+  if (Object.keys(canonicalPreviousPlays).length > 0) {
     const prevSorted = liveTracks
       .map(t => ({
         id: t.id,
-        dailyPlays: prevDailyPlaysMap[t.id] || 0,
+        dailyPlays: canonicalPreviousPlays[t.id] || 0,
         plays: t.plays || 0,
         title: t.title
       }))
@@ -789,7 +800,9 @@ const computeRankChangesFromSupabaseLogs = async (
 
     prevTop25Ids = prevSorted.map(t => t.id);
   } else if (savedPreviousChart.length > 0) {
-    prevTop25Ids = savedPreviousChart.map(t => t.id);
+    prevTop25Ids = Array.from(new Set(savedPreviousChart.map(t =>
+      currentIdByPreviousId.get(t.id) || t.id
+    )));
   }
 
   return currentChart.map((track, idx) => {
@@ -1050,6 +1063,47 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const lastTimeRef = useRef(0);
   const tracksRef = useRef<Track[]>(tracks);
   tracksRef.current = tracks;
+
+  useEffect(() => {
+    if (tracks.length === 0 || playlists.length === 0) return;
+
+    const trackIdByLegacyId = new Map<string, string>();
+    tracks.forEach(track => {
+      (track.legacyIds || []).forEach(legacyId => trackIdByLegacyId.set(legacyId, track.id));
+    });
+    if (trackIdByLegacyId.size === 0) return;
+
+    let changed = false;
+    const migratedPlaylists = playlists.map(playlist => {
+      const migratedTrackIds = Array.from(new Set(playlist.tracks.map(id => {
+        const currentId = trackIdByLegacyId.get(id);
+        if (currentId && currentId !== id) changed = true;
+        return currentId || id;
+      })));
+      if (migratedTrackIds.length !== playlist.tracks.length) changed = true;
+      return migratedTrackIds.length === playlist.tracks.length &&
+        migratedTrackIds.every((id, index) => id === playlist.tracks[index])
+        ? playlist
+        : { ...playlist, tracks: migratedTrackIds };
+    });
+
+    if (!changed) return;
+
+    setPlaylists(migratedPlaylists);
+    StorageService.save('huevify_playlists', migratedPlaylists);
+
+    const likedId = currentUser ? `liked_${currentUser.id}` : 'liked';
+    const likedPlaylist = migratedPlaylists.find(playlist => playlist.id === likedId);
+    if (currentUser && likedPlaylist) {
+      StorageService.save(`huevify_liked_${currentUser.id}`, likedPlaylist.tracks);
+      if (isSupabaseConfigured()) {
+        SupabaseService.savePlaylist(likedPlaylist).catch(e => console.warn('Supabase migrated liked playlist sync error:', e));
+        SupabaseService.saveUserPreferences(currentUser.id, { likedTracks: likedPlaylist.tracks })
+          .catch(e => console.warn('Supabase migrated liked tracks sync error:', e));
+      }
+    }
+  }, [tracks, playlists, currentUser]);
+
   // Real-time Sync Channel
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
@@ -1384,6 +1438,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   const code = (track.existingHueq || track.generatedHueq || (track as any).hueq || '').trim().toUpperCase();
                   const matchedTrackId = code ? trackIdsByHueq.get(code) : undefined;
                   const trackId = matchedTrackId || track.id || (code ? getTrackIdFromHueq(code) : `dist_trk_${req.id}_${idx}`);
+                  const previousPositionId = code && !req.isAnnouncement && !track.isEmpty && !track.isUnreleased && track.fileUrl
+                      ? `dist_trk_${req.id}_${idx}`
+                      : undefined;
 
                   if (code && req.status !== 'REJECTED' && !matchedTrackId) {
                       trackIdsByHueq.set(code, trackId);
@@ -1391,6 +1448,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   const legacyIds = Array.from(new Set([
                       ...(track.legacyIds || []),
                       ...(LEGACY_TRACK_IDS_BY_HUEQ[code] || []),
+                      ...(previousPositionId && previousPositionId !== trackId ? [previousPositionId] : []),
                       ...(track.id && track.id !== trackId ? [track.id] : [])
                   ])).filter(id => id !== trackId);
                   if (track.id !== trackId || legacyIds.length !== (track.legacyIds || []).length) {
@@ -2437,10 +2495,35 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (release.status === 'LIVE' || release.status === 'APPROVED') {
           const updated = releaseRequests.map(r => r.id === releaseId ? { ...r, deletionRequested: true } : r);
+          const updatedRelease = updated.find(r => r.id === releaseId);
+          if (!updatedRelease || !isSupabaseConfigured()) {
+              showNotification("Не удалось отправить запрос модератору: нет подключения к базе данных.", "error");
+              return;
+          }
+
           setReleaseRequests(updated);
           StorageService.save('huevify_release_requests', updated);
           notifySync('ARTIST_DATA_UPDATE');
-          showNotification(t('deletionRequested'), "info");
+
+          SupabaseService.saveRelease(updatedRelease).then(saved => {
+              if (saved) {
+                  showNotification(t('deletionRequested'), "success");
+                  return;
+              }
+
+              const reverted = updated.map(r => r.id === releaseId ? release : r);
+              setReleaseRequests(reverted);
+              StorageService.save('huevify_release_requests', reverted);
+              notifySync('ARTIST_DATA_UPDATE');
+              showNotification("Не удалось отправить запрос модератору. Попробуйте позже.", "error");
+          }).catch(error => {
+              console.error('Failed to submit release deletion request:', error);
+              const reverted = updated.map(r => r.id === releaseId ? release : r);
+              setReleaseRequests(reverted);
+              StorageService.save('huevify_release_requests', reverted);
+              notifySync('ARTIST_DATA_UPDATE');
+              showNotification("Не удалось отправить запрос модератору. Попробуйте позже.", "error");
+          });
       } else {
           const updated = releaseRequests.filter(r => r.id !== releaseId);
           setReleaseRequests(updated);

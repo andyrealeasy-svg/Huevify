@@ -54,6 +54,23 @@ export const ArtistHub = () => {
     currentTrack, setCurrentTrack, isPlaying, playTrack, togglePlay
   } = useStore();
 
+  const getLegacyTrackIdsByHueq = (hueq: string): string[] => {
+      const cleanHueq = hueq.trim().toUpperCase();
+      if (!cleanHueq) return [];
+
+      return releaseRequests.flatMap(request =>
+          (request.tracks || []).flatMap((track, index) => {
+              const trackHueq = (track.existingHueq || track.generatedHueq || '').trim().toUpperCase();
+              if (trackHueq !== cleanHueq) return [];
+              return [
+                  ...(track.id ? [track.id] : []),
+                  ...(track.legacyIds || []),
+                  `dist_trk_${request.id}_${index}`
+              ];
+          })
+      );
+  };
+
   const isLiquidGlass = appSettings?.liquidGlassNav !== false;
 
   const [view, setView] = useState<HubView>('AUTH');
@@ -175,6 +192,8 @@ export const ArtistHub = () => {
               if (dt.id) releaseTrackIds.push(dt.id);
               if (dt.legacyIds) releaseTrackIds.push(...dt.legacyIds);
               if (dt.title) releaseTrackIds.push(dt.title.trim());
+              const dtHueq = (dt.existingHueq || dt.generatedHueq || '').trim().toUpperCase();
+              if (dtHueq) releaseTrackIds.push(...getLegacyTrackIdsByHueq(dtHueq));
               const match = tracks.find(t =>
                   (dt.id && t.id === dt.id) ||
                   (t.title?.trim().toLowerCase() === dt.title?.trim().toLowerCase() &&
@@ -222,7 +241,7 @@ export const ArtistHub = () => {
       return () => {
           isMounted = false;
       };
-  }, [selectedStatsRelease?.id, tracks, statsCycleTick]);
+  }, [selectedStatsRelease?.id, tracks, releaseRequests, statsCycleTick]);
 
   useEffect(() => {
       if (selectedRelease) {
@@ -4833,6 +4852,7 @@ export const ArtistHub = () => {
       const displayArtist = dt.artist || release.artistName || 'Артист';
 
       const dtHueq = (dt.existingHueq || dt.generatedHueq || (dt as any).hueq || '').trim().toUpperCase();
+      const legacyIdsByHueq = getLegacyTrackIdsByHueq(dtHueq);
 
       const matchingTracks = tracks.filter(t =>
         (dt.id && t.id === dt.id) ||
@@ -4846,6 +4866,7 @@ export const ArtistHub = () => {
       const allIds = Array.from(new Set([
         dt.id,
         ...(dt.legacyIds || []),
+        ...legacyIdsByHueq,
         ...matchingTracks.map(t => t.id),
         dt.existingHueq,
         dt.generatedHueq,
@@ -5262,8 +5283,8 @@ export const ArtistHub = () => {
                         ? 'text-red-400 bg-red-500/10 border-red-500/20'
                         : 'text-secondary bg-surface-highlight border-surface-highlight'
                     }`}>
-                      {releaseChangeType === 'positive' && 'тЖС '}
-                      {releaseChangeType === 'negative' && 'тЖУ '}
+                      {releaseChangeType === 'positive' && '↑ '}
+                      {releaseChangeType === 'negative' && '↓ '}
                       {releaseChangeLabel} чем вчера
                     </span>
                   </div>
@@ -5528,8 +5549,8 @@ export const ArtistHub = () => {
                           ? 'text-red-400'
                           : 'text-secondary/60'
                       }`}>
-                        {trk.changeType === 'positive' && 'тЖС '}
-                        {trk.changeType === 'negative' && 'тЖУ '}
+                        {trk.changeType === 'positive' && '↑ '}
+                        {trk.changeType === 'negative' && '↓ '}
                         {trk.changeLabel}
                       </span>
                     </div>
@@ -5589,8 +5610,8 @@ export const ArtistHub = () => {
                           ? 'text-red-400'
                           : 'text-secondary/60'
                       }`}>
-                        {trk.changeType === 'positive' && 'тЖС '}
-                        {trk.changeType === 'negative' && 'тЖУ '}
+                        {trk.changeType === 'positive' && '↑ '}
+                        {trk.changeType === 'negative' && '↓ '}
                         {trk.changeLabel}
                       </div>
                     </div>
