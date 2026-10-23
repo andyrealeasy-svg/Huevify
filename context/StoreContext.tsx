@@ -4635,48 +4635,60 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   mediaSessionActionsRef.current = { nextTrack, prevTrack, seek, togglePlay };
 
   useEffect(() => {
-    if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') return;
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return;
 
-    const mediaSession = navigator.mediaSession;
-    if (!currentTrack) {
-      mediaSession.metadata = null;
-      mediaSession.playbackState = 'none';
-      return;
-    }
+    try {
+      if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') return;
 
-    const cover = getTrackCover(currentTrack, activePlaybackAlbumId || undefined);
-    let artwork: MediaImage[] = [];
-    if (cover) {
-      try {
-        artwork = [{ src: new URL(cover, window.location.href).href }];
-      } catch (error) {
-        console.warn('Unable to set system-player artwork:', error);
+      const mediaSession = navigator.mediaSession;
+      if (!currentTrack) {
+        mediaSession.metadata = null;
+        mediaSession.playbackState = 'none';
+        return;
       }
-    }
 
-    const mainArtists = Array.from(new Set(
-      [currentTrack.artist, ...(currentTrack.mainArtists || [])]
+      const cover = getTrackCover(currentTrack, activePlaybackAlbumId || undefined);
+      let artwork: MediaImage[] = [];
+      if (cover) {
+        artwork = [{ src: new URL(cover, window.location.href).href }];
+      }
+
+      const mainArtists = Array.from(new Set(
+        [currentTrack.artist, ...(currentTrack.mainArtists || [])]
+        .filter((artist): artist is string => typeof artist === 'string')
         .map(artist => artist.trim())
         .filter(Boolean)
-    ));
-    const artist = [
-      mainArtists.join(', '),
-      currentTrack.feat?.trim() ? `feat. ${currentTrack.feat.trim()}` : ''
-    ].filter(Boolean).join(' ');
+      ));
+      const feat = typeof currentTrack.feat === 'string' ? currentTrack.feat.trim() : '';
+      const artist = [
+        mainArtists.join(', '),
+        feat ? `feat. ${feat}` : ''
+      ].filter(Boolean).join(' ');
 
-    mediaSession.metadata = new window.MediaMetadata({
-      title: currentTrack.title || 'Huevify',
-      artist,
-      album: currentTrack.album || '',
-      artwork
-    });
-    mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      mediaSession.metadata = new window.MediaMetadata({
+        title: currentTrack.title || 'Huevify',
+        artist,
+        album: currentTrack.album || '',
+        artwork
+      });
+      mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch (error) {
+      console.warn('Media Session metadata is unavailable:', error);
+    }
   }, [currentTrack, activePlaybackAlbumId, isPlaying, albums, appSettings.albumCoverIndexes]);
 
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
+    if (typeof navigator === 'undefined') return;
 
-    const mediaSession = navigator.mediaSession;
+    let mediaSession: MediaSession;
+    try {
+      if (!('mediaSession' in navigator)) return;
+      mediaSession = navigator.mediaSession;
+    } catch (error) {
+      console.warn('Media Session controls are unavailable:', error);
+      return;
+    }
+
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
       ['play', () => {
         if (getActiveAudio().paused) mediaSessionActionsRef.current.togglePlay();
@@ -4711,9 +4723,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !currentTrack || !Number.isFinite(duration) || duration <= 0) return;
+    if (typeof navigator === 'undefined' || !currentTrack || !Number.isFinite(duration) || duration <= 0) return;
 
     try {
+      if (!('mediaSession' in navigator)) return;
       navigator.mediaSession.setPositionState({
         duration,
         playbackRate: getActiveAudio().playbackRate,
