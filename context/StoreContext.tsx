@@ -929,6 +929,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentModerator, setCurrentModerator] = useState<ModeratorAccount | null>(null);
   const [artistAccounts, setArtistAccounts] = useState<ArtistAccount[]>([]);
   const artistAccountsRef = useRef<ArtistAccount[]>([]);
+
   useEffect(() => {
     artistAccountsRef.current = artistAccounts;
   }, [artistAccounts]);
@@ -4629,6 +4630,100 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playTrack(lastTrk, queue, getNextAlbumContext(lastTrk));
     }
   };
+
+  const mediaSessionActionsRef = useRef({ nextTrack, prevTrack, seek, togglePlay });
+  mediaSessionActionsRef.current = { nextTrack, prevTrack, seek, togglePlay };
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') return;
+
+    const mediaSession = navigator.mediaSession;
+    if (!currentTrack) {
+      mediaSession.metadata = null;
+      mediaSession.playbackState = 'none';
+      return;
+    }
+
+    const cover = getTrackCover(currentTrack, activePlaybackAlbumId || undefined);
+    let artwork: MediaImage[] = [];
+    if (cover) {
+      try {
+        artwork = [{ src: new URL(cover, window.location.href).href }];
+      } catch (error) {
+        console.warn('Unable to set system-player artwork:', error);
+      }
+    }
+
+    const mainArtists = Array.from(new Set(
+      [currentTrack.artist, ...(currentTrack.mainArtists || [])]
+        .map(artist => artist.trim())
+        .filter(Boolean)
+    ));
+    const artist = [
+      mainArtists.join(', '),
+      currentTrack.feat?.trim() ? `feat. ${currentTrack.feat.trim()}` : ''
+    ].filter(Boolean).join(' ');
+
+    mediaSession.metadata = new window.MediaMetadata({
+      title: currentTrack.title || 'Huevify',
+      artist,
+      album: currentTrack.album || '',
+      artwork
+    });
+    mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [currentTrack, activePlaybackAlbumId, isPlaying, albums, appSettings.albumCoverIndexes]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const mediaSession = navigator.mediaSession;
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play', () => {
+        if (getActiveAudio().paused) mediaSessionActionsRef.current.togglePlay();
+      }],
+      ['pause', () => {
+        if (!getActiveAudio().paused) mediaSessionActionsRef.current.togglePlay();
+      }],
+      ['previoustrack', () => mediaSessionActionsRef.current.prevTrack()],
+      ['nexttrack', () => mediaSessionActionsRef.current.nextTrack()],
+      ['seekto', details => {
+        if (typeof details.seekTime === 'number') mediaSessionActionsRef.current.seek(details.seekTime);
+      }]
+    ];
+
+    handlers.forEach(([action, handler]) => {
+      try {
+        mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Browsers may expose Media Session without supporting every action.
+      }
+    });
+
+    return () => {
+      handlers.forEach(([action]) => {
+        try {
+          mediaSession.setActionHandler(action, null);
+        } catch {
+          // Ignore unsupported actions when removing handlers.
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack || !Number.isFinite(duration) || duration <= 0) return;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: getActiveAudio().playbackRate,
+        position: Math.min(progress, duration)
+      });
+    } catch {
+      // Position state is optional and may be unavailable in some browsers.
+    }
+  }, [currentTrack, progress, duration, isPlaying]);
+
   const toggleRepeat = () => {
     if (playMode === PlayMode.OFF) setPlayMode(PlayMode.CONTEXT);
     else if (playMode === PlayMode.CONTEXT) setPlayMode(PlayMode.ONE);
